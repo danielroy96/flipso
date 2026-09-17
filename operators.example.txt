@@ -1,0 +1,25 @@
+# Flipso operator names and card branding
+#
+# ITSO allocates an Operator Identification Number (OID) to each of its licensed
+# members, but publishes the register to members only. Flipso therefore ships
+# with a short built-in table and shows the bare number for anything else.
+#
+# Add your own entries here. Copy this file to your Flipper as:
+#   /ext/apps_data/flipso/operators.txt
+#
+# One entry per line: <oid>,<name>[,<brand>]
+#  - the OID is the number Flipso shows when it cannot name an operator
+#  - the name is the organisation, shown against the products it owns
+#  - the brand is optional: the name the card itself is sold under, which titles
+#    the menu when this operator is the one that issued the card
+#  - names longer than 27 characters are truncated; a brand is cut to the screen
+#  - entries here override the built-in table, and a line with no brand column
+#    overrides the name only
+#  - lines starting with # are ignored
+#
+# Up to 48 entries are read.
+#
+# Your card's OID is on the Card screen, under Issuer.
+
+# 211,East Sussex County Council
+# 1234,My Local Transit,Metro Smartcard

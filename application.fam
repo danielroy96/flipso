@@ -1,0 +1,36 @@
+App(
+    appid="flipso",
+    name="Flipso",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="flipso_app",
+    stack_size=4 * 1024,
+    fap_category="NFC",
+    fap_icon="flipso.png",
+    fap_author="Flipso",
+    fap_version="1.1",
+    fap_description="Read UK ITSO public transport smartcards",
+    # Listed explicitly: a bare "*.c" is matched recursively and would pull in the
+    # host-side decoder tests under tools/.
+    sources=[
+        "flipso.c",
+        "flipso_reader.c",
+        "flipso_cmd2.c",
+        "flipso_media.c",
+        "flipso_operators.c",
+        "flipso_stations.c",
+        "itso/*.c",
+        "scenes/*.c",
+        "views/*.c",
+    ],
+    # Bundled into the .fap as a non-loadable section and unpacked by the
+    # firmware to /ext/apps_assets/flipso/. It never reaches RAM: see
+    # tools/stations/FORMAT.md.
+    fap_file_assets="assets",
+    # Compiled into the .fap as I_<name> symbols in flipso_icons.h. The pixel
+    # art they are generated from lives in tools/icons/build_icons.py.
+    fap_icon_assets="images",
+    requires=[
+        "gui",
+        "notification",
+    ],
+)

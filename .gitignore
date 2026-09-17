@@ -1,0 +1,17 @@
+dist/
+build/
+.vscode/
+.idea/
+*.fap
+# Stray copy of the generated test fixture; the real one is tools/test/card_data.h.
+/card_data.h
+
+/stations.txt
+/stations.dat
+
+# Written by tools/ide/compdb.py; holds absolute paths into ~/.ufbt.
+/compile_commands.json
+
+# Created on first use by tools/flipper/flipctl.
+tools/flipper/.venv/
+__pycache__/

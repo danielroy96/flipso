@@ -1,0 +1,187 @@
+"""
+Host-side test for flipctl's serial recovery. Needs no Flipper.
+
+macOS drops the USB CDC endpoint for a second or two whenever an RPC session
+ends badly, and every read against the old endpoint then fails with OSError 6,
+"Device not configured". That used to kill whatever was running - most
+annoyingly a log stream armed for someone to tap a card, where the scan they
+were about to do was the whole point.
+
+These tests inject that failure, because it cannot be provoked on demand from a
+real device.
+"""
+import argparse
+import importlib.util
+import io
+import sys
+import types
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+spec = importlib.util.spec_from_file_location("flipctl", HERE / "flipctl.py")
+flipctl = importlib.util.module_from_spec(spec)
+sys.modules["flipctl"] = flipctl
+spec.loader.exec_module(flipctl)
+
+# pyserial is imported lazily inside each function, so a stub carrying the
+# exception type the handlers catch is enough.
+_serial = types.ModuleType("serial")
+class SerialException(Exception):
+    pass
+_serial.SerialException = SerialException
+def _refuse(*a, **k):
+    raise AssertionError("opened the port directly instead of via open_serial")
+_serial.Serial = _refuse
+sys.modules["serial"] = _serial
+
+DROP = OSError(6, "Device not configured")
+
+failures = 0
+
+
+def check(what, ok):
+    global failures
+    print(f"  [{'PASS' if ok else 'FAIL'}] {what}")
+    if not ok:
+        failures += 1
+
+
+class Handle:
+    """A port that serves canned reads and can drop its endpoint on cue."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.written = []
+
+    def write(self, data):
+        self.written.append(data)
+        return len(data)
+
+    def flush(self):
+        pass
+
+    def close(self):
+        pass
+
+    def reset_input_buffer(self):
+        pass
+
+    def read(self, n=1):
+        if not self.script:
+            return b""
+        item = self.script.pop(0)
+        if item is DROP:
+            raise DROP
+        return item
+
+
+def patch(opens, alive=True):
+    """Point flipctl at a scripted sequence of ports."""
+    opened = []
+
+    def open_serial(port, timeout=0.2, attempts=6):
+        if len(opened) >= len(opens):
+            raise DROP
+        h = Handle(opens[len(opened)])
+        opened.append(h)
+        return h
+
+    flipctl.open_serial = open_serial
+    flipctl.find_port = lambda: "/dev/fake"
+    flipctl.require_free_port = lambda *a, **k: None
+    flipctl.drain_to_prompt = lambda *a, **k: None
+    flipctl.cli_alive = lambda *a, **k: alive
+    return opened
+
+
+class Captured(list):
+    """Collect what the stream printed to stdout, so lines can be asserted on."""
+
+    def __enter__(self):
+        self._real = sys.stdout
+        sys.stdout = self._buf = io.StringIO()
+        return self
+
+    def __exit__(self, *exc):
+        sys.stdout = self._real
+        self.extend(self._buf.getvalue().splitlines())
+        return False
+
+
+def log_args(**over):
+    args = dict(force=False, keys=None, settle=0.1, level="debug",
+                all=True, seconds=2, grep=None)
+    args.update(over)
+    return argparse.Namespace(**args)
+
+
+def main():
+    print("flipctl serial recovery")
+
+    # A drop mid-stream must not end the stream: reopen, re-arm, carry on.
+    # The leading b"" on each script is what arm() consumes when it drains the
+    # freshly opened port; without it the first real line is eaten by the
+    # arming read and the test proves nothing about lines surviving.
+    before = [b"", b"1 [I][Flipso] before\n", DROP]
+    after = [b"", b"2 [I][Flipso] after\n", b""]
+    opened = patch([before, after])
+    with Captured() as out:
+        rc = flipctl.cmd_log(log_args())
+    check("a mid-stream drop reconnects rather than dying", len(opened) == 2)
+    check("the stream still reports success", rc == 0)
+    check("lines before the drop are printed",
+          any("before" in line for line in out))
+    check("lines after the drop are printed - the point of reconnecting",
+          any("after" in line for line in out))
+    check("a truncated read is not printed as a line",
+          not any(line.strip() in ("1", "2") for line in out))
+    # The log level belongs to the session, so a reopened port that was not
+    # re-armed would silently stream at the system default instead.
+    check("the reconnected port is re-armed with the log level",
+          any(b"log debug" in w for w in opened[1].written))
+
+    # A port that never comes back ends the stream with a message, not a
+    # traceback: the reader needs to know their armed log is gone.
+    opened = patch([[b"", b"1 [I][Flipso] before\n", DROP]])
+    with Captured() as out:
+        rc = flipctl.cmd_log(log_args())
+    check("an unrecoverable port ends the stream cleanly", rc == 0)
+    check("no further ports were opened", len(opened) == 1)
+    check("what arrived before the drop is still printed",
+          any("before" in line for line in out))
+
+    # Flipper.cmd: a query opts into the retry and recovers.
+    opened = patch([[DROP], [b"free\r\n  total 1000\r\n>: "]])
+    f = flipctl.Flipper.__new__(flipctl.Flipper)
+    f.port = "/dev/fake"
+    f._fixed_port = None
+    f._connect_timeout = 1.0
+    f.s = flipctl.open_serial("/dev/fake")
+    f._sync = lambda limit: None
+    out = f.cmd("free", limit=1.0, retry=True)
+    check("a query recovers from a drop", "total 1000" in out)
+
+    # ...but a command that is not a query must not be repeated: re-running an
+    # `input send` is a second key press the user never asked for.
+    opened = patch([[DROP], [b">: "]])
+    f = flipctl.Flipper.__new__(flipctl.Flipper)
+    f.port = "/dev/fake"
+    f._fixed_port = None
+    f._connect_timeout = 1.0
+    f.s = flipctl.open_serial("/dev/fake")
+    f._sync = lambda limit: None
+    raised = False
+    try:
+        f.cmd("input send ok short", limit=1.0)
+    except OSError:
+        raised = True
+    check("a non-query raises rather than repeating itself", raised)
+    check("and did not reopen the port behind our back", len(opened) == 1)
+
+    print("FAILED" if failures else "All flipctl recovery tests passed")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

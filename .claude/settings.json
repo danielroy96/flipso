@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "statusLine": {
+    "type": "command",
+    "command": "tools/flipper/statusline.sh"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(tools/flipper/flipctl:*)",
+      "Bash(tools/flipper/statusline.sh)",
+      "Bash(tools/test/run.sh)",
+      "Bash(tools/test/replay.py:*)",
+      "Bash(tools/test/build_card.py:*)",
+      "Bash(tools/stations/build_stations.py:*)",
+      "Bash(tools/icons/build_icons.py:*)",
+      "Bash(ufbt)",
+      "Bash(ufbt -h)",
+      "Bash(ufbt --help)",
+      "Bash(ufbt vscode_dist)",
+      "Bash(ufbt cdb)",
+      "Bash(ls /dev/cu.*)",
+      "Bash(lsof /dev/cu.usbmodemflip_*)",
+      "Read(//private/tmp/claude-501/**)"
+    ]
+  }
+}

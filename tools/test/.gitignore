@@ -1,0 +1,12 @@
+card_data.h
+test_parse
+test_parse.dSYM/
+test_stations
+stub_*.dat
+replay
+replay_data.h
+test_media
+test_operators
+test_text_view
+test_menu_view
+*.dSYM/

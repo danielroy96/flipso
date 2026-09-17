@@ -1,0 +1,16 @@
+# A throwaway app that crashes on purpose, for proving out the crash-detection
+# tooling without touching Flipso's sources. Build and run it with:
+#
+#   cd tools/debug/crashcanary && ufbt launch
+#
+# ufbt works on whichever directory it is run from, so this never enters the
+# Flipso build.
+App(
+    appid="crashcanary",
+    name="CrashCanary",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="crashcanary_app",
+    stack_size=1 * 1024,
+    fap_category="Debug",
+    requires=["gui"],
+)

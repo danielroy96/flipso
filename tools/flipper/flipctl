@@ -1,0 +1,22 @@
+#!/bin/sh
+# Wrapper for flipctl.py: builds the virtualenv on first use, then runs the tool.
+#
+# The venv is created from ufbt's own Python 3.11 because that is the only
+# interpreter on this machine guaranteed to exist alongside the SDK. It holds
+# pyserial (the CLI) and flipperzero-protobuf (screenshots over RPC).
+set -e
+HERE=$(cd "$(dirname "$0")" && pwd)
+VENV="$HERE/.venv"
+PY="$VENV/bin/python"
+
+if [ ! -x "$PY" ]; then
+    BOOTSTRAP=$(ls "$HOME"/.ufbt/toolchain/*/bin/python3.11 2>/dev/null | head -1)
+    [ -n "$BOOTSTRAP" ] || BOOTSTRAP=$(command -v python3)
+    [ -n "$BOOTSTRAP" ] || { echo "flipctl: no python3 found" >&2; exit 1; }
+    echo "[flipctl] creating $VENV" >&2
+    "$BOOTSTRAP" -m venv "$VENV"
+    "$PY" -m pip install -q --upgrade pip setuptools wheel
+    "$PY" -m pip install -q pyserial flipperzero-protobuf
+fi
+
+exec "$PY" "$HERE/flipctl.py" "$@"
