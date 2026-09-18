@@ -95,6 +95,13 @@ So: no large static tables, no growing a scene's buffers without checking, and
 - `ViewPort lockup` and `Incorrect BacklightEnforce use` fire on **every scan**.
   They come from the scan path, not from the detail scenes, and predate the
   current code. Not a symptom of whatever you just changed.
+- **Run `tools/flipper/flipctl ready` before asking the user to tap a card.** It
+  closes and relaunches the app so it is certainly on screen, rebooting first if
+  the loader will not let go. Nothing else tells a usable device from an
+  unusable one: in the state where the app refuses to open, `loader info`, the
+  free heap and the whole `top` thread table are all identical to a healthy run,
+  and only `loader open` answering "Loader is locked" gives it away. Do not
+  send the user to tap on the strength of `doctor` looking fine.
 - `loader info` is not reliable on its own: it keeps reporting an app as running
   after it has exited. The heap is the ground truth, because an app's ~48 KB
   comes back the moment it goes. `flipctl` already cross-checks that way.

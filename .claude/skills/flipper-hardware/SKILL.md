@@ -11,6 +11,33 @@ Run it from the project root. It creates its virtualenv on first use.
 Never use raw `ufbt launch`, and never write a one-off pyserial script: the
 behaviours below exist because past sessions lost time to each of them.
 
+## Before asking the user to do anything
+
+```bash
+tools/flipper/flipctl ready
+```
+
+Closes and relaunches the app so it is certainly on screen and accepting input,
+rebooting first if the loader will not let go. Takes about 15 s. **Run it before
+asking the user to tap a card**, every time - it is the difference between them
+tapping at a live app and tapping at a dead one and having to reboot by hand.
+
+Do not try to check instead. There is no signal that separates a usable device
+from an unusable one:
+
+| What you might check | Why it does not work |
+| --- | --- |
+| `loader info` | says the app is running in every broken state |
+| free heap | the app's memory is still held, so it looks like a healthy run |
+| `top` thread table | measured byte-for-byte identical, healthy vs unusable |
+| a screenshot | the firmware never says which app owns the screen |
+
+The one state that *is* visible from the host is the app browser wedge, where
+the loader keeps `LoaderMenu`, `LoaderApplications` and `BrowserWorker` alive on
+top of the app - 25 threads against a healthy 22. That is a real signal but only
+catches one presentation of the fault, which is why `ready` restarts rather than
+inspects.
+
 ## Check first, once per session
 
 ```bash
@@ -124,7 +151,8 @@ Then ask them to tap the card once. Arm the log *before* asking.
 | The port exists but nothing answers | a crashed app halts the device, or an RPC session was left open | `flipctl crash`, then `flipctl reboot` |
 | `the serial port is held by another process` | a log stream or `ufbt` from an earlier session | `flipctl` clears its own helpers; `--force` clears anything |
 | `[flipctl] serial dropped - reconnecting` | macOS dropped the CDC endpoint, usually just after an RPC call (a screenshot, `ufbt launch`) | nothing: the stream reopens and re-arms itself and keeps watching |
-| The screen shows the app browser and nothing responds | a Back press landed after the app exited and wedged the GUI | `flipctl reboot` |
+| The screen shows the app browser and nothing responds | a Back press landed after the app exited and wedged the GUI | `flipctl ready` |
+| The app will not open, or the desktop is showing while `loader info` says it runs | a zombie still holds the loader lock: `loader open` answers "Loader is locked" | `flipctl ready` |
 
 `flipctl reboot` is the universal escape hatch: it reboots, waits for the port
 to come back, and reports the fresh heap baseline. It takes about 20 s and is

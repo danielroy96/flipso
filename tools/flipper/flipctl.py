@@ -368,6 +368,14 @@ def cmd_doctor(args):
         try:
             running = f.app_running()
             print(f"  running app          {running or 'none (desktop)'}")
+            if running:
+                # Worth saying plainly, because this line is exactly what an
+                # earlier session trusted before sending someone to tap a card
+                # at an app that could not receive it.
+                print("                       (the loader reports this even when "
+                      "the app is not on screen -")
+                print("                        run `flipctl ready` before relying "
+                      "on it)")
             h = f.heap()
             if h:
                 print(f"  free heap            {h.get('Free heap size', 0):,} of {h.get('Total heap size', 0):,}")
@@ -384,6 +392,34 @@ def cmd_doctor(args):
     print()
     print("OK" if ok else "Problems found - see above")
     return 0 if ok else 1
+
+
+def cmd_ready(args):
+    """Make the device usable, then say so - the check to run before asking
+    someone to tap a card."""
+    port = find_port()
+    require_free_port(port, force=args.force)
+    if not cli_alive(port):
+        print("state: HALTED - the CLI is silent")
+        print()
+        print(HALTED_ADVICE)
+        return 2
+
+    port, message = ensure_usable(port, args, want_running=not args.desktop)
+    f = Flipper(port)
+    try:
+        running = f.app_running()
+        h = f.heap()
+    finally:
+        f.close()
+
+    print(f"{message}: {running or 'desktop'}")
+    if h:
+        print(f"  free heap  {h.get('Free heap size', 0):,} of "
+              f"{h.get('Total heap size', 0):,}")
+    if not args.desktop and running is None:
+        return 1
+    return 0
 
 
 def cmd_cmd(args):
@@ -425,6 +461,47 @@ def cmd_close(args):
 # Flipso costs roughly 48 KB of heap. Anything like that much coming back at
 # once means the app has actually exited, whatever the loader claims.
 APP_HEAP_JUMP = 20_000
+
+
+def launch_app(f: Flipper, appid: str) -> bool:
+    """Start the installed .fap. External apps open by path, not by name.
+
+    `loader open <name>` only resolves the built-in apps that `loader list`
+    prints, which is why launching Flipso that way reports "not found".
+    """
+    f.cmd(f"loader open /ext/apps/NFC/{appid}.fap", limit=10.0)
+    time.sleep(2.0)
+    return f.app_running() is not None
+
+
+def ensure_usable(port: str, args, want_running: bool = True) -> tuple:
+    """Leave the device in a state where the app will actually respond.
+
+    This restarts the app rather than inspecting it, because the broken states
+    cannot be told apart from a healthy one by anything the host can ask.
+    Measured on a device that was refusing to open the app: `loader info` says
+    it is running, the heap agrees because its memory is still held, and its
+    thread table is byte-for-byte identical to a healthy run - yet the desktop
+    owns the screen and `loader open` answers "Loader is locked, please close
+    the ... first". The only difference is what is drawn, which the firmware
+    does not expose.
+
+    So do not classify the state, replace it. Closing and relaunching costs a
+    few seconds, is idempotent, and ends with an app that is certainly on
+    screen - which is what someone about to tap a card needs to be true.
+
+    Returns (port, message); the port can change because a reboot re-enumerates.
+    """
+    port = close_running_app(port, args)
+    if not want_running:
+        return port, "at the desktop"
+
+    f = Flipper(port)
+    try:
+        ok = launch_app(f, args.appid)
+    finally:
+        f.close()
+    return port, ("ready" if ok else "the app did not start")
 
 
 def ensure_closed(f: Flipper, tries: int = 3) -> bool:
@@ -1160,6 +1237,14 @@ def build_parser():
 
     s = sub.add_parser("doctor", help="check host tooling, the port and the device")
     s.set_defaults(func=cmd_doctor)
+
+    s = sub.add_parser("ready", help="make sure the app is running and responds, "
+                                     "recovering a wedged device")
+    s.add_argument("--desktop", action="store_true",
+                   help="only require a usable device, not a running app")
+    s.add_argument("--no-reboot", action="store_true",
+                   help="fail rather than rebooting a device that will not let go")
+    s.set_defaults(func=cmd_ready)
 
     s = sub.add_parser("cmd", help="run Flipper CLI commands")
     s.add_argument("command", nargs="+")
