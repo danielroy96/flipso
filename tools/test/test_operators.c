@@ -104,7 +104,7 @@ int main(void) {
      * a new entry needs a line, and the search finds it only while the table
      * stays sorted.
      */
-    static const uint16_t known[] = {78, 96, 109, 143, 196, 226, 246, 247, 1136, 8000, 8288};
+    static const uint16_t known[] = {78, 96, 109, 143, 196, 226, 246, 247, 289, 1136, 8000, 8288};
     unsigned unreachable = 0;
     for(size_t i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
         if(!itso_operator_name(known[i])) unreachable++;
@@ -113,6 +113,11 @@ int main(void) {
 
     same("a known operator is named", itso_operator_name(78), "Transport for London");
     same("an unknown operator is not", itso_operator_name(4242), NULL);
+    /* Shared central-product OIDs are named but brand nothing: they own
+     * products on other issuers' cards and issue none of their own. */
+    same("a shared central-product OID is named", itso_operator_name(246),
+         "SEFT Central Products");
+    same("but it brands no card", itso_operator_brand(246), NULL);
 
     same("a shell owner that brands a card reports it", itso_operator_brand(226), "Freedom Pass");
     /* The brand is the app's title bar, so an operator we have only seen as a

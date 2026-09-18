@@ -73,12 +73,24 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * London Councils for the London boroughs; the name is from that, the OID
      * and the brand are from the card. */
     {226, "London Councils", "Freedom Pass"},
-    /* Provenance recorded only as "read from a South West Trains smartcard",
-     * which is OID 109 above. That comment therefore describes a different
-     * entry, leaving this one with no provenance of its own: no brand until a
-     * card confirms what it is. */
-    {246, "South Western Railway", NULL},
+    /* A shared OID for central products rather than one operator's, identified
+     * via Smart Ticket Checker, 2026-09-18. Read as the owner of the ITSO ID
+     * product on a Southeastern "The Key" card, which is what a shared south-east
+     * body would own: the purse on that same card belongs to 8000, ITSO STR.
+     * Related to but distinct from OID 1136 below, which RSPS3002 gives as SEFT
+     * itself. No brand: it issues no card of its own.
+     *
+     * This entry previously read "South Western Railway", on the strength of a
+     * comment that actually described OID 109. Hence the provenance above. */
+    {246, "SEFT Central Products", NULL},
     {247, "c2c", NULL}, /* RSPS3002 appendix D.2, "a C2C live Shell ISRN" */
+    /* Shell owner of a Southeastern "The Key" card, read 2026-09-18. The Key is
+     * Go-Ahead's scheme rather than one operator's, so other Go-Ahead operators
+     * issue Key cards of their own under their own OIDs - unlike OID 109 above,
+     * where one OID spans two brands, here one brand spans several OIDs. Naming
+     * the operator rather than the group is what makes the product lines read
+     * correctly; the brand is what is printed on the card. */
+    {289, "Southeastern", "The Key"},
     {1136, "SEFT", NULL}, /* RSPS3002 appendix D.1, South East Flexible Ticketing */
     {8000, "ITSO STR (National Rail)", NULL},
     /* No provenance was ever recorded for this entry, and the Freedom Pass it
