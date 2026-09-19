@@ -618,6 +618,24 @@ def run_ufbt(target: str | None, timeout: float):
 
 COMPILE_ERROR = re.compile(r"\berror:|undefined reference|No such file or directory")
 
+# A timeout that is generous for a 150 KB .fap starves one carrying a 20 MB
+# asset table, so the allowance is scaled from the file actually built. The rate
+# is deliberately pessimistic: a 21 MB .fap was measured NOT finishing inside
+# 559s, i.e. under 38 KB/s, and a timeout that fires early costs far more than
+# one that fires late - it leaves a half-written .fap on the card, which the
+# loader reports as "invalid file", and then a reboot-and-retry on top.
+# The floor keeps small .faps behaving exactly as before.
+UPLOAD_FLOOR_S = 45.0
+UPLOAD_OVERHEAD_S = 30.0
+UPLOAD_RATE_BPS = 15_000.0
+
+
+def upload_timeout(size: int, override: float | None) -> float:
+    """How long to let an upload run before calling it a hang."""
+    if override is not None:
+        return override
+    return max(UPLOAD_FLOOR_S, UPLOAD_OVERHEAD_S + size / UPLOAD_RATE_BPS)
+
 
 def cmd_deploy(args):
     port = find_port()
@@ -639,20 +657,27 @@ def cmd_deploy(args):
         print("\n".join(warnings))
 
     built = os.path.expanduser(f"~/.ufbt/build/{args.appid}.fap")
+    size = 0
     if os.path.exists(built):
+        size = os.path.getsize(built)
         os.makedirs(os.path.join(PROJECT, "dist"), exist_ok=True)
         shutil.copy2(built, os.path.join(PROJECT, "dist", f"{args.appid}.fap"))
-        print(f"[flipctl] {os.path.getsize(built):,} bytes -> dist/{args.appid}.fap")
+        print(f"[flipctl] {size:,} bytes -> dist/{args.appid}.fap")
 
     if args.build_only:
         return 0
+
+    allowed = upload_timeout(size, args.launch_timeout)
+    if allowed > UPLOAD_FLOOR_S:
+        print(f"[flipctl] allowing {allowed / 60:.0f} min for the upload "
+              f"({size / 1e6:.0f} MB)")
 
     for attempt in range(2):
         if not args.no_close:
             port = close_running_app(port, args)
 
         print("[flipctl] ufbt launch (upload)")
-        code, out = run_ufbt("launch", args.launch_timeout)
+        code, out = run_ufbt("launch", allowed)
         if code == 0:
             break
 
@@ -670,8 +695,13 @@ def cmd_deploy(args):
     time.sleep(1.5)
     f = Flipper(port)
     try:
+        # The firmware unpacks .fapassets to the SD card on the first launch
+        # after an install, and the app does not answer until it has. That is
+        # seconds for the station table and minutes for the stop table, so the
+        # wait is scaled the same way the upload is.
         running = f.app_running()
-        for _ in range(4):
+        attempts = max(4, int(size / 200_000))
+        for _ in range(attempts):
             if running:
                 break
             time.sleep(1.5)
@@ -956,21 +986,86 @@ def write_png(frame: bytes, path: str, scale: int = 3, invert: bool = False):
 def cmd_pull(args):
     port = find_port()
     require_free_port(port, force=args.force)
+    storage = sdk_storage()
+    # `receive` writes the file itself. The obvious-looking `read` dumps it to
+    # stdout behind a progress meter and a "Text data:" banner, and once the
+    # payload is binary there is no telling that framing from the file's own
+    # bytes - a card dump pulled that way is silently wrong, which is the one
+    # kind of wrong this tool exists to avoid.
+    argv = [sdk_python(), storage, "-p", port, "receive", args.remote, args.local]
+    proc = subprocess.run(argv, capture_output=True, timeout=3600)
+    if proc.returncode != 0 or not os.path.exists(args.local):
+        die((proc.stderr or b"").decode("utf-8", "replace").strip() or
+            f"storage receive failed for {args.remote}")
+    print(f"{args.remote} -> {args.local} ({os.path.getsize(args.local):,} bytes)")
+    return 0
+
+
+def sdk_storage() -> str:
+    """The SDK's storage.py, which owns the RPC file transfer both ways."""
     storage = os.path.expanduser("~/.ufbt/current/scripts/storage.py")
     if not os.path.exists(storage):
         die(f"{storage} not found - run ufbt once to fetch the SDK")
-    argv = [sys.executable, storage, "-p", port, "read", args.remote]
-    proc = subprocess.run(argv, capture_output=True, timeout=180)
+    return storage
+
+
+def sdk_python() -> str:
+    """The interpreter the SDK's own scripts expect.
+
+    storage.py imports colorlog, which is installed in the ufbt toolchain's
+    Python and not in flipctl's venv - ufbt runs it through fbtenv for exactly
+    that reason. Running it under sys.executable dies at the import instead.
+    """
+    for path in sorted(glob.glob(
+            os.path.expanduser("~/.ufbt/toolchain/*/bin/python3"))):
+        if os.access(path, os.X_OK):
+            return path
+    return sys.executable
+
+
+# storage.py's `send` was measured at under 6 KB/s over the CDC port: a 21 MB
+# table ran for a full hour without finishing and halted the device doing it,
+# twice. Anything much above a megabyte belongs on the SD card via a reader, so
+# push refuses rather than tying up the port for hours and wedging the Flipper.
+PUSH_SANE_MAX = 4 * 1024 * 1024
+PUSH_RATE_BPS = 6_000.0
+
+
+def cmd_push(args):
+    if not os.path.exists(args.local):
+        die(f"{args.local} does not exist")
+    size = os.path.getsize(args.local)
+
+    if size > PUSH_SANE_MAX and not args.force:
+        die(f"{args.local} is {size / 1e6:.0f} MB. Over this port that is about "
+            f"{size / PUSH_RATE_BPS / 60:.0f} minutes, and a transfer that long "
+            "has halted the device every time it has been tried.\n\n"
+            "Copy it with a card reader instead - power the Flipper down, take "
+            f"the microSD out, and put the file at:\n"
+            f"    <SD card>{args.remote.replace('/ext', '')}\n\n"
+            "Pass --force to push it over USB anyway.")
+
+    port = find_port()
+    require_free_port(port, force=args.force)
+    storage = sdk_storage()
+
+    # The reference tables land in a directory the app creates on first run, so
+    # it may not exist on a device that has only ever been flashed. mkdir is
+    # best effort: it fails harmlessly when the directory is already there.
+    parent = os.path.dirname(args.remote)
+    if parent:
+        subprocess.run([sdk_python(), storage, "-p", port, "mkdir", parent],
+                       capture_output=True, timeout=60)
+
+    print(f"{args.local} -> {args.remote} ({size:,} bytes)", flush=True)
+    if size > PUSH_SANE_MAX:
+        print(f"[flipctl] --force: expect roughly "
+              f"{size / PUSH_RATE_BPS / 60:.0f} minutes", flush=True)
+    argv = [sdk_python(), storage, "-p", port, "send", args.local, args.remote]
+    proc = subprocess.run(argv, capture_output=True, timeout=3600)
     if proc.returncode != 0:
-        die((proc.stderr or b"").decode("utf-8", "replace").strip() or "storage read failed")
-    body = proc.stdout
-    # storage.py prints a "Size: N" header before the payload.
-    m = re.match(rb"Size: (\d+)\r?\n", body)
-    if m:
-        body = body[m.end():][: int(m.group(1))]
-    with open(args.local, "wb") as fh:
-        fh.write(body)
-    print(f"{args.remote} -> {args.local} ({len(body):,} bytes)")
+        die((proc.stderr or b"").decode("utf-8", "replace").strip() or "storage send failed")
+    print("sent")
     return 0
 
 
@@ -1268,8 +1363,9 @@ def build_parser():
     s.add_argument("--no-reboot", action="store_true",
                    help="fail instead of rebooting when the app will not close")
     s.add_argument("--timeout", type=float, default=300.0, help="compile timeout")
-    s.add_argument("--launch-timeout", type=float, default=45.0,
-                   help="upload timeout before rebooting and retrying")
+    s.add_argument("--launch-timeout", type=float, default=None,
+                   help="upload timeout before rebooting and retrying "
+                        "(default: scaled from the .fap size)")
     s.set_defaults(func=cmd_deploy)
 
     s = sub.add_parser("reboot", help="reboot the device and wait for it to come back")
@@ -1323,6 +1419,11 @@ def build_parser():
     s.add_argument("remote")
     s.add_argument("local")
     s.set_defaults(func=cmd_pull)
+
+    s = sub.add_parser("push", help="copy a file onto the SD card")
+    s.add_argument("local")
+    s.add_argument("remote")
+    s.set_defaults(func=cmd_push)
 
     s = sub.add_parser("ls", help="list an SD card directory")
     s.add_argument("path")
