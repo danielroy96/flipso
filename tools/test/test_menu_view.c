@@ -10,6 +10,7 @@
 
 #include <gui/elements.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 static int failures = 0;
 
@@ -19,6 +20,9 @@ static void check(const char* what, int ok) {
 }
 
 static const Icon icon_a = {10, 10, 'a'};
+/* The header's warning triangle, which is drawn beside the title rather than
+ * on a row of its own. */
+static const Icon icon_warn = {10, 10, 'w'};
 static const Icon icon_b = {10, 10, 'b'};
 /* Taller than a row: the layout must not offset it upwards into the row above. */
 static const Icon icon_tall = {10, 24, 't'};
@@ -71,6 +75,34 @@ static bool on_screen(const char* needle) {
 static int header_left(void) {
     for(int x = 0; x < STUB_W; x++) {
         if(canvas.pixels[1][x] != '.') return x;
+    }
+    return -1;
+}
+
+/** Rightmost pixel of the header row, or -1 when nothing was drawn on it. */
+static int header_right(void) {
+    for(int x = STUB_W - 1; x >= 0; x--) {
+        if(canvas.pixels[1][x] != '.') return x;
+    }
+    return -1;
+}
+
+/** Leftmost pixel of @p mark anywhere on the frame, or -1 if it was not drawn. */
+static int mark_left(char mark) {
+    for(int x = 0; x < STUB_W; x++) {
+        for(int y = 0; y < STUB_H; y++) {
+            if(canvas.pixels[y][x] == mark) return x;
+        }
+    }
+    return -1;
+}
+
+/** Bottom-most row carrying @p mark, or -1 if it was not drawn. */
+static int mark_bottom(char mark) {
+    for(int y = STUB_H - 1; y >= 0; y--) {
+        for(int x = 0; x < STUB_W; x++) {
+            if(canvas.pixels[y][x] == mark) return y;
+        }
     }
     return -1;
 }
@@ -156,6 +188,43 @@ int main(void) {
     check("an over-long header is truncated with an ellipsis", on_screen("..."));
     check("an over-long header still starts on screen", header_left() >= 0);
     check("an over-long header keeps its first word", on_screen("South"));
+
+    /* --- A header icon, which the blocked-card warning uses. --- */
+    /* The icon and the text are centred as one group. Centring the text alone
+     * and hanging the icon off its left edge would push the pair off-centre and,
+     * on a long brand, off the screen. */
+    flipso_menu_view_reset(menu);
+    flipso_menu_view_set_header(menu, "Blocked Card");
+    flipso_menu_view_set_header_icon(menu, &icon_warn);
+    flipso_menu_view_add_item(menu, "Card", &icon_a, 10);
+    render(menu);
+    show("header with a warning icon");
+    check("header icon drawn", mark_left('w') >= 0);
+    check("header text drawn beside it", on_screen("Blocked Card"));
+    check("icon sits left of the text", mark_left('w') < header_left() + 1);
+    /* The stub draws one pixel per glyph cell, so the rightmost pixel is where
+     * the last character starts; its cell runs a glyph width further. */
+    int text_end = header_right() + STUB_GLYPH_PRIMARY_W - 1;
+    check(
+        "icon and text are centred as one group",
+        abs(header_left() - (STUB_W - 1 - text_end)) <= 1);
+    /* The rule under the header is at FLIPSO_MENU_HEADER_BOTTOM - 1. */
+    check("icon stays clear of the header rule", mark_bottom('w') < 11);
+
+    /* An over-long header has to lose room to the icon, not overlap it. */
+    flipso_menu_view_set_header(menu, "South West Trains Smart, and then some more");
+    render(menu);
+    check("an over-long header with an icon is truncated", on_screen("..."));
+    check("an over-long header with an icon starts on screen", header_left() >= 0);
+    check("the icon survives an over-long header", mark_left('w') >= 0);
+
+    /* Reset drops the icon: the next card is not blocked just because the last
+     * one was. */
+    flipso_menu_view_reset(menu);
+    flipso_menu_view_set_header(menu, "Freedom Pass");
+    flipso_menu_view_add_item(menu, "Card", &icon_a, 10);
+    render(menu);
+    check("reset clears the header icon", mark_left('w') < 0);
 
     /* --- A full list, which has to scroll. --- */
     flipso_menu_view_reset(menu);

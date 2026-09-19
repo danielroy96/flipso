@@ -144,7 +144,13 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
         flipso_scene_scan_stop(app);
 
         if(app->status == FlipsoReaderStatusSuccess) {
-            notification_message(app->notifications, &sequence_success);
+            /* A blocked shell read perfectly and is still useless, so it gets
+             * the same tone as a card we could not read at all. The beep is the
+             * whole result for anyone not looking at the screen, and a chirp
+             * saying "fine" over a dead card is worse than no sound. */
+            notification_message(
+                app->notifications,
+                app->card.shell_blocked ? &sequence_error : &sequence_success);
             scene_manager_next_scene(app->scene_manager, FlipsoSceneMenu);
         } else {
             notification_message(app->notifications, &sequence_error);

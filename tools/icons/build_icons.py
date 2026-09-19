@@ -148,6 +148,25 @@ ICONS["tag_10px"] = """
 ...####...
 """
 
+# --- 10x10: the menu header --------------------------------------------------
+
+# A warning triangle, shown beside the header when the shell is blocked. Drawn
+# as an outline rather than solid so the exclamation inside it survives at this
+# size: a filled triangle would need white ink for the mark, and the header is
+# drawn on both black and white backgrounds.
+ICONS["warning_10px"] = """
+....##....
+....##....
+...#..#...
+...#..#...
+..#.##.#..
+..#.##.#..
+.#..##..#.
+.#......#.
+#...##...#
+##########
+"""
+
 # --- 14x14: the error screen -------------------------------------------------
 
 # A card with a question mark: there is a card, but no ITSO application on it.

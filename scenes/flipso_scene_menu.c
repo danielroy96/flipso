@@ -34,9 +34,15 @@ void flipso_scene_menu_on_enter(void* context) {
     flipso_menu_view_reset(menu);
     flipso_menu_view_set_callback(menu, flipso_scene_menu_callback, app);
     /* The shell owner brands the card. A product owner does not: a rail season
-     * ticket sold by one operator sits happily on another's card. */
+     * ticket sold by one operator sits happily on another's card.
+     *
+     * A blocked shell displaces the branding entirely. The header is the one
+     * line of this screen that is read every time, and someone who never opens
+     * Card would otherwise leave without learning the card is dead. */
     const char* brand = flipso_operators_brand(app->operators, app->card.oid);
-    flipso_menu_view_set_header(menu, brand ? brand : "ITSO Card");
+    flipso_menu_view_set_header(
+        menu, app->card.shell_blocked ? "Blocked Card" : (brand ? brand : "ITSO Card"));
+    flipso_menu_view_set_header_icon(menu, app->card.shell_blocked ? &I_warning_10px : NULL);
 
     flipso_menu_view_add_item(menu, "Card", &I_card_10px, FlipsoMenuItemCard);
 

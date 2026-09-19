@@ -16,6 +16,8 @@
 /* The header is centred, so an over-wide one runs off both edges at once. Keep
  * it a couple of pixels clear of each. */
 #define FLIPSO_MENU_HEADER_MARGIN 2
+/* Between a header icon and the text it belongs to. */
+#define FLIPSO_MENU_HEADER_ICON_GAP 3
 /* Icon column, then text, then the gutter the scrollbar lives in. */
 #define FLIPSO_MENU_ICON_X 4
 #define FLIPSO_MENU_TEXT_X 18
@@ -29,6 +31,7 @@ typedef struct {
 
 typedef struct {
     char header[FLIPSO_MENU_HEADER_LEN];
+    const Icon* header_icon;
     bool has_header;
     FlipsoMenuItem items[FLIPSO_MENU_MAX_ITEMS];
     uint8_t count;
@@ -116,13 +119,36 @@ static void flipso_menu_view_draw(Canvas* canvas, void* model) {
          * from a table the user can edit and is longer than "ITSO Card" ever
          * was. */
         char fitted[FLIPSO_MENU_LABEL_LEN + 4];
+        uint16_t icon_w =
+            m->header_icon ? (uint16_t)(icon_get_width(m->header_icon) +
+                                        FLIPSO_MENU_HEADER_ICON_GAP) :
+                             0;
         flipso_menu_fit(
             canvas,
             m->header,
-            FLIPSO_MENU_SCREEN_W - 2 * FLIPSO_MENU_HEADER_MARGIN,
+            (uint16_t)(FLIPSO_MENU_SCREEN_W - 2 * FLIPSO_MENU_HEADER_MARGIN - icon_w),
             fitted,
             sizeof(fitted));
-        canvas_draw_str_aligned(canvas, 64, 1, AlignCenter, AlignTop, fitted);
+
+        /* The icon and the text are centred as one group, so the header stays
+         * balanced rather than the text sitting centred with an icon hung off
+         * its left edge. */
+        uint16_t text_w = canvas_string_width(canvas, fitted);
+        uint16_t group_w = (uint16_t)(icon_w + text_w);
+        uint8_t group_x = (uint8_t)((FLIPSO_MENU_SCREEN_W - group_w) / 2);
+
+        if(m->header_icon) {
+            /* Centred in the band above the rule, which is where the text sits
+             * too - the icon is taller than the glyphs, so aligning their tops
+             * would leave it hanging into the rule. */
+            uint16_t icon_h = icon_get_height(m->header_icon);
+            uint8_t icon_y = icon_h < FLIPSO_MENU_HEADER_BOTTOM - 1 ?
+                                 (uint8_t)((FLIPSO_MENU_HEADER_BOTTOM - 1 - icon_h) / 2) :
+                                 0;
+            canvas_draw_icon(canvas, group_x, icon_y, m->header_icon);
+        }
+        canvas_draw_str_aligned(
+            canvas, (uint8_t)(group_x + icon_w), 1, AlignLeft, AlignTop, fitted);
         canvas_draw_line(canvas, 0, FLIPSO_MENU_HEADER_BOTTOM - 1, 127, FLIPSO_MENU_HEADER_BOTTOM - 1);
         top = FLIPSO_MENU_HEADER_BOTTOM;
     }
@@ -264,6 +290,7 @@ void flipso_menu_view_reset(FlipsoMenuView* instance) {
             model->window = 0;
             model->has_header = false;
             model->header[0] = '\0';
+            model->header_icon = NULL;
         },
         true);
 }
@@ -284,6 +311,12 @@ void flipso_menu_view_set_header(FlipsoMenuView* instance, const char* header) {
             flipso_menu_reveal(model);
         },
         true);
+}
+
+void flipso_menu_view_set_header_icon(FlipsoMenuView* instance, const Icon* icon) {
+    furi_assert(instance);
+    with_view_model(
+        instance->view, FlipsoMenuModel * model, { model->header_icon = icon; }, true);
 }
 
 void flipso_menu_view_add_item(

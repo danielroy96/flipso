@@ -127,6 +127,14 @@ for sector in range(1, 14):
     d.put(SCT_BASE + (sector - 1) * 4, 4, sct.get(sector, 0))
 d.buf[49] = 0x2A            # DIRS#
 
+# The same directory with the DIRBitMap blocking indicator set. Which of the six
+# bitmap bits it is matters: it sits one below the log-configuration pair, so
+# reading the wrong one would report a live card as stopped or miss the log
+# entry. TS 1000-2 clause 5.1.2.
+d_blocked = Bits(len(d.buf))
+d_blocked.putb(0, bytes(d.buf))
+d_blocked.put(11, 1, 1)
+
 # ---------------------------------------------------------------- IPEs
 def instance_and_seal():
     return bytes([0x11]) + b"\x01\x02\x03\x04" + b"\x00\x00\x01" + b"\xDE" * 8
@@ -494,6 +502,7 @@ with open("card_data.h", "w") as f:
     f.write(f'#define EXPECT_ISRN "{ISRN}"\n\n')
     f.write(carr("card_shell", shell.buf))
     f.write(carr("card_dir", d.buf))
+    f.write(carr("card_dir_blocked", d_blocked.buf))
     f.write(carr("card_sector1", sector1))
     f.write(carr("card_sector2", sector2))
     f.write(carr("card_sector3", sector3))

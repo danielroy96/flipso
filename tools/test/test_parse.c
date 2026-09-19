@@ -253,6 +253,20 @@ int main(void) {
     check("log DTS is 2026-09-14 08:41",
           strcmp(fmt_unix(itso_dts_to_unix(card.log_dts)), "2026-09-14 08:41") == 0);
 
+    /* The blocking indicator is one bit of DIRBitMap and stops the whole shell,
+     * not a product, so both of its states are pinned here: reading the
+     * neighbouring bit would either condemn a live card or lose the log entry.
+     * TS 1000-2 clause 5.1.2. */
+    check("this shell is not blocked", !card.shell_blocked);
+    ItsoCard blocked;
+    itso_card_reset(&blocked);
+    itso_parse_shell(&blocked, card_shell, sizeof(card_shell));
+    check("blocked directory parses",
+          itso_parse_directory(&blocked, card_dir_blocked, sizeof(card_dir_blocked)));
+    check("blocking indicator read", blocked.shell_blocked);
+    check("blocking indicator leaves the rest of the bitmap alone",
+          blocked.log_dir_index == 8 && blocked.product_count == 5);
+
     printf("\n== Products ==\n");
     check("E1 is TYP 2 with value group",
           card.products[0].typ == 2 && card.products[0].value_group);

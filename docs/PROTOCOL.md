@@ -143,6 +143,32 @@ Date encoding comes in two forms:
 - `DTS` is a 24-bit **two's complement** count of minutes from an epoch of
   2028-11-24 20:16, not an unsigned offset from 1997.
 
+## Blocking
+
+Two different things in the shell are called "blocked", and they are read from
+different places.
+
+A **product** is blocked when its Sector Chain Table terminator is S-2 rather
+than S-1 (TS 1000-2 clause 5.1.4). That retires one ticket and leaves the rest
+of the card working, and it shows as `[blocked]` beside the product.
+
+A **shell** is blocked by the low bit of `DIRBitMap` in the Directory Data Group
+(TS 1000-2 clause 5.1.2), immediately below the two log-configuration bits. That
+retires the whole card: a POST rejects it regardless of what products it holds
+or how long they have left to run. Flipso therefore treats it as the headline
+fact about a card rather than one field among many — the menu is titled "Blocked
+Card" with a warning triangle in place of the card's branding, the Card screen
+opens with a banner explaining it, and the scan ends on the error tone rather
+than the success one, because the sound is the whole result for anyone not
+looking at the screen. A shell that is not blocked says so, since silence would
+otherwise cover both "the issuer is happy with it" and "the directory never
+decoded".
+
+Confirmed on 2026-09-19 against a pair of real cards: an English National
+Concessionary Travel Scheme pass issued by Reading Borough Council, which the
+holder confirmed no longer works, reads blocked, and a Freedom Pass in daily use
+reads active.
+
 ## Product coverage
 
 Every product is reported from its directory entry: operator, type, expiry,

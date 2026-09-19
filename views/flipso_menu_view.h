@@ -44,6 +44,12 @@ void flipso_menu_view_reset(FlipsoMenuView* instance);
 void flipso_menu_view_set_header(FlipsoMenuView* instance, const char* header);
 
 /**
+ * Draw @p icon to the left of the header text, the two centred as one group.
+ * Pass NULL for no icon. Not owned; the caller keeps the icon alive.
+ */
+void flipso_menu_view_set_header_icon(FlipsoMenuView* instance, const Icon* icon);
+
+/**
  * Append a row.
  *
  * @param label the row text; copied, and truncated on screen if it does not fit.

@@ -12,6 +12,18 @@ void flipso_scene_card_on_enter(void* context) {
 
     FuriString* text = furi_string_alloc();
 
+    /* The blocking indicator is a property of the whole shell, so it comes
+     * before anything else on the screen: once it is set a POST rejects the
+     * card, however valid the products further down still look.
+     * TS 1000-2 clause 5.1.2. */
+    if(card->shell_blocked) {
+        furi_string_cat(
+            text,
+            "\e#Blocked\n"
+            "This card has been stopped by its issuer. Readers will reject it, "
+            "even where the products below are still in date.\n\n");
+    }
+
     furi_string_cat(text, "\e#Card number\n");
     flipso_cat_card_number(text, card->isrn);
     furi_string_cat(text, "\n");
@@ -41,8 +53,11 @@ void flipso_scene_card_on_enter(void* context) {
     } else {
         furi_string_cat_printf(text, "Network: %.6s\n", card->isrn);
     }
-    if(card->shell_blocked) {
-        furi_string_cat(text, "Shell is BLOCKED\n");
+    /* The good case is stated rather than left to silence, because nothing else
+     * on the screen separates a card the issuer is happy with from one whose
+     * directory we never managed to read. */
+    if(card->dir_valid && !card->shell_blocked) {
+        furi_string_cat(text, "Status: Active\n");
     }
     if(card->mcrn_present && card->mcrn[0]) {
         furi_string_cat_printf(text, "Card ref: %s\n", card->mcrn);
