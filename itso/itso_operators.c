@@ -83,7 +83,7 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * This entry previously read "South Western Railway", on the strength of a
      * comment that actually described OID 109. Hence the provenance above. */
     {246, "SEFT Central Products", NULL},
-    {247, "c2c", NULL}, /* RSPS3002 appendix D.2, "a C2C live Shell ISRN" */
+    {247, "c2c", "c2c Smart"}, /* RSPS3002 appendix D.2, "a C2C live Shell ISRN" */
     /* Shell owner of a Southeastern "The Key" card, read 2026-09-18. The Key is
      * Go-Ahead's scheme rather than one operator's, so other Go-Ahead operators
      * issue Key cards of their own under their own OIDs - unlike OID 109 above,
