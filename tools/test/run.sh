@@ -22,6 +22,15 @@ ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
 ./test_stations
 
 echo
+echo "Stop table"
+${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
+  -fsanitize=address,undefined \
+  -I"$ROOT" -Istub \
+  test_naptan.c "$ROOT/flipso_naptan.c" \
+  -o test_naptan
+./test_naptan
+
+echo
 echo "flipctl serial recovery"
 # Pure Python and needs no Flipper: it injects the USB CDC drop that cannot be
 # provoked on demand from a real device.

@@ -83,6 +83,39 @@ ufbt
 ufbt launch
 ```
 
+Station names are packaged with the app and work immediately.
+
+### Bus stop names
+
+The stop table — every active NaPTAN stop in Great Britain — ships ready built
+as `data/naptan.dat`, but it is 21 MB and goes on the SD card rather than inside
+the `.fap`, because a packaged file is re-uploaded over USB on every install.
+Power the Flipper down, take the microSD out, and copy it to:
+
+```
+<SD card>/apps_data/flipso/naptan.dat
+```
+
+Over USB instead, if you would rather not touch the card — same transfer, about
+ten minutes:
+
+```bash
+tools/flipper/flipctl push data/naptan.dat /ext/apps_data/flipso/naptan.dat
+```
+
+Until it is there, bus locations show as their bare stop codes; nothing else
+changes. If you only ever use one area, build that one instead and it will be a
+few hundred kilobytes:
+
+```bash
+python3 tools/naptan/build_naptan.py --list-areas          # find your area
+python3 tools/naptan/build_naptan.py --area 180 -o naptan.dat
+```
+
+See [data/README.md](data/README.md) for the detail, and
+[tools/naptan/SOURCES.md](tools/naptan/SOURCES.md) for the Open Government
+Licence terms the data comes under.
+
 ## How it works
 
 ### ITSO media types
@@ -103,14 +136,20 @@ The Flipper has a **190 KB heap**, and a `.fap` is loaded into it whole before
 `main()` runs, so we have to be a bit careful particularly with the station table.
 
 ```
-dist/flipso.fap       146,068 bytes on disk
+dist/flipso.fap       150,252 bytes on disk
   .fapassets           78,859   ← station table, never mapped into RAM
-  .text                23,608   ← in RAM
-  .rodata               7,617   ← in RAM
-  (symbols, relocs)    35,984   ← not loaded
+  .text                25,140   ← in RAM
+  .rodata               8,005   ← in RAM
+  (symbols, relocs)    38,248   ← not loaded
   ──────────────────────────
-  TOTAL IN RAM         31,225   16% of the heap
+  TOTAL IN RAM         33,145   17% of the heap
 ```
+
+Both reference tables stay on the SD card and are binary-searched in place, so a
+lookup costs a handful of short reads and no memory that grows with the table.
+That is what lets the stop table be a hundred times the size of the packaged
+station one without costing a byte more to use — the 21 MB is a question of
+where the file lives, not of what it costs to read.
 
 ## Development
 
@@ -120,13 +159,14 @@ dist/flipso.fap       146,068 bytes on disk
 tools/test/run.sh
 ```
 
-Six binaries are built and run under **ASan and UBSan**, plus a Python test for
+Seven binaries are built and run under **ASan and UBSan**, plus a Python test for
 `flipctl`'s serial recovery that needs no Flipper: the decoder against
 spec-accurate synthetic CMD7 and CMD2 cards, the station table reader against
-tables the builder wrote, the operator table and the user's operators file, the
-card media screen against a captured Oyster, and the icon list and scrolling
-text views against an ASCII framebuffer — which is how their layout, wrapping
-and scrolling are checked without a device.
+tables the builder wrote, the stop table reader against both of its indexes, the
+operator table and the user's operators file, the card media screen against a
+captured Oyster, and the icon list and scrolling text views against an ASCII
+framebuffer — which is how their layout, wrapping and scrolling are checked
+without a device.
 
 ## Contributing
 

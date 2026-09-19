@@ -9,6 +9,7 @@
 #include <furi_hal_rtc.h>
 #include <datetime/datetime.h>
 #include <locale/locale.h>
+#include <string.h>
 
 /* Ticks drive the scan animation; 100 ms is smooth enough and cheap. */
 #define FLIPSO_TICK_PERIOD_MS 100
@@ -81,15 +82,37 @@ void flipso_cat_location(
     const ItsoLocation* location) {
     if(!location->valid) return;
 
-    if(itso_location_is_nlc(location)) {
-        const char* station = flipso_stations_name(app->stations, location->code);
-        if(station) {
-            furi_string_cat_printf(out, "%s: %s\n", label, station);
-            return;
-        }
+    const char* place = NULL;
+    switch(itso_location_code_kind(location)) {
+    case ItsoLocCodeNlc:
+        place = flipso_stations_name(app->stations, location->code);
+        break;
+    case ItsoLocCodeNaptan:
+        place = flipso_naptan_stop(app->naptan, location->code);
+        break;
+    case ItsoLocCodeAtco:
+        place = flipso_naptan_atco(app->naptan, location->code);
+        break;
+    default:
+        break;
     }
 
-    /* Not a rail code, or one the station table does not cover. */
+    if(place) {
+        /* LocDefType 216 is a service number and a stop together (TS 1000-1
+         * table 42c), and only the stop half has just been named. Keep the
+         * service, which itso_render_location left in front of the '@'. */
+        const char* stop = location->def_type == 216 ? strchr(location->text, '@') : NULL;
+        if(stop) {
+            furi_string_cat_printf(
+                out, "%s: %.*s @ %s\n", label, (int)(stop - location->text), location->text,
+                place);
+        } else {
+            furi_string_cat_printf(out, "%s: %s\n", label, place);
+        }
+        return;
+    }
+
+    /* A location with no code of its own, or one no table on the card covers. */
     furi_string_cat_printf(out, "%s: %s\n", label, location->text);
 }
 
@@ -369,6 +392,7 @@ static Flipso* flipso_alloc(void) {
     app->reader = flipso_reader_alloc();
     app->operators = flipso_operators_alloc();
     app->stations = flipso_stations_alloc();
+    app->naptan = flipso_naptan_alloc();
 
     return app;
 }
@@ -383,6 +407,7 @@ static void flipso_free(Flipso* app) {
     flipso_reader_free(app->reader);
     flipso_operators_free(app->operators);
     flipso_stations_free(app->stations);
+    flipso_naptan_free(app->naptan);
 
     view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewScan);
     view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewMenu);

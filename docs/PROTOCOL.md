@@ -8,6 +8,7 @@ Contents:
 - [Oyster cards](#oyster-cards)
 - [Operator names and card branding](#operator-names-and-card-branding)
 - [Station names](#station-names)
+- [Bus stop names](#bus-stop-names)
 - [How it reads the card](#how-it-reads-the-card)
 - [Specification references](#specification-references)
 - [Product coverage](#product-coverage)
@@ -69,8 +70,48 @@ not silently discard the other.
 ## Station names
 
 Rail locations are stored on the card as a four-character National Location
-Code. Flipso can currently decode National Rail NLCs but doesn't have bus
-codes yet.
+Code (LocDefType 203, or 208 with a UIC country code in front of it). The
+packaged table maps those to station names and fare group names — see
+`tools/stations/FORMAT.md` and `tools/stations/SOURCES.md`.
+
+## Bus stop names
+
+Bus locations come from NaPTAN, the Department for Transport's register of
+public transport access points, and ITSO carries them two different ways.
+
+**AtcoCode** (LocDefType 211) is the easy one: up to twelve ASCII characters,
+`1800ALTRNHM0`, stored whole. It is a key into the register as it stands.
+
+**NaptanCode** (LocDefTypes 206, 212 and 216) is not. A NaptanCode is eight
+characters such as `cumfatda`, and TS 1000-1 clause 4.2.4.3.4 packs it into four
+bytes of BCD by **folding its letters onto a telephone keypad** — table 28 maps
+`ABC`→2, `DEF`→3, `GHI`→4, `JKL`→5, `MNO`→6, `PQRS`→7, `TUV`→8, `WXYZ`→9, upper
+and lower case alike. A code shorter than eight characters is right-justified
+with leading zeros.
+
+So what the card holds is a number, and the mapping is **lossy**. `cumfatda`
+(Park Road, Heathwaite) and `cumdatda` (Brook House Farm, Matterdale End) both
+fold to 28632832, and nothing on the card says which was meant. The letters
+cannot be recovered, which is why a bare 206 location can only ever be shown as
+`Stop 28632832`.
+
+The way back is to fold the register the same way and key the table on the
+result. That is what `tools/naptan/build_naptan.py` does. Across the full
+register the fold is very nearly injective — about 770 of 408,000 folded keys
+collide, roughly one stop in five hundred — and a colliding key keeps the first
+stop and is counted at build time.
+
+The table is the whole register — around 390,000 active stops, about 20 MB,
+which is two orders of magnitude larger than the station table. It ships ready
+built in `data/` and is read from `/ext/apps_data/flipso/naptan.dat`, copied to
+the card rather than packaged into the `.fap`: at that size it would be
+re-uploaded over USB on every install, and an interrupted transfer leaves a
+`.fap` the loader rejects as "invalid file". `data/README.md` covers installing
+it, `tools/naptan/FORMAT.md` the layout, `tools/naptan/SOURCES.md` the licensing.
+
+Both tables stay on the SD card and are binary-searched in place, so neither
+costs memory that grows with the number of entries, and a stop that is in
+neither shows as its bare code.
 
 ## How it reads the card
 
@@ -221,8 +262,12 @@ ordinary rail ticket:
 
 Locations are rendered from the encoding the card uses: rail NLC codes, NaPTAN
 and ATCO bus stop codes, zone numbers and bit maps, fare stages and service
-numbers. Rail codes are resolved to station names from the packaged station
-table — see above.
+numbers. Rail codes are resolved to station names and bus stop codes to stop
+names, from the tables described above.
+
+LocDefType 216 carries a service number as well as a stop, so a resolved one
+reads `Svc 42 @ High Street (adj), Hulme`: the table names only the stop half.
+LocDefType 212 carries several stops and names the first, counting the rest.
 
 
 ## Limitations

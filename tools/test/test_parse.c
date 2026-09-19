@@ -203,6 +203,118 @@ static void cmd2_card(void) {
  * allows up to 31, and a CMD2 card already uses 16. Every entry being a product
  * must fill the array and stop, not run off the end of it.
  */
+/*
+ * Bus stop locations: LocDefTypes 206, 211, 212 and 216 (ITSO TS 1000-1 clauses
+ * 4.2.4.3.4, .9, .13 and .15).
+ *
+ * What is being checked is not only the text but the code and the kind, because
+ * those are what flipso_cat_location hands to the stop table, and a location
+ * that renders correctly while reporting the wrong kind would look right on
+ * screen and never resolve.
+ */
+static size_t parse_exact(const uint8_t* record, size_t n, ItsoLocStruct variant,
+                          ItsoLocation* out) {
+    /* An exact-length heap copy: a record read off the end of an oversized
+     * static buffer lands inside it and the sanitiser sees nothing. */
+    uint8_t* exact = malloc(n);
+    memcpy(exact, record, n);
+    size_t used = itso_parse_location(exact, n, variant, out);
+    free(exact);
+    return used;
+}
+
+/** Parse @p record and check its text, the code it offers and which register. */
+static void check_location(
+    const char* what,
+    const uint8_t* record,
+    size_t n,
+    ItsoLocStruct variant,
+    const char* text,
+    const char* code,
+    ItsoLocCodeKind kind) {
+    ItsoLocation loc;
+    size_t used = parse_exact(record, n, variant, &loc);
+    bool ok = used == n && loc.valid && strcmp(loc.text, text) == 0 &&
+              strcmp(loc.code, code) == 0 && itso_location_code_kind(&loc) == kind;
+    if(!ok) {
+        printf("      got \"%s\" code \"%s\" kind %u, %zu of %zu bytes\n",
+               loc.text, loc.code, itso_location_code_kind(&loc), used, n);
+    }
+    check(what, ok);
+}
+
+static void bus_stop_locations(void) {
+    /* "MANAG" folded onto the keypad is 62624, right justified in eight digits. */
+    static const uint8_t naptan_loc1[] = {206, 4, 0x00, 0x06, 0x26, 0x24};
+    check_location("206 NaptanCode in LOC1", naptan_loc1, sizeof(naptan_loc1),
+                   ItsoLocStructLoc1, "Stop 00062624", "00062624", ItsoLocCodeNaptan);
+
+    /* LOC2 is a fixed seven bytes: the tag, the four of code, then padding. */
+    static const uint8_t naptan_loc2[] = {206, 0x00, 0x06, 0x26, 0x24, 0x00, 0x00};
+    check_location("206 NaptanCode in LOC2", naptan_loc2, sizeof(naptan_loc2),
+                   ItsoLocStructLoc2, "Stop 00062624", "00062624", ItsoLocCodeNaptan);
+
+    /* A nibble above nine is not a digit any register holds, so it is shown but
+     * never offered for lookup. */
+    static const uint8_t naptan_bad[] = {206, 4, 0x00, 0x06, 0x2A, 0x24};
+    check_location("206 with a non-decimal nibble offers no code", naptan_bad,
+                   sizeof(naptan_bad), ItsoLocStructLoc1, "Stop 00062F24", "",
+                   ItsoLocCodeNone);
+
+    /* Three stops, so the first is named and the other two are counted. */
+    static const uint8_t naptan_many[] = {212, 12, 0x00, 0x06, 0x26, 0x24, 0x12, 0x34,
+                                          0x56, 0x78, 0x87, 0x65, 0x43, 0x21};
+    check_location("212 multiple NaptanCodes", naptan_many, sizeof(naptan_many),
+                   ItsoLocStructLoc1, "Stop 00062624 +2", "00062624", ItsoLocCodeNaptan);
+
+    static const uint8_t naptan_one[] = {212, 4, 0x00, 0x06, 0x26, 0x24};
+    check_location("212 holding a single NaptanCode", naptan_one, sizeof(naptan_one),
+                   ItsoLocStructLoc1, "Stop 00062624", "00062624", ItsoLocCodeNaptan);
+
+    /* An AtcoCode is stored whole, so unlike a NaptanCode it needs no unfolding. */
+    static const uint8_t atco[] = {211, 12, '1', '8', '0', '0', 'A', 'L',
+                                   'T', 'R', 'N', 'H', 'M', '0'};
+    check_location("211 AtcoCode", atco, sizeof(atco), ItsoLocStructLoc1,
+                   "Stop 1800ALTRNHM0", "1800ALTRNHM0", ItsoLocCodeAtco);
+
+    static const uint8_t atco_short[] = {211, 8, '1', '8', '0', '0', 'E', 'B', '0', '1'};
+    check_location("211 AtcoCode shorter than the maximum", atco_short, sizeof(atco_short),
+                   ItsoLocStructLoc1, "Stop 1800EB01", "1800EB01", ItsoLocCodeAtco);
+
+    /* Thirteen characters is longer than TS 1000-1 table 40 allows and longer
+     * than ItsoLocation::code; half a code would find the wrong stop, so none
+     * is offered. */
+    static const uint8_t atco_long[] = {211, 13, '1', '8', '0', '0', 'A', 'L', 'T',
+                                        'R', 'N', 'H', 'M', '0', '0'};
+    check_location("211 over-long AtcoCode offers no code", atco_long, sizeof(atco_long),
+                   ItsoLocStructLoc1, "Stop 1800ALTRNHM00", "", ItsoLocCodeNone);
+
+    /* OID, then service "42" as four 6-bit SNCODE2 characters padded with 0x3F,
+     * then the stop: the code starts at bit 40 of the body. */
+    static const uint8_t service_stop[] = {216, 9,    0x00, 0x01, 0xFF, 0xF1,
+                                           0x02, 0x00, 0x06, 0x26, 0x24};
+    check_location("216 service number and NaptanCode", service_stop, sizeof(service_stop),
+                   ItsoLocStructLoc1, "Svc 42@00062624", "00062624", ItsoLocCodeNaptan);
+
+    /* Rail codes keep working, and now say which register they belong to. */
+    static const uint8_t nlc[] = {203, 4, '1', '4', '4', '4'};
+    check_location("203 rail NLC", nlc, sizeof(nlc), ItsoLocStructLoc1, "NLC 1444",
+                   "1444", ItsoLocCodeNlc);
+
+    /* Types that name no code at all must offer none, whatever they render. */
+    static const uint8_t zones[] = {204, 3, 0x15, 0x00, 0x00};
+    check_location("204 zone bit map offers no code", zones, sizeof(zones),
+                   ItsoLocStructLoc1, "Zones 1,3,5", "", ItsoLocCodeNone);
+
+    /* Truncations must not read past the end; ASan is the assertion. */
+    for(size_t len = 0; len <= sizeof(service_stop); len++) {
+        ItsoLocation loc;
+        parse_exact(service_stop, len, ItsoLocStructLoc1, &loc);
+        parse_exact(service_stop, len, ItsoLocStructLoc2, &loc);
+    }
+    check("truncated bus stop locations survive", 1);
+}
+
 static void oversized_directory(void) {
     ItsoCard card;
     itso_card_reset(&card);
@@ -478,7 +590,7 @@ int main(void) {
         dump_location("from", &tap->origin);
         dump_location("to", &tap->destination);
     }
-    check("three taps decoded", card.tap_count == 3);
+    check("four taps decoded", card.tap_count == 4);
     check("newest tap first is tap out", card.taps[0].transaction_type == 12);
     check("newest tap flagged latest", card.taps[0].latest);
     check("tap out origin", card.taps[0].origin.valid &&
@@ -492,6 +604,21 @@ int main(void) {
     /* The third record is on format revision 4, which a check-in/check-out
      * closed system writes on exit. It carries groups revisions 1 and 2 have no
      * bit for, so mis-sizing any of them would shift all that follow. */
+    /* The oldest tap is a bus journey, so the log's LOC2 records are exercised
+     * on a NaptanCode as well as on the rail NLCs above, and the stop code
+     * reaches the app in the form the stop table is keyed on. */
+    const ItsoTap* bus = &card.taps[3];
+    check("bus tap origin is a stop",
+          bus->origin.valid && strcmp(bus->origin.text, "Stop 00062624") == 0);
+    check("bus tap origin offers a NaptanCode",
+          strcmp(bus->origin.code, "00062624") == 0 &&
+          itso_location_code_kind(&bus->origin) == ItsoLocCodeNaptan);
+    check("bus tap destination is a stop",
+          bus->destination.valid && strcmp(bus->destination.text, "Stop 62697956") == 0);
+    check("bus tap destination offers a NaptanCode",
+          strcmp(bus->destination.code, "62697956") == 0 &&
+          itso_location_code_kind(&bus->destination) == ItsoLocCodeNaptan);
+
     const ItsoTap* rev4 = &card.taps[2];
     printf("  rev%u: via %s, paid by %s, entry %s, entry op %u\n", rev4->format_rev,
            rev4->route.text, itso_payment_name(rev4->mop),
@@ -520,6 +647,7 @@ int main(void) {
     cmd2_card();
 
     printf("\n== Robustness ==\n");
+    bus_stop_locations();
     oversized_directory();
     robustness();
 

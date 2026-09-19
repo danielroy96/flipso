@@ -7,6 +7,7 @@
 #include "flipso_reader.h"
 #include "flipso_operators.h"
 #include "flipso_stations.h"
+#include "flipso_naptan.h"
 #include "itso/itso.h"
 #include "views/flipso_menu_view.h"
 #include "views/flipso_scan_view.h"
@@ -58,6 +59,9 @@ typedef struct {
     /** Rail station names, read on demand from the SD card. */
     FlipsoStations* stations;
 
+    /** Bus stop names, likewise, when the user has built the table. */
+    FlipsoNaptan* naptan;
+
     ItsoCard card;
 
     /** What a card that is not an ITSO one said about itself. */
@@ -104,8 +108,9 @@ void flipso_cat_operator(FuriString* out, const Flipso* app, const char* label, 
 
 /**
  * Append a location line "Label: place", or nothing when the location is absent.
- * Rail location codes are resolved to station names where the station table has
- * them; anything else falls back to the code the card carries.
+ * Rail location codes are resolved to station names and bus stop codes to stop
+ * names, where the tables that hold them are on the card; anything else falls
+ * back to the code the card carries.
  */
 void flipso_cat_location(
     FuriString* out,

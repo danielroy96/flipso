@@ -154,6 +154,29 @@ static void itso_copy_ascii(const uint8_t* data, size_t n, char* out, size_t len
     out[pos] = '\0';
 }
 
+/** True when @p text is a non-empty run of decimal digits. */
+static bool itso_all_digits(const char* text) {
+    if(*text == '\0') return false;
+    for(; *text; text++) {
+        if(*text < '0' || *text > '9') return false;
+    }
+    return true;
+}
+
+/**
+ * Record a code a national register could name, along with which register.
+ *
+ * Anything that does not fit ItsoLocation::code is dropped rather than
+ * truncated: half an AtcoCode would find the wrong stop, whereas no code at all
+ * falls back to the rendered text, which is merely less helpful.
+ */
+static void itso_note_code(char* code, uint8_t* kind, ItsoLocCodeKind of, const char* value) {
+    size_t length = strlen(value);
+    if(length == 0 || length >= ITSO_LOC_CODE_LEN) return;
+    memcpy(code, value, length + 1);
+    *kind = (uint8_t)of;
+}
+
 /**
  * Render a location body (everything after the tag and optional length byte).
  * @param body  first byte of the location element.
@@ -165,7 +188,8 @@ static void itso_render_location(
     size_t n,
     char* out,
     size_t len,
-    char* code) {
+    char* code,
+    uint8_t* code_kind) {
     /* Sized so the compiler can prove every snprintf below fits in ITSO_LOC_LEN. */
     char scratch[16]; /* NLC, zone list, stop code */
     char service[6]; /* four SNCODE characters plus terminator */
@@ -180,7 +204,7 @@ static void itso_render_location(
         if(n >= 4) {
             itso_copy_ascii(body, 4, scratch, sizeof(scratch));
             snprintf(out, len, "NLC %s", scratch);
-            snprintf(code, ITSO_LOC_CODE_LEN, "%.4s", scratch); /* NLC is four characters */
+            itso_note_code(code, code_kind, ItsoLocCodeNlc, scratch);
         }
         break;
 
@@ -194,8 +218,17 @@ static void itso_render_location(
 
     case 206: /* NaptanCode bus stop, 8 BCD digits. */
         if(n >= 4) {
+            /* These digits are not the NaptanCode itself. A NaptanCode is eight
+             * characters, and TS 1000-1 table 28 folds its letters onto a
+             * telephone keypad (ABC->2 ... WXYZ->9) so that it fits four bytes
+             * of BCD. The folding is lossy, so the letters cannot be recovered
+             * here - only a table built by folding the register the same way
+             * can turn these digits back into a stop name. */
             itso_bcd(body, 0, 8, scratch);
             snprintf(out, len, "Stop %s", scratch);
+            if(itso_all_digits(scratch)) {
+                itso_note_code(code, code_kind, ItsoLocCodeNaptan, scratch);
+            }
         }
         break;
 
@@ -212,7 +245,7 @@ static void itso_render_location(
             if(country == 0x070) {
                 snprintf(out, len, "NLC %s", scratch);
                 /* Only UK codes index the station table. */
-                snprintf(code, ITSO_LOC_CODE_LEN, "%.4s", scratch); /* NLC is four characters */
+                itso_note_code(code, code_kind, ItsoLocCodeNlc, scratch);
             } else {
                 snprintf(out, len, "%s %s", country_digits, scratch);
             }
@@ -233,24 +266,45 @@ static void itso_render_location(
         }
         break;
 
-    case 211: /* AtcoCode bus stop, ASCII. */
+    case 211: /* AtcoCode bus stop: up to twelve ASCII characters (TS 1000-1
+               * table 40). Stored whole, so unlike a NaptanCode it needs no
+               * unfolding to be looked up. */
         itso_copy_ascii(body, n, scratch, sizeof(scratch));
-        if(scratch[0]) snprintf(out, len, "Stop %s", scratch);
-        break;
-
-    case 212: /* One or more NaptanCodes; show the first. */
-        if(n >= 4) {
-            itso_bcd(body, 0, 8, scratch);
-            snprintf(out, len, "Stop %s%s", scratch, n >= 8 ? "+" : "");
+        if(scratch[0]) {
+            snprintf(out, len, "Stop %s", scratch);
+            itso_note_code(code, code_kind, ItsoLocCodeAtco, scratch);
         }
         break;
 
-    case 216: /* Extended service number plus NaptanCode stop. */
+    case 212: /* One or more NaptanCodes, four bytes each; show the first and
+               * count the rest (TS 1000-1 clause 4.2.4.3.13). */
+        if(n >= 4) {
+            itso_bcd(body, 0, 8, scratch);
+            size_t others = n / 4 - 1;
+            if(others > 0) {
+                snprintf(out, len, "Stop %s +%u", scratch, (unsigned)others);
+            } else {
+                snprintf(out, len, "Stop %s", scratch);
+            }
+            if(itso_all_digits(scratch)) {
+                itso_note_code(code, code_kind, ItsoLocCodeNaptan, scratch);
+            }
+        }
+        break;
+
+    case 216: /* OID (2) + SNCODE2 service (3) + NaptanCode (4), so the stop
+               * starts at bit 40 of the body (TS 1000-1 table 42c). */
         if(n >= 9) {
             itso_decode_service2(body + 2, service, sizeof(service));
             char stop[9];
             itso_bcd(body, 40, 8, stop);
-            snprintf(out, len, "%s@%s", service, stop);
+            /* The '@' is what flipso_cat_location splits on to keep the service
+             * number in front of a stop name the table resolves, so everything
+             * before it has to read correctly on its own. */
+            snprintf(out, len, "Svc %s@%s", service, stop);
+            if(itso_all_digits(stop)) {
+                itso_note_code(code, code_kind, ItsoLocCodeNaptan, stop);
+            }
         }
         break;
 
@@ -311,6 +365,7 @@ size_t itso_parse_location(
     /* Type 255 is the documented "no location here" marker; treat it as absent
      * so the UI can skip the row rather than printing a placeholder. */
     out->valid = (def_type != 255);
-    itso_render_location(def_type, body, body_len, out->text, sizeof(out->text), out->code);
+    itso_render_location(
+        def_type, body, body_len, out->text, sizeof(out->text), out->code, &out->code_kind);
     return consumed;
 }

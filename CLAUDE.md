@@ -49,6 +49,7 @@ flipso_cmd2.c         ISO 7816 transport for CMD2 media
 flipso_media.c        what a non-ITSO card says about itself (incl. Oyster)
 flipso_operators.c    operator id -> name, built-in table plus the user's file
 flipso_stations.c     NLC -> station name, binary search over the SD card table
+flipso_naptan.c       NaptanCode/AtcoCode -> bus stop name, same design
 itso/                 the decoder: pure C, no firmware dependency, host-testable
 scenes/               one file per screen; scene list in flipso_scene_config.h
 views/                custom views (the icon list, the scan screen)
@@ -57,6 +58,8 @@ tools/ide/            compile_commands.json, so CLion and clangd index the tree
 tools/test/           host test suite, synthetic card builder, card replay
 tools/debug/          opt-in card-dump instrumentation
 tools/stations/       station table builder and its data provenance
+data/                 reference data shipped but not packaged; see its README
+tools/naptan/         stop table builder; data/naptan.dat is its output
 tools/icons/          pixel art the images/ icons are generated from
 ```
 
@@ -74,6 +77,12 @@ heap while running.
 
 So: no large static tables, no growing a scene's buffers without checking, and
 `tools/flipper/flipctl mem` before and after anything structural.
+
+The NaPTAN stop table is about 20 MB and costs no heap either, but it is kept
+out of `assets/` all the same: anything packaged is re-uploaded on every install,
+and 21 MB over USB takes upwards of ten minutes and leaves an unloadable `.fap`
+if it is interrupted. It ships in `data/` and is copied to the card - see
+`data/README.md`.
 
 ## Conventions
 
@@ -108,6 +117,14 @@ So: no large static tables, no growing a scene's buffers without checking, and
 - `loader close` is the only clean way to exit the app. Sending Back presses
   instead wedges the GUI when one lands after the app has gone — the app browser
   is left on screen, input stops being processed, and only a reboot clears it.
+- **Do not move megabytes over USB.** The CDC port manages a few KB/s for bulk
+  file transfer: the 21 MB NaPTAN table ran for a full hour through
+  `storage.py send` without finishing, and halted the device doing it. The same
+  file inside a `.fap` starves `ufbt launch` the same way, and an interrupted
+  `.fap` upload leaves a half-written file the loader rejects as **"invalid
+  file"**. Anything above a few MB goes on the SD card with a reader;
+  `flipctl push` now refuses past 4 MB without `--force`. Measure the rate on a
+  small file before assuming a large one will finish.
 - A dump of hex transcribed by hand introduced a phantom one-byte offset once.
   Generate C arrays from the pulled file — `tools/test/replay.py` does.
 - The USB CDC endpoint drops for a second or two after an RPC call, and every

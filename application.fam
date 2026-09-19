@@ -18,13 +18,16 @@ App(
         "flipso_media.c",
         "flipso_operators.c",
         "flipso_stations.c",
+        "flipso_naptan.c",
         "itso/*.c",
         "scenes/*.c",
         "views/*.c",
     ],
-    # Bundled into the .fap as a non-loadable section and unpacked by the
-    # firmware to /ext/apps_assets/flipso/. It never reaches RAM: see
-    # tools/stations/FORMAT.md.
+    # The station table, bundled into the .fap as a non-loadable section and
+    # unpacked by the firmware to /ext/apps_assets/flipso/. It never reaches
+    # RAM: see tools/stations/FORMAT.md. The stop table is deliberately NOT here
+    # - at 21 MB it would be re-uploaded on every install - and ships in data/
+    # for copying to the card instead; see data/README.md.
     fap_file_assets="assets",
     # Compiled into the .fap as I_<name> symbols in flipso_icons.h. The pixel
     # art they are generated from lives in tools/icons/build_icons.py.

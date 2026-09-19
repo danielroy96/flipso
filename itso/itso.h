@@ -30,7 +30,9 @@ extern "C" {
 #define ITSO_MAX_TAPS      6
 #define ITSO_NAME_LEN      40
 #define ITSO_LOC_LEN       28
-#define ITSO_LOC_CODE_LEN  8
+/* Twelve-character AtcoCode plus terminator, the longest code a location can
+ * carry (TS 1000-1 table 40). A NaptanCode needs nine of these bytes. */
+#define ITSO_LOC_CODE_LEN  13
 #define ITSO_ISRN_DIGITS   18
 
 /* Largest IPE + Value Record group we assemble from chained sectors. Permitted
@@ -82,24 +84,46 @@ typedef enum {
 } ItsoCountKind;
 
 /**
+ * Which national register @c ItsoLocation::code is a key into.
+ *
+ * Several LocDefTypes carry the same kind of code - 206, 212 and 216 all end up
+ * holding a NaptanCode - so what a caller needs in order to look one up is the
+ * kind of code, not the type of location that happened to carry it.
+ */
+typedef enum {
+    ItsoLocCodeNone, /**< Nothing to look up; the rendered text is all there is. */
+    ItsoLocCodeNlc, /**< Four-character rail National Location Code. */
+    ItsoLocCodeNaptan, /**< NaptanCode bus stop, as the digits the card stores. */
+    ItsoLocCodeAtco, /**< AtcoCode bus stop, up to twelve ASCII characters. */
+} ItsoLocCodeKind;
+
+/**
  * A decoded location.
  *
  * @c text is a self-contained rendering that is always safe to display. @c code
  * carries the bare location code for the types where something outside the
- * decoder can do better - a rail NLC can be turned into a station name, given a
- * lookup table the decoder itself has no business owning.
+ * decoder can do better - a rail NLC can be turned into a station name, and a
+ * bus stop code into a stop name, given lookup tables the decoder itself has no
+ * business owning.
  */
 typedef struct {
     bool valid;
     uint8_t def_type; /**< LocDefType, ITSO TS 1000-1 table 6. */
+    uint8_t code_kind; /**< ItsoLocCodeKind; meaningless while @c code is empty. */
     char text[ITSO_LOC_LEN];
     char code[ITSO_LOC_CODE_LEN]; /**< Bare code, empty when not resolvable. */
 } ItsoLocation;
 
-/** True when this location is a National Location Code that names a station. */
-static inline bool itso_location_is_nlc(const ItsoLocation* location) {
-    return location->code[0] != '\0' &&
-           (location->def_type == 203 || location->def_type == 208);
+/**
+ * The register @c code belongs to, or ItsoLocCodeNone when there is no code.
+ *
+ * A malformed field leaves @c code empty while @c text still describes what the
+ * card said, so the emptiness test is what distinguishes "not resolvable" from
+ * "resolvable and of kind zero".
+ */
+static inline ItsoLocCodeKind itso_location_code_kind(const ItsoLocation* location) {
+    if(location->code[0] == '\0') return ItsoLocCodeNone;
+    return (ItsoLocCodeKind)location->code_kind;
 }
 
 /**

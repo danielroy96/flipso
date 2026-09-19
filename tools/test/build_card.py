@@ -308,19 +308,30 @@ vg3.putb(17, value_record(1, 21, dts(2026, 9, 10, 10, 0), loyalty_tail(74500)))
 sector12 = bytes(vg3.buf) + instance_and_seal()
 
 # ---------------------------------------------------------------- Cyclic log (FID 1)
-def tt_record(txn, when, amount, origin_nlc, dest_nlc, ipe_ptr):
+def loc2(def_type, body):
+    """A LOC2 location: the tag then a fixed six-byte body, zero padded.
+
+    The log stores locations this way rather than as the tag-length-value LOC1
+    that an IPE uses, so a location type is only covered end to end once it has
+    been through here as well.
+    """
+    assert len(body) <= 6, f"{len(body)} bytes does not fit a LOC2 body"
+    return bytes([def_type]) + body + b"\x00" * (6 - len(body))
+
+
+def tt_record(txn, when, amount, origin, dest, ipe_ptr):
     groups = b""
     bitmap = 0
     bitmap |= 1 << 0
     groups += bytes([0x80]) + (amount & 0xFFFF).to_bytes(2, "big") + b"\x00\x00"
-    if dest_nlc:
+    if dest:
         bitmap |= 1 << 1
-        groups += bytes([203]) + dest_nlc + b"\x00" * (6 - len(dest_nlc))
+        groups += dest
     bitmap |= 1 << 2
     groups += bytes([ipe_ptr & 0x1F])
-    if origin_nlc:
+    if origin:
         bitmap |= 1 << 3
-        groups += bytes([203]) + origin_nlc + b"\x00" * (6 - len(origin_nlc))
+        groups += origin
 
     total = 7 + len(groups)
     assert total <= 48, f"record is {total} bytes, over a 48-byte slot"
@@ -335,7 +346,7 @@ def tt_record(txn, when, amount, origin_nlc, dest_nlc, ipe_ptr):
     r.putb(7, groups)
     return bytes(r.buf)
 
-def tt_record_rev4(txn, when, amount, via_nlc, dest_nlc, ipe_ptr,
+def tt_record_rev4(txn, when, amount, via, dest, ipe_ptr,
                    entry_when, entry_oid, candidates, no_fare=False):
     """A format revision 4 record: the shape a check-in/check-out closed system
     writes on exit. It carries the entry it closes, the products the gate weighed
@@ -353,11 +364,11 @@ def tt_record_rev4(txn, when, amount, via_nlc, dest_nlc, ipe_ptr,
     groups += bytes(amt.buf)
 
     bitmap |= 1 << 1                                    # DEST
-    groups += bytes([203]) + dest_nlc + b"\x00" * (6 - len(dest_nlc))
+    groups += dest
     bitmap |= 1 << 2                                    # IPEID
     groups += bytes([ipe_ptr & 0x1F])
     bitmap |= 1 << 5                                    # RC
-    groups += bytes([203]) + via_nlc + b"\x00" * (6 - len(via_nlc))
+    groups += via
     bitmap |= 1 << 7                                    # IIN
     groups += bcd("633597")
 
@@ -392,12 +403,20 @@ def tt_record_rev4(txn, when, amount, via_nlc, dest_nlc, ipe_ptr,
     return bytes(r.buf)
 
 log = bytearray(192)
-log[0:48] = tt_record(11, dts(2026, 9, 13, 17, 22), 0, b"1072", None, 1)          # tap in
-log[48:96] = tt_record(12, dts(2026, 9, 14, 8, 41), 265, b"1072", b"1444", 1)     # tap out
+NLC_1072, NLC_1444, NLC_5685 = (loc2(203, n) for n in (b"1072", b"1444", b"5685"))
+# A bus stop as the card stores one: "MANAG" and "manwpwjm" folded onto the
+# keypad of TS 1000-1 table 28 and packed into four bytes of BCD.
+STOP_A, STOP_B = loc2(206, bcd("00062624")), loc2(206, bcd("62697956"))
+
+log[0:48] = tt_record(11, dts(2026, 9, 13, 17, 22), 0, NLC_1072, None, 1)      # tap in
+log[48:96] = tt_record(12, dts(2026, 9, 14, 8, 41), 265, NLC_1072, NLC_1444, 1)  # tap out
 # A third record on the newer revision, so the decoder is exercised on both.
 log[96:144] = tt_record_rev4(
-    12, dts(2026, 9, 12, 18, 5), 480, b"1444", b"5685", 1,
+    12, dts(2026, 9, 12, 18, 5), 480, NLC_1444, NLC_5685, 1,
     entry_when=dts(2026, 9, 12, 8, 12), entry_oid=109, candidates=[1, 4, 0, 0])
+# A bus journey, dated before the other three so that adding it leaves their
+# positions in the newest-first ordering alone.
+log[144:192] = tt_record(12, dts(2026, 9, 10, 7, 55), 210, STOP_A, STOP_B, 1)
 assert len(log) == 192, f"log grew to {len(log)} bytes"
 
 
