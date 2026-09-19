@@ -104,7 +104,8 @@ int main(void) {
      * a new entry needs a line, and the search finds it only while the table
      * stays sorted.
      */
-    static const uint16_t known[] = {78, 96, 109, 143, 196, 226, 246, 247, 289, 1136, 8000, 8288};
+    static const uint16_t known[] = {
+        78, 96, 109, 143, 165, 196, 226, 246, 247, 289, 1136, 8000, 8288};
     unsigned unreachable = 0;
     for(size_t i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
         if(!itso_operator_name(known[i])) unreachable++;
@@ -112,6 +113,11 @@ int main(void) {
     check("every built-in entry is reachable (the table is sorted)", unreachable == 0);
 
     same("a known operator is named", itso_operator_name(78), "Transport for London");
+    same("a council that issues concessionary passes is named", itso_operator_name(165),
+         "Reading Borough Council");
+    /* The pass is branded by the national scheme, not by the council that issued
+     * it, so the menu keeps saying "ITSO Card" rather than borrowing the name. */
+    same("but it brands no card", itso_operator_brand(165), NULL);
     same("an unknown operator is not", itso_operator_name(4242), NULL);
     /* Shared central-product OIDs are named but brand nothing: they own
      * products on other issuers' cards and issue none of their own. */

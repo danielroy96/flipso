@@ -66,6 +66,10 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * at all for either. */
     {109, "South Western Railway", "SWR Touch"},
     {143, "Southern", NULL}, /* RSPS3002 appendix D.3, example POST SET address */
+    /* Shell owner of an ENCTS concessionary pass, read 2026-09-19, whose issuer
+     * the cardholder confirmed. No brand: the pass carries the national scheme's
+     * branding rather than the council's, which is why OID 96 has none either. */
+    {165, "Reading Borough Council", NULL},
     /* Shell owner of an SPT Subway card, read 2026-09-17. The only CMD2 card in
      * the table: the Subway is the one ITSO scheme still on ISO 7816 media. */
     {196, "SPT (Strathclyde)", "SPT Subway"},
