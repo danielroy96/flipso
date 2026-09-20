@@ -81,6 +81,24 @@ bool flipso_saved_write(const FlipsoCapture* capture, const char* path);
 bool flipso_saved_read(FlipsoCapture* capture, const char* path);
 
 /**
+ * Find the saved card that holds the same card as @p capture.
+ *
+ * Matched on the card number, not the file name: the point of looking is that
+ * the same physical card has been read again, and what has changed since is the
+ * products on it. The user may have called the file anything.
+ *
+ * Only the header of each candidate is read - enough to reach its shell - so
+ * the walk costs a few lines per saved card rather than a whole file.
+ *
+ * @param[out] path    the file, when one matches. Untouched otherwise.
+ * @param[out] read_at when that record was read, or NULL if the caller does not
+ *                     care. It is worth showing: it says how stale the record
+ *                     being replaced is.
+ * @return false when no saved card holds this one.
+ */
+bool flipso_saved_find(const FlipsoCapture* capture, FuriString* path, uint32_t* read_at);
+
+/**
  * Let the user choose a saved card.
  *
  * Blocks until they pick one or press Back, so it is called from a scene's

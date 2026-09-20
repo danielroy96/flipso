@@ -49,8 +49,7 @@ void furi_record_close(const char* name);
 /*
  * FuriString: a growable string. The app builds every screen with one, so a
  * stand-in is what lets the screen-building code be tested at all. Only the
- * operations the code under test uses are here, and furi_string_cat takes a
- * plain string because the firmware's macro resolves to that for a literal.
+ * operations the code under test uses are here.
  */
 typedef struct FuriString {
     char* data;
@@ -109,9 +108,6 @@ static inline void furi_string_set_str(FuriString* s, const char* str) {
     furi_string_cat_str(s, str);
 }
 
-#define furi_string_cat(s, str) furi_string_cat_str((s), (str))
-#define furi_string_set(s, str) furi_string_set_str((s), (str))
-
 static inline bool furi_string_empty(const FuriString* s) {
     return s->len == 0;
 }
@@ -122,7 +118,37 @@ static inline FuriString* furi_string_alloc_set_str(const char* str) {
     return s;
 }
 
-#define furi_string_alloc_set(str) furi_string_alloc_set_str(str)
+static inline void furi_string_cat_string(FuriString* s, const FuriString* src) {
+    furi_string_cat_str(s, src->data);
+}
+
+static inline void furi_string_set_string(FuriString* s, const FuriString* src) {
+    furi_string_set_str(s, src->data);
+}
+
+static inline FuriString* furi_string_alloc_set_string(const FuriString* src) {
+    return furi_string_alloc_set_str(src->data);
+}
+
+/*
+ * The firmware's versions take either a FuriString or a plain string and pick
+ * the right one, so the stub has to as well: a stub that only took plain
+ * strings would reject code the device compiles, which is a test failure that
+ * says nothing about the code under test.
+ */
+#define FURI_STRING_SELECT(string_fn, str_fn, arg)     \
+    _Generic(                                          \
+        (arg),                                         \
+        FuriString *: string_fn,                       \
+        const FuriString *: string_fn,                 \
+        default: str_fn)
+
+#define furi_string_cat(s, str) \
+    FURI_STRING_SELECT(furi_string_cat_string, furi_string_cat_str, str)((s), (str))
+#define furi_string_set(s, str) \
+    FURI_STRING_SELECT(furi_string_set_string, furi_string_set_str, str)((s), (str))
+#define furi_string_alloc_set(str) \
+    FURI_STRING_SELECT(furi_string_alloc_set_string, furi_string_alloc_set_str, str)(str)
 
 __attribute__((format(printf, 2, 3))) static inline void
     furi_string_printf(FuriString* s, const char* format, ...);

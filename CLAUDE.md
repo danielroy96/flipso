@@ -48,7 +48,7 @@ flipso_reader.c       card reading: DESFire (CMD7/CMD12) and the retry logic
 flipso_cmd2.c         ISO 7816 transport for CMD2 media
 flipso_media.c        what a non-ITSO card says about itself (incl. Oyster)
 flipso_capture.c      the raw blocks a read produced; saved cards decode from these
-flipso_saved.c        those blocks on the SD card: write, read, browse, delete
+flipso_saved.c        those blocks on the SD card: write, read, browse, match, delete
 flipso_operators.c    operator id -> name, built-in table plus the user's file
 flipso_stations.c     NLC -> station name, binary search over the SD card table
 flipso_naptan.c       NaptanCode/AtcoCode -> bus stop name, same design

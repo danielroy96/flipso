@@ -84,6 +84,9 @@ typedef struct {
     /** File the card on screen came from; empty when it was just scanned. */
     FuriString* loaded_path;
 
+    /** Where the save screen is about to write: a new file, or one being replaced. */
+    FuriString* save_path;
+
     /** Name being edited on the save screen. */
     char save_name[FLIPSO_SAVED_NAME_LEN];
 

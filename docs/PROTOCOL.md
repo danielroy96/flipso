@@ -201,6 +201,13 @@ Flipso loses the blocks it does not know about and no more. A `Version` newer
 than the build's is refused outright, because a block that has changed shape
 would decode to plausible nonsense.
 
+Saving a card that has been saved before rewrites that file rather than adding
+another. The match is on the 18-digit card number in the shell, which is the
+only unique identity a card has - there is no serial number anywhere else in
+the shell, and the file name belongs to the user rather than to the card. Only
+each candidate's header is read to find it, as far as its `Shell` key, because
+nothing after that says which card the file holds.
+
 `tools/test/replay.py` reads these files, so a saved card is also a decoder test
 case that needs neither the Flipper nor the card.
 

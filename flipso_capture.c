@@ -141,6 +141,14 @@ void flipso_capture_set_time(FlipsoCapture* capture, uint32_t timestamp) {
     if(capture) capture->timestamp = timestamp;
 }
 
+bool flipso_capture_card_number(const FlipsoCapture* capture, char* out) {
+    if(!capture || !out) return false;
+
+    const FlipsoCaptureBlock* shell = flipso_capture_find(capture, FlipsoBlockShell, 0);
+    if(!shell) return false;
+    return itso_shell_card_number(capture->bytes + shell->offset, shell->len, out);
+}
+
 bool flipso_capture_decode(const FlipsoCapture* capture, ItsoCard* card) {
     if(!capture || !card) return false;
 

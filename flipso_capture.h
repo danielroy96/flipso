@@ -97,6 +97,18 @@ bool flipso_capture_add(
     size_t len);
 
 /**
+ * The card number the captured shell carries, e.g. "633597019604241569".
+ *
+ * This is how a capture is matched against the cards already saved: the number
+ * is the card's identity, and everything else about it - the products, the
+ * balance, the log - is what changes between one read and the next.
+ *
+ * @param out at least ITSO_ISRN_DIGITS + 1 bytes.
+ * @return false when there is no shell, or it does not parse.
+ */
+bool flipso_capture_card_number(const FlipsoCapture* capture, char* out);
+
+/**
  * Decode a whole card from the captured blocks.
  *
  * The same sequence a live read performs: shell, directory, then each product

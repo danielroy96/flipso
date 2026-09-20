@@ -77,6 +77,12 @@ exactly as they came off the card. Loading one runs those bytes back through the
 decoder in the build that is running, so a saved card shows whatever the current
 Flipso can make of it, and a decoder fix reaches the cards already on the card.
 
+Reading a card you have saved before updates that record instead of making a
+second copy. Cards are matched by card number rather than by file name, so the
+card you called "Mum's bus pass" stays called that, and its balance, season
+ticket and journey log come up to date. Flipso says which record it is about to
+replace, and when that one was read, before it does it.
+
 They live in `/ext/apps_data/flipso/cards/` as `<name>.flipso`, and the same
 file can be replayed through the decoder on a PC:
 
@@ -159,13 +165,13 @@ The Flipper has a **190 KB heap**, and a `.fap` is loaded into it whole before
 `main()` runs, so we have to be a bit careful particularly with the station table.
 
 ```
-dist/flipso.fap       165,272 bytes on disk
+dist/flipso.fap       167,456 bytes on disk
   .fapassets           78,859   ← station table, never mapped into RAM
-  .text                30,168   ← in RAM
-  .rodata               9,017   ← in RAM
-  (symbols, relocs)    47,228   ← not loaded
+  .text                31,136   ← in RAM
+  .rodata               9,089   ← in RAM
+  (symbols, relocs)    48,372   ← not loaded
   ──────────────────────────
-  TOTAL IN RAM         39,185   21% of the heap
+  TOTAL IN RAM         40,225   21% of the heap
 ```
 
 A card being saved costs a little on top of that, and only while a card is on

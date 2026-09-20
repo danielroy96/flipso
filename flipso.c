@@ -399,6 +399,7 @@ static Flipso* flipso_alloc(void) {
     app->reader = flipso_reader_alloc();
     app->capture = flipso_capture_alloc();
     app->loaded_path = furi_string_alloc();
+    app->save_path = furi_string_alloc();
     app->operators = flipso_operators_alloc();
     app->stations = flipso_stations_alloc();
     app->naptan = flipso_naptan_alloc();
@@ -416,6 +417,7 @@ static void flipso_free(Flipso* app) {
     flipso_reader_free(app->reader);
     flipso_capture_free(app->capture);
     furi_string_free(app->loaded_path);
+    furi_string_free(app->save_path);
     flipso_operators_free(app->operators);
     flipso_stations_free(app->stations);
     flipso_naptan_free(app->naptan);

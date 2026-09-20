@@ -107,6 +107,11 @@ static void round_trip(void) {
     fill(capture, &reference);
     check("a filled capture is valid", flipso_capture_valid(capture));
 
+    /* The identity a saved card is matched on, read without decoding the rest. */
+    char isrn[ITSO_ISRN_DIGITS + 1];
+    check("the capture knows its card number", flipso_capture_card_number(capture, isrn));
+    check("and it is the one the decoder reads", strcmp(isrn, reference.isrn) == 0);
+
     ItsoCard direct;
     check("capture decodes", flipso_capture_decode(capture, &direct));
     check("capture decodes to the same card", memcmp(&direct, &reference, sizeof(ItsoCard)) == 0);
@@ -187,6 +192,16 @@ static void partial(void) {
     flipso_capture_add(capture, FlipsoBlockDirectory, 0, card_dir, sizeof(card_dir));
     check("a capture with no shell is not valid", !flipso_capture_valid(capture));
     check("and does not decode", !flipso_capture_decode(capture, &card));
+    char isrn[ITSO_ISRN_DIGITS + 1];
+    check("and has no card number", !flipso_capture_card_number(capture, isrn));
+    flipso_capture_free(capture);
+
+    /* A shell block of junk: valid() only says a block is there, so the number
+     * is where a capture that cannot be matched gets found out. */
+    capture = flipso_capture_alloc();
+    static const uint8_t junk[32] = {0xAA};
+    flipso_capture_add(capture, FlipsoBlockShell, 0, junk, sizeof(junk));
+    check("a shell of junk has no card number", !flipso_capture_card_number(capture, isrn));
     flipso_capture_free(capture);
 }
 

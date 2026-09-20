@@ -51,19 +51,25 @@ static bool itso_isrn_check(const char* isrn) {
     return isrn[ITSO_ISRN_DIGITS - 1] == ('0' + expected);
 }
 
-bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
+bool itso_shell_card_number(const uint8_t* data, size_t len, char* out) {
     if(!itso_looks_like_shell(data, len)) return false;
 
-    uint8_t bitmap = itso_bits(data, 6, 6);
     /* A compact shell (bitmap zero) carries only a format version code: there is
      * no directory to walk, so there is nothing for us to show. */
-    if((bitmap & 0x01) == 0) return false;
+    if((itso_bits(data, 6, 6) & 0x01) == 0) return false;
 
     /* ISRN = IIN(6) + OID(4) + ISSN(7) + check digit, all BCD. TS 1000-2 4.1.4. */
-    itso_bcd(data, 16, 6, card->isrn);
-    itso_bcd(data, 40, 4, card->isrn + 6);
-    itso_bcd(data, 56, 7, card->isrn + 10);
-    itso_bcd(data, 84, 1, card->isrn + 17);
+    itso_bcd(data, 16, 6, out);
+    itso_bcd(data, 40, 4, out + 6);
+    itso_bcd(data, 56, 7, out + 10);
+    itso_bcd(data, 84, 1, out + 17);
+    return true;
+}
+
+bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
+    if(!itso_shell_card_number(data, len, card->isrn)) return false;
+
+    uint8_t bitmap = itso_bits(data, 6, 6);
     card->isrn_check_ok = itso_isrn_check(card->isrn);
 
     card->oid = (uint16_t)((card->isrn[6] - '0') * 1000 + (card->isrn[7] - '0') * 100 +

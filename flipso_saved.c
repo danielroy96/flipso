@@ -167,6 +167,88 @@ bool flipso_saved_read(FlipsoCapture* capture, const char* path) {
     return ok;
 }
 
+/*
+ * Lines to read before giving up on finding a candidate's shell.
+ *
+ * We write it fourth. The cap is not about our own files but about anything
+ * else that has ended up in the folder with the right extension: without it a
+ * stray megabyte would be read a line at a time, once per save.
+ */
+#define FLIPSO_SAVED_PEEK_LINES 64
+
+/**
+ * Read a candidate's header far enough to learn which card it holds.
+ * @return false for a file that is not ours, or that has no shell near its top.
+ */
+static bool flipso_saved_peek(Stream* stream, FlipsoCapture* scratch, char* isrn) {
+    flipso_capture_reset(scratch);
+
+    FuriString* line = furi_string_alloc();
+    bool ours = true;
+    /* Stops at the shell rather than reading on: everything after it is the
+     * part of the card that changes, and none of it says which card this is. */
+    for(size_t i = 0; i < FLIPSO_SAVED_PEEK_LINES; i++) {
+        if(flipso_capture_valid(scratch)) break;
+        if(!stream_read_line(stream, line)) break;
+        if(!flipso_capture_parse_line(scratch, furi_string_get_cstr(line))) {
+            ours = false;
+            break;
+        }
+    }
+    furi_string_free(line);
+
+    return ours && flipso_capture_card_number(scratch, isrn);
+}
+
+bool flipso_saved_find(const FlipsoCapture* capture, FuriString* path, uint32_t* read_at) {
+    furi_assert(capture);
+    furi_assert(path);
+
+    char wanted[ITSO_ISRN_DIGITS + 1];
+    if(!flipso_capture_card_number(capture, wanted)) return false;
+
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* dir = storage_file_alloc(storage);
+    Stream* stream = file_stream_alloc(storage);
+    FlipsoCapture* scratch = flipso_capture_alloc();
+    FuriString* candidate = furi_string_alloc();
+    bool found = false;
+
+    if(storage_dir_open(dir, FLIPSO_SAVED_FOLDER)) {
+        FileInfo info;
+        char name[128];
+        while(!found && storage_dir_read(dir, &info, name, sizeof(name))) {
+            if(info.flags & FSF_DIRECTORY) continue;
+            const char* ext = strrchr(name, '.');
+            if(!ext || strcmp(ext, FLIPSO_SAVED_EXTENSION) != 0) continue;
+
+            furi_string_printf(candidate, "%s/%s", FLIPSO_SAVED_FOLDER, name);
+            if(!file_stream_open(
+                   stream, furi_string_get_cstr(candidate), FSAM_READ, FSOM_OPEN_EXISTING)) {
+                continue;
+            }
+
+            char isrn[ITSO_ISRN_DIGITS + 1];
+            if(flipso_saved_peek(stream, scratch, isrn) && strcmp(isrn, wanted) == 0) {
+                furi_string_set(path, candidate);
+                if(read_at) *read_at = flipso_capture_time(scratch);
+                found = true;
+            }
+            file_stream_close(stream);
+        }
+    }
+
+    storage_dir_close(dir);
+    storage_file_free(dir);
+    stream_free(stream);
+    flipso_capture_free(scratch);
+    furi_string_free(candidate);
+    furi_record_close(RECORD_STORAGE);
+
+    if(found) FURI_LOG_I(TAG, "Card %s is already saved", wanted);
+    return found;
+}
+
 bool flipso_saved_pick(FuriString* path) {
     furi_assert(path);
 
