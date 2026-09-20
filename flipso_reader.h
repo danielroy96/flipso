@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include "flipso_capture.h"
 #include "flipso_media.h"
 #include "itso/itso.h"
 
@@ -61,13 +62,16 @@ void flipso_reader_free(FlipsoReader* reader);
 /**
  * Begin polling. The decoded card is written into @p card and, for a card that
  * turns out not to be an ITSO one, whatever it will say about itself is written
- * into @p media. Both must outlive the read. The callback fires once per card
- * presented.
+ * into @p media. The raw bytes behind the decode are kept in @p capture, so
+ * that a card can be saved and read back later; it is emptied at the start of
+ * every read attempt. All three must outlive the read. The callback fires once
+ * per card presented.
  */
 void flipso_reader_start(
     FlipsoReader* reader,
     ItsoCard* card,
     FlipsoMedia* media,
+    FlipsoCapture* capture,
     FlipsoReaderCallback callback,
     void* context);
 

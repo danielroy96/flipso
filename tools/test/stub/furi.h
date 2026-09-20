@@ -110,6 +110,22 @@ static inline void furi_string_set_str(FuriString* s, const char* str) {
 }
 
 #define furi_string_cat(s, str) furi_string_cat_str((s), (str))
+#define furi_string_set(s, str) furi_string_set_str((s), (str))
+
+static inline bool furi_string_empty(const FuriString* s) {
+    return s->len == 0;
+}
+
+static inline FuriString* furi_string_alloc_set_str(const char* str) {
+    FuriString* s = furi_string_alloc();
+    furi_string_set_str(s, str);
+    return s;
+}
+
+#define furi_string_alloc_set(str) furi_string_alloc_set_str(str)
+
+__attribute__((format(printf, 2, 3))) static inline void
+    furi_string_printf(FuriString* s, const char* format, ...);
 
 __attribute__((format(printf, 2, 3))) static inline void
     furi_string_cat_printf(FuriString* s, const char* format, ...) {
@@ -124,4 +140,20 @@ __attribute__((format(printf, 2, 3))) static inline void
     vsnprintf(s->data + s->len, (size_t)n + 1, format, args);
     va_end(args);
     s->len += (size_t)n;
+}
+
+__attribute__((format(printf, 2, 3))) static inline void
+    furi_string_printf(FuriString* s, const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    int n = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+    furi_assert(n >= 0);
+
+    furi_string_reset(s);
+    furi_string_grow(s, (size_t)n);
+    va_start(args, format);
+    vsnprintf(s->data, (size_t)n + 1, format, args);
+    va_end(args);
+    s->len = (size_t)n;
 }

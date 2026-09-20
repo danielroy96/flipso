@@ -13,6 +13,29 @@ ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
 ./test_parse
 
 echo
+echo "Saved cards"
+# The save/load round trip, which is the decoder's other entry point: a saved
+# card is raw blocks, so loading one runs the same parsers a tap does.
+${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
+  -fsanitize=address,undefined \
+  -I"$ROOT" -I"$ROOT/itso" -I. \
+  test_capture.c "$ROOT/flipso_capture.c" \
+  "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
+  -o test_capture
+./test_capture
+
+echo
+echo "Saved card files"
+# The layer around the blocks: naming, and real files in a real directory.
+${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
+  -fsanitize=address,undefined \
+  -I"$ROOT" -I"$ROOT/itso" -Istub -I. \
+  test_saved.c "$ROOT/flipso_saved.c" "$ROOT/flipso_capture.c" \
+  "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
+  -o test_saved
+./test_saved
+
+echo
 echo "Station table"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \

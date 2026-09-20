@@ -6,11 +6,32 @@ Reflashing the Flipper and re-tapping a card to test one hypothesis takes a
 minute and needs someone holding the card. Running the same bytes through the
 host build takes a second and needs nobody, so capture once and iterate here.
 
+Two kinds of file work, because both hold the same thing - the raw blocks a
+read produced. Either can be pulled off the device and replayed:
+
+  A card the user saved in the app. This needs no instrumentation and no
+  special build: save the card on the Flipper, then
+
+    tools/flipper/flipctl pull /ext/apps_data/flipso/cards/<name>.flipso card.flipso
+    tools/test/replay.py card.flipso
+
+  A dump from the opt-in instrumentation in tools/debug/flipso_dump.c, which
+  also records reads that failed before there was a card worth saving:
+
     tools/flipper/flipctl pull /ext/apps_data/flipso/dump.txt dump.txt
     tools/test/replay.py dump.txt
 
-The dump format is what tools/debug/flipso_dump.c writes: a header line naming
-the block and its length, then one line of hex.
+A saved card is a Flipper key-value file:
+
+    Filetype: Flipso card
+    Version: 1
+    Read at: 1758400000
+    Shell: 9E 00 ...
+    Directory: ...
+    Product 1: ...
+    Log: ...
+
+A dump is a header line naming the block and its length, then one line of hex:
 
     SHELL 47
     9E00...
@@ -30,6 +51,44 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
+
+
+SAVED_KEYS = {"shell": "SHELL", "directory": "DIR", "log": "LOG"}
+
+
+def parse_saved(path):
+    """Read a saved card (Filetype: Flipso card) into the same block list."""
+    blocks = []
+    with open(path) as fh:
+        for lineno, raw in enumerate(fh, 1):
+            key, _, value = raw.partition(":")
+            key, value = key.strip(), value.strip()
+            if not key or not value:
+                continue
+
+            index = 0
+            product = re.fullmatch(r"[Pp]roduct\s+(\d+)", key)
+            if product:
+                label, index = "GROUP", int(product.group(1))
+            elif key.lower() in SAVED_KEYS:
+                label = SAVED_KEYS[key.lower()]
+            else:
+                continue  # Filetype, Version, Read at, or a key from a later build.
+
+            if not re.fullmatch(r"[0-9A-Fa-f]{2}(\s+[0-9A-Fa-f]{2})*", value):
+                sys.exit(f"{path}:{lineno}: {key} is not a hex byte array")
+            data = bytes.fromhex(value.replace(" ", ""))
+            blocks.append([label, index, len(data), data])
+    return blocks
+
+
+def looks_saved(path):
+    """True for a file whose first meaningful line is our Filetype header."""
+    with open(path) as fh:
+        for raw in fh:
+            if raw.strip():
+                return raw.strip().lower().startswith("filetype:")
+    return False
 
 
 def parse_dump(path):
@@ -104,10 +163,13 @@ def main():
         sys.exit(__doc__.strip())
     dump = sys.argv[1]
     if not os.path.exists(dump):
-        sys.exit(f"{dump}: not found. Pull one with:\n"
+        sys.exit(f"{dump}: not found. Pull a saved card, or a dump, with:\n"
+                 "  tools/flipper/flipctl pull /ext/apps_data/flipso/cards/NAME.flipso card.flipso\n"
                  "  tools/flipper/flipctl pull /ext/apps_data/flipso/dump.txt dump.txt")
 
-    blocks = parse_dump(dump)
+    blocks = parse_saved(dump) if looks_saved(dump) else parse_dump(dump)
+    if not blocks:
+        sys.exit(f"{dump}: no card blocks in it")
     header = os.path.join(HERE, "replay_data.h")
     shell, directory, log, groups = write_header(blocks, header)
     print(f"{dump}: shell {len(shell)}B, directory {len(directory)}B, "

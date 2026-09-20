@@ -26,11 +26,13 @@ static const int8_t flipso_arc[][2] = {
 typedef struct {
     uint8_t frame;
     bool scanning;
+    bool has_saved; /**< Whether to offer the Left button. */
 } FlipsoScanModel;
 
 struct FlipsoScanView {
     View* view;
-    FlipsoScanViewCallback callback;
+    FlipsoScanViewCallback scan_callback;
+    FlipsoScanViewCallback saved_callback;
     void* context;
 };
 
@@ -76,23 +78,41 @@ static void flipso_scan_view_draw(Canvas* canvas, void* model) {
         /* Idle: the reader is off until the user asks for it. */
         canvas_draw_str_aligned(canvas, 64, 42, AlignCenter, AlignTop, "Ready to read a card");
         elements_button_center(canvas, "Scan"); /* occupies the bottom 12 rows */
+        /* Saved cards share that band. It is the only other thing to do from
+         * here, and a menu in front of the scan screen would put a keypress
+         * between the user and the thing the app is for. */
+        if(m->has_saved) elements_button_left(canvas, "Saved");
     }
 }
 
 static bool flipso_scan_view_input(InputEvent* event, void* context) {
     FlipsoScanView* instance = context;
 
-    if(event->type != InputTypeShort || event->key != InputKeyOk) return false;
+    if(event->type != InputTypeShort) return false;
+    if(event->key != InputKeyOk && event->key != InputKeyLeft) return false;
 
     bool scanning = false;
+    bool has_saved = false;
     with_view_model(
-        instance->view, FlipsoScanModel * model, { scanning = model->scanning; }, false);
+        instance->view,
+        FlipsoScanModel * model,
+        {
+            scanning = model->scanning;
+            has_saved = model->has_saved;
+        },
+        false);
 
-    /* OK only means anything on the idle prompt; while scanning it is ignored so
-     * a stray press cannot restart the reader mid-read. */
-    if(scanning || instance->callback == NULL) return false;
+    /* Both buttons only mean anything on the idle prompt; while scanning they
+     * are ignored, so a stray press cannot restart the reader mid-read or walk
+     * off the screen with a card half read. */
+    if(scanning) return false;
 
-    instance->callback(instance->context);
+    FlipsoScanViewCallback callback = (event->key == InputKeyOk) ?
+                                          instance->scan_callback :
+                                          (has_saved ? instance->saved_callback : NULL);
+    if(!callback) return false;
+
+    callback(instance->context);
     return true;
 }
 
@@ -121,11 +141,19 @@ View* flipso_scan_view_get_view(FlipsoScanView* instance) {
 
 void flipso_scan_view_set_callback(
     FlipsoScanView* instance,
-    FlipsoScanViewCallback callback,
+    FlipsoScanViewCallback scan,
+    FlipsoScanViewCallback saved,
     void* context) {
     furi_assert(instance);
-    instance->callback = callback;
+    instance->scan_callback = scan;
+    instance->saved_callback = saved;
     instance->context = context;
+}
+
+void flipso_scan_view_set_has_saved(FlipsoScanView* instance, bool has_saved) {
+    furi_assert(instance);
+    with_view_model(
+        instance->view, FlipsoScanModel * model, { model->has_saved = has_saved; }, true);
 }
 
 void flipso_scan_view_set_scanning(FlipsoScanView* instance, bool scanning) {

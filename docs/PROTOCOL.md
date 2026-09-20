@@ -166,6 +166,44 @@ necessarily use the defaults in the specification: the Subway card reports
 and 8, which among other things widens each Sector Chain Table entry from five
 bits to six.
 
+## Saved cards
+
+A saved card is the raw blocks of the read above, not the decoded fields: the
+Shell Environment, the Directory, each product's concatenated sector chain, and
+the cyclic log, exactly as they came off the card. Loading one skips the two
+transports and runs the same parsers over the same bytes, in the order a live
+read runs them, so a saved card and the card itself produce the same screens.
+
+Storing the decode instead would have frozen each card at the build that wrote
+it. Storing the bytes means a decoder fix applies retrospectively to cards
+already on the SD card, and that nothing new has to be serialised when a field
+is added.
+
+The file is the firmware's key-value text format, one key per block, in
+`/ext/apps_data/flipso/cards/`:
+
+```
+Filetype: Flipso card
+Version: 1
+Read at: 1758400000
+Shell: 18 11 63 35 97 ...
+Directory: 00 21 13 48 40 ...
+Product 1: 18 01 FF 00 F7 ...
+Product 2: 2C 42 FF 00 00 ...
+Log: 14 02 00 DB EE 5A ...
+```
+
+`Product n` is keyed by directory entry E(n), which is how a block is matched
+back to the product it belongs to; the sector chain behind it has already been
+followed and concatenated, so the file holds no chain of its own. Keys the build
+does not recognise are skipped rather than rejected, so a file from a later
+Flipso loses the blocks it does not know about and no more. A `Version` newer
+than the build's is refused outright, because a block that has changed shape
+would decode to plausible nonsense.
+
+`tools/test/replay.py` reads these files, so a saved card is also a decoder test
+case that needs neither the Flipper nor the card.
+
 ## Specification references
 
 Field offsets are taken from ITSO TS 1000 version 2.1.5 (March 2025), published

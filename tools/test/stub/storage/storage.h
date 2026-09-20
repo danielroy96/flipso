@@ -14,11 +14,22 @@ typedef struct File File;
 
 typedef enum {
     FSAM_READ = 1,
+    FSAM_WRITE = 2,
 } FS_AccessMode;
 
 typedef enum {
     FSOM_OPEN_EXISTING = 1,
+    FSOM_CREATE_ALWAYS = 2,
 } FS_OpenMode;
+
+typedef enum {
+    FSF_DIRECTORY = (1 << 0),
+} FS_Flags;
+
+typedef struct {
+    uint8_t flags;
+    uint64_t size;
+} FileInfo;
 
 File* storage_file_alloc(Storage* storage);
 void storage_file_free(File* file);
@@ -27,3 +38,11 @@ void storage_file_close(File* file);
 uint64_t storage_file_size(File* file);
 bool storage_file_seek(File* file, uint32_t offset, bool from_start);
 uint16_t storage_file_read(File* file, void* buffer, uint16_t size);
+uint16_t storage_file_write(File* file, const void* buffer, uint16_t size);
+
+/* Directory walking and the whole-path helpers, for the saved-card folder. */
+bool storage_dir_open(File* file, const char* path);
+bool storage_dir_read(File* file, FileInfo* fileinfo, char* name, uint16_t name_length);
+bool storage_dir_close(File* file);
+bool storage_simply_mkdir(Storage* storage, const char* path);
+bool storage_simply_remove(Storage* storage, const char* path);

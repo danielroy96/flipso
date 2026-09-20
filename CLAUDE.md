@@ -47,6 +47,8 @@ flipso.c              app entry, shared formatting helpers used by the scenes
 flipso_reader.c       card reading: DESFire (CMD7/CMD12) and the retry logic
 flipso_cmd2.c         ISO 7816 transport for CMD2 media
 flipso_media.c        what a non-ITSO card says about itself (incl. Oyster)
+flipso_capture.c      the raw blocks a read produced; saved cards decode from these
+flipso_saved.c        those blocks on the SD card: write, read, browse, delete
 flipso_operators.c    operator id -> name, built-in table plus the user's file
 flipso_stations.c     NLC -> station name, binary search over the SD card table
 flipso_naptan.c       NaptanCode/AtcoCode -> bus stop name, same design
@@ -65,6 +67,22 @@ tools/icons/          pixel art the images/ icons are generated from
 
 `itso/` must stay free of firmware headers. That is what lets `tools/test/run.sh`
 and `tools/test/replay.py` build it on the host, which is the fast loop.
+`flipso_capture.c` is held to the same rule for the same reason: the save and
+load path, including the file parser, is tested on the host by
+`tools/test/test_capture.c`.
+
+A saved card is the raw blocks, not the decoded fields, so loading one runs the
+live decoder over them - which means a saved card is also a test case.
+`tools/test/replay.py` reads a `.flipso` file as happily as a debug dump, so the
+fastest way to get a real card into the host loop is now to save it in the app
+and pull the file:
+
+    tools/flipper/flipctl pull /ext/apps_data/flipso/cards/NAME.flipso card.flipso
+    tools/test/replay.py card.flipso
+
+That needs no instrumentation and no rebuild, so reach for it before wiring up
+`tools/debug/flipso_dump.c` - which still earns its place for reads that fail
+before there is a card worth saving.
 
 ## Memory is the constraint
 
@@ -146,5 +164,7 @@ it, so batch those requests: get the build on the device, arm the log, then ask
 once. Everything else — installing, navigating the UI, screenshots, heap
 samples, reboots — is done from here without involving them.
 
-Card dumps contain the card number and the holder's name. Keep them out of the
-repo, and delete them from the SD card when finished.
+Card dumps contain the card number and the holder's name, and so do the cards
+the user saves in the app. Keep them out of the repo. Delete a *dump* from the
+SD card when finished; a saved card is the user's own file, so leave it alone
+unless they ask.

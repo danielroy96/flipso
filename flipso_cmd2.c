@@ -395,13 +395,18 @@ static size_t flipso_cmd2_read_group(
     return total;
 }
 
-FlipsoReaderStatus
-    flipso_cmd2_read(FlipsoCmd2* cmd2, Iso14443_4aPoller* poller, ItsoCard* card) {
+FlipsoReaderStatus flipso_cmd2_read(
+    FlipsoCmd2* cmd2,
+    Iso14443_4aPoller* poller,
+    ItsoCard* card,
+    FlipsoCapture* capture) {
     furi_assert(cmd2);
     furi_assert(poller);
     furi_assert(card);
+    furi_assert(capture);
 
     itso_card_reset(card);
+    flipso_capture_reset(capture);
     cmd2->sfi = FLIPSO_CMD2_SFI_DEFAULT;
     cmd2->path_len = 0;
     cmd2->df_fid_known = false;
@@ -432,6 +437,7 @@ FlipsoReaderStatus
     const uint8_t* shell = flipso_cmd2_fci_find(cmd2->resp, cmd2->resp_len, 0xC0, &shell_len);
     bool shell_ok = shell && itso_looks_like_shell(shell, shell_len) &&
                     itso_parse_shell(card, shell, shell_len);
+    if(shell_ok) flipso_capture_add(capture, FlipsoBlockShell, 0, shell, shell_len);
 
     if(!parameters) {
         /* Ask for the Parameter EF directly: short id 0F, implicit selection. */
@@ -446,6 +452,7 @@ FlipsoReaderStatus
         uint8_t buffer[64];
         size_t len = flipso_cmd2_read_sector(cmd2, poller, 0, buffer, sizeof(buffer));
         shell_ok = len && itso_looks_like_shell(buffer, len) && itso_parse_shell(card, buffer, len);
+        if(shell_ok) flipso_capture_add(capture, FlipsoBlockShell, 0, buffer, len);
     }
 
     if(!shell_ok) {
@@ -478,14 +485,22 @@ FlipsoReaderStatus
     if(!flipso_cmd2_read_directory(cmd2, poller, card)) {
         FURI_LOG_W(TAG, "CMD2 directory read or parse failed");
         /* The shell alone still gives the card number and expiry, so report
-         * success and let the UI show what we have. */
+         * success and let the UI show what we have. Nothing is captured: unlike
+         * CMD7 there is no single directory file here, and which of the two
+         * copies cmd2->dir ended up holding is not something a saved card
+         * should be built on. */
         return FlipsoReaderStatusSuccess;
     }
+    flipso_capture_add(capture, FlipsoBlockDirectory, 0, cmd2->dir, cmd2->dir_len);
 
     for(uint8_t i = 0; i < card->product_count; i++) {
         ItsoProduct* product = &card->products[i];
         size_t len = flipso_cmd2_read_group(cmd2, poller, card, product->dir_index);
-        if(len) itso_parse_ipe(product, cmd2->group, len, card->sector_size);
+        if(len) {
+            flipso_capture_add(
+                capture, FlipsoBlockProduct, product->dir_index, cmd2->group, len);
+            itso_parse_ipe(product, cmd2->group, len, card->sector_size);
+        }
 
         FURI_LOG_D(
             TAG,
@@ -502,7 +517,10 @@ FlipsoReaderStatus
      * starting at the sector its Directory entry names, exactly like a product. */
     if(card->log_dir_index) {
         size_t len = flipso_cmd2_read_group(cmd2, poller, card, card->log_dir_index);
-        if(len) itso_parse_log(card, cmd2->group, len);
+        if(len) {
+            flipso_capture_add(capture, FlipsoBlockLog, 0, cmd2->group, len);
+            itso_parse_log(card, cmd2->group, len);
+        }
     }
 
     return FlipsoReaderStatusSuccess;

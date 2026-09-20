@@ -148,6 +148,37 @@ ICONS["tag_10px"] = """
 ...####...
 """
 
+# --- 10x10: saving and deleting a card ---------------------------------------
+
+# A floppy disk, which has meant "save" for longer than it has existed as
+# hardware, and reads at 10px where a downward arrow into a tray does not.
+ICONS["save_10px"] = """
+##########
+#.#....#.#
+#.#....#.#
+#.#....#.#
+#........#
+#.######.#
+#.#....#.#
+#.#....#.#
+#.######.#
+##########
+"""
+
+# A waste bin with its lid: the saved copy goes, the card does not.
+ICONS["delete_10px"] = """
+...####...
+.########.
+..........
+.########.
+.#.#..#.#.
+.#.#..#.#.
+.#.#..#.#.
+.#.#..#.#.
+.########.
+..######..
+"""
+
 # --- 10x10: the menu header --------------------------------------------------
 
 # A warning triangle, shown beside the header when the shell is blocked. Drawn

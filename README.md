@@ -65,6 +65,29 @@ specification.
   </tr>
 </table>
 
+### Saving a card
+
+A card only reads while it is against the back of the Flipper. **Save card** at
+the bottom of a card's menu writes it to the SD card, and **Saved** on the scan
+screen opens the ones already there — the same screens, without the card.
+
+What is saved is not the decoded screens but *what the card said*: the Shell
+Environment, the Directory, each product's sector chain and the journey log,
+exactly as they came off the card. Loading one runs those bytes back through the
+decoder in the build that is running, so a saved card shows whatever the current
+Flipso can make of it, and a decoder fix reaches the cards already on the card.
+
+They live in `/ext/apps_data/flipso/cards/` as `<name>.flipso`, and the same
+file can be replayed through the decoder on a PC:
+
+```bash
+tools/test/replay.py card.flipso
+```
+
+> A saved card carries the card number, and the holder's name where the card has
+> an ITSO ID on it. They are your own cards and the files stay on your SD card,
+> but that is what is in them — think before sharing one.
+
 ---
 
 ## Getting started
@@ -136,14 +159,19 @@ The Flipper has a **190 KB heap**, and a `.fap` is loaded into it whole before
 `main()` runs, so we have to be a bit careful particularly with the station table.
 
 ```
-dist/flipso.fap       150,252 bytes on disk
+dist/flipso.fap       165,272 bytes on disk
   .fapassets           78,859   ← station table, never mapped into RAM
-  .text                25,140   ← in RAM
-  .rodata               8,005   ← in RAM
-  (symbols, relocs)    38,248   ← not loaded
+  .text                30,168   ← in RAM
+  .rodata               9,017   ← in RAM
+  (symbols, relocs)    47,228   ← not loaded
   ──────────────────────────
-  TOTAL IN RAM         33,145   17% of the heap
+  TOTAL IN RAM         39,185   21% of the heap
 ```
+
+A card being saved costs a little on top of that, and only while a card is on
+screen: the raw blocks are kept in one buffer that grows to fit the card, which
+is about a kilobyte for a typical CMD7 one. It is released when the scan screen
+comes back.
 
 Both reference tables stay on the SD card and are binary-searched in place, so a
 lookup costs a handful of short reads and no memory that grows with the table.
@@ -159,13 +187,14 @@ where the file lives, not of what it costs to read.
 tools/test/run.sh
 ```
 
-Seven binaries are built and run under **ASan and UBSan**, plus a Python test for
+Nine binaries are built and run under **ASan and UBSan**, plus a Python test for
 `flipctl`'s serial recovery that needs no Flipper: the decoder against
-spec-accurate synthetic CMD7 and CMD2 cards, the station table reader against
-tables the builder wrote, the stop table reader against both of its indexes, the
-operator table and the user's operators file, the card media screen against a
-captured Oyster, and the icon list and scrolling text views against an ASCII
-framebuffer — which is how their layout, wrapping and scrolling are checked
+spec-accurate synthetic CMD7 and CMD2 cards, the save/load round trip against
+the same cards and against deliberately broken files, the station table reader
+against tables the builder wrote, the stop table reader against both of its
+indexes, the operator table and the user's operators file, the card media screen
+against a captured Oyster, and the icon list and scrolling text views against an
+ASCII framebuffer — which is how their layout, wrapping and scrolling are checked
 without a device.
 
 ## Contributing

@@ -5,6 +5,8 @@
 #pragma once
 
 #include "flipso_reader.h"
+#include "flipso_capture.h"
+#include "flipso_saved.h"
 #include "flipso_operators.h"
 #include "flipso_stations.h"
 #include "flipso_naptan.h"
@@ -18,6 +20,7 @@
 #include <gui/view_dispatcher.h>
 #include <gui/scene_manager.h>
 #include <gui/modules/widget.h>
+#include <gui/modules/text_input.h>
 #include <gui/icon.h>
 #include <notification/notification_messages.h>
 
@@ -30,6 +33,7 @@ typedef enum {
     FlipsoViewMenu,
     FlipsoViewText,
     FlipsoViewWidget,
+    FlipsoViewTextInput,
 } FlipsoView;
 
 typedef enum {
@@ -37,6 +41,11 @@ typedef enum {
     FlipsoCustomEventStartScan = 100,
     /* Posted from the NFC worker thread when a card has been processed. */
     FlipsoCustomEventReaderDone,
+    /* Posted from the scan view when the user asks for the saved cards. */
+    FlipsoCustomEventOpenSaved,
+    /* Posted by the saved-card scene once the file browser has closed. */
+    FlipsoCustomEventSavedPicked,
+    FlipsoCustomEventSavedCancelled,
 } FlipsoCustomEvent;
 
 typedef struct {
@@ -49,6 +58,7 @@ typedef struct {
     Widget* widget;
     FlipsoTextView* text_view;
     FlipsoScanView* scan_view;
+    TextInput* text_input;
 
     FlipsoReader* reader;
     FlipsoReaderStatus status;
@@ -63,6 +73,19 @@ typedef struct {
     FlipsoNaptan* naptan;
 
     ItsoCard card;
+
+    /**
+     * The raw blocks the card gave up, whether it was tapped or loaded. This is
+     * what gets written when the user saves, and what a saved card is decoded
+     * from, so a card on screen behaves the same whichever way it arrived.
+     */
+    FlipsoCapture* capture;
+
+    /** File the card on screen came from; empty when it was just scanned. */
+    FuriString* loaded_path;
+
+    /** Name being edited on the save screen. */
+    char save_name[FLIPSO_SAVED_NAME_LEN];
 
     /** What a card that is not an ITSO one said about itself. */
     FlipsoMedia media;
@@ -96,6 +119,9 @@ void flipso_cat_expiry(
 
 /** Append "dd/mm/yyyy hh:mm" for an ITSO DTS. */
 void flipso_cat_datetime(FuriString* out, uint32_t dts);
+
+/** Append "dd/mm/yyyy hh:mm" for a Unix timestamp. */
+void flipso_cat_time(FuriString* out, uint32_t timestamp);
 
 /** Current time as a Unix timestamp, from the Flipper's RTC. */
 uint32_t flipso_now(void);

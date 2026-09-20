@@ -80,6 +80,23 @@ void flipso_scene_card_on_enter(void* context) {
         furi_string_cat_printf(text, "Dir sequence: %u\n", card->dir_sequence);
     }
 
+    /* Where this came from, for a card opened off the SD card. The read time
+     * matters more than it looks: a balance is only true as of the tap that
+     * wrote it, and a saved card carries no hint of its own age otherwise. */
+    if(!furi_string_empty(app->loaded_path)) {
+        FuriString* name = furi_string_alloc();
+        flipso_saved_name(name, furi_string_get_cstr(app->loaded_path));
+        furi_string_cat_printf(text, "\n\e#Saved card\nName: %s\n", furi_string_get_cstr(name));
+        furi_string_free(name);
+
+        uint32_t read_at = flipso_capture_time(app->capture);
+        if(read_at) {
+            furi_string_cat(text, "Read: ");
+            flipso_cat_time(text, read_at);
+            furi_string_push_back(text, '\n');
+        }
+    }
+
     flipso_text_view_set_text(app->text_view, furi_string_get_cstr(text));
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipsoViewText);
 

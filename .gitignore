@@ -6,6 +6,11 @@ build/
 # Stray copy of the generated test fixture; the real one is tools/test/card_data.h.
 /card_data.h
 
+# Cards pulled off the device for replaying: they hold the card number and the
+# holder's name.
+*.flipso
+dump.txt
+
 /stations.txt
 /stations.dat
 

@@ -64,6 +64,10 @@ void flipso_cat_datetime(FuriString* out, uint32_t dts) {
     flipso_cat_timestamp(out, itso_dts_to_unix(dts), true);
 }
 
+void flipso_cat_time(FuriString* out, uint32_t timestamp) {
+    flipso_cat_timestamp(out, timestamp, true);
+}
+
 void flipso_cat_operator(FuriString* out, const Flipso* app, const char* label, uint16_t oid) {
     const char* name = flipso_operators_name(app->operators, oid);
     if(name) {
@@ -380,6 +384,7 @@ static Flipso* flipso_alloc(void) {
     app->widget = widget_alloc();
     app->text_view = flipso_text_view_alloc();
     app->scan_view = flipso_scan_view_alloc();
+    app->text_input = text_input_alloc();
 
     view_dispatcher_add_view(
         app->view_dispatcher, FlipsoViewScan, flipso_scan_view_get_view(app->scan_view));
@@ -388,8 +393,12 @@ static Flipso* flipso_alloc(void) {
     view_dispatcher_add_view(
         app->view_dispatcher, FlipsoViewText, flipso_text_view_get_view(app->text_view));
     view_dispatcher_add_view(app->view_dispatcher, FlipsoViewWidget, widget_get_view(app->widget));
+    view_dispatcher_add_view(
+        app->view_dispatcher, FlipsoViewTextInput, text_input_get_view(app->text_input));
 
     app->reader = flipso_reader_alloc();
+    app->capture = flipso_capture_alloc();
+    app->loaded_path = furi_string_alloc();
     app->operators = flipso_operators_alloc();
     app->stations = flipso_stations_alloc();
     app->naptan = flipso_naptan_alloc();
@@ -405,6 +414,8 @@ static void flipso_free(Flipso* app) {
     scene_manager_stop(app->scene_manager);
 
     flipso_reader_free(app->reader);
+    flipso_capture_free(app->capture);
+    furi_string_free(app->loaded_path);
     flipso_operators_free(app->operators);
     flipso_stations_free(app->stations);
     flipso_naptan_free(app->naptan);
@@ -413,7 +424,9 @@ static void flipso_free(Flipso* app) {
     view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewMenu);
     view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewText);
     view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewWidget);
+    view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewTextInput);
 
+    text_input_free(app->text_input);
     flipso_scan_view_free(app->scan_view);
     flipso_menu_view_free(app->menu_view);
     flipso_text_view_free(app->text_view);

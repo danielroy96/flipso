@@ -1,5 +1,8 @@
 card_data.h
 test_parse
+test_capture
+test_saved
+stub_data_cards/
 test_parse.dSYM/
 test_stations
 stub_*.dat

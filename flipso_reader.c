@@ -88,6 +88,7 @@ struct FlipsoReader {
 
     ItsoCard* card;
     FlipsoMedia* media;
+    FlipsoCapture* capture;
     FlipsoReaderCallback callback;
     void* context;
     FlipsoReaderStatus status;
@@ -166,6 +167,7 @@ static bool flipso_read_shell(FlipsoReader* reader, MfDesfirePoller* poller) {
         size_t len = flipso_read_file(poller, preferred[i], reader->shell, FLIPSO_SHELL_BUF);
         if(len && itso_looks_like_shell(reader->shell, len)) {
             if(!itso_parse_shell(reader->card, reader->shell, len)) return false;
+            flipso_capture_add(reader->capture, FlipsoBlockShell, 0, reader->shell, len);
             reader->shell_fid = preferred[i];
             return true;
         }
@@ -177,6 +179,7 @@ static bool flipso_read_shell(FlipsoReader* reader, MfDesfirePoller* poller) {
         size_t len = flipso_read_file(poller, fid, reader->shell, FLIPSO_SHELL_BUF);
         if(len && itso_looks_like_shell(reader->shell, len)) {
             if(!itso_parse_shell(reader->card, reader->shell, len)) return false;
+            flipso_capture_add(reader->capture, FlipsoBlockShell, 0, reader->shell, len);
             reader->shell_fid = fid;
             return true;
         }
@@ -444,6 +447,9 @@ static FlipsoReaderStatus flipso_read_other_card(FlipsoReader* reader, MfDesfire
 static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller* poller) {
     ItsoCard* card = reader->card;
     itso_card_reset(card);
+    /* Each attempt starts clean: a transport that got half a card before losing
+     * it must not leave those blocks for the next one to save. */
+    flipso_capture_reset(reader->capture);
 
     MfDesfireError error = mf_desfire_poller_select_application(poller, &flipso_itso_aid);
     if(error != MfDesfireErrorNone) {
@@ -471,6 +477,9 @@ static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller
 
     uint8_t dir_fid = flipso_sector_to_fid(reader, card->sector_count - 1);
     reader->dir_len = flipso_read_file(poller, dir_fid, reader->dir, FLIPSO_DIR_BUF);
+    /* Kept even when it will not parse: a saved card should hold what the card
+     * said, so that a later build with a fix for it can be pointed at the file. */
+    flipso_capture_add(reader->capture, FlipsoBlockDirectory, 0, reader->dir, reader->dir_len);
     if(reader->dir_len == 0 || !itso_parse_directory(card, reader->dir, reader->dir_len)) {
         FURI_LOG_W(TAG, "Directory read or parse failed (file %u)", dir_fid);
         /* The shell alone still gives the card number and expiry, so report
@@ -481,7 +490,11 @@ static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller
     for(uint8_t i = 0; i < card->product_count; i++) {
         ItsoProduct* product = &card->products[i];
         size_t len = flipso_read_product_group(reader, poller, product->dir_index);
-        if(len) itso_parse_ipe(product, reader->group, len, card->sector_size);
+        if(len) {
+            flipso_capture_add(
+                reader->capture, FlipsoBlockProduct, product->dir_index, reader->group, len);
+            itso_parse_ipe(product, reader->group, len, card->sector_size);
+        }
 
         FURI_LOG_D(
             TAG,
@@ -497,7 +510,10 @@ static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller
     if(card->log_dir_index) {
         uint8_t log_fid = flipso_sector_to_fid(reader, card->sector_count - 2);
         size_t len = flipso_read_file(poller, log_fid, reader->log, FLIPSO_LOG_BUF);
-        if(len) itso_parse_log(card, reader->log, len);
+        if(len) {
+            flipso_capture_add(reader->capture, FlipsoBlockLog, 0, reader->log, len);
+            itso_parse_log(card, reader->log, len);
+        }
     }
 
     return FlipsoReaderStatusSuccess;
@@ -540,7 +556,8 @@ static NfcCommand flipso_iso7816_callback(NfcGenericEvent event, void* context) 
     const Iso14443_4aPollerEvent* iso_event = event.event_data;
     if(iso_event->type != Iso14443_4aPollerEventTypeReady) return NfcCommandContinue;
 
-    reader->status = flipso_cmd2_read(reader->cmd2, event.instance, reader->card);
+    reader->status =
+        flipso_cmd2_read(reader->cmd2, event.instance, reader->card, reader->capture);
     reader->callback(reader->status, reader->context);
     return NfcCommandStop;
 }
@@ -589,15 +606,18 @@ void flipso_reader_start(
     FlipsoReader* reader,
     ItsoCard* card,
     FlipsoMedia* media,
+    FlipsoCapture* capture,
     FlipsoReaderCallback callback,
     void* context) {
     furi_assert(reader);
     furi_assert(card);
     furi_assert(media);
+    furi_assert(capture);
     furi_assert(callback);
     if(reader->running) return;
 
     reader->card = card;
+    reader->capture = capture;
     reader->media = media;
     reader->callback = callback;
     reader->context = context;

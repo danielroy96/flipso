@@ -36,10 +36,17 @@ static void flipso_scene_scan_ok_callback(void* context) {
     view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventStartScan);
 }
 
+/* Likewise for Left, which opens the cards already on the SD card. */
+static void flipso_scene_scan_saved_callback(void* context) {
+    Flipso* app = context;
+    view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventOpenSaved);
+}
+
 /* Begin a read with whichever transport the reader is currently on. */
 static void flipso_scene_scan_start_reader(Flipso* app) {
     flipso_reader_start(
-        app->reader, &app->card, &app->media, flipso_scene_scan_reader_callback, app);
+        app->reader, &app->card, &app->media, app->capture, flipso_scene_scan_reader_callback,
+        app);
 }
 
 static void flipso_scene_scan_stop(Flipso* app) {
@@ -55,6 +62,9 @@ void flipso_scene_scan_on_enter(void* context) {
 
     itso_card_reset(&app->card);
     flipso_media_reset(&app->media);
+    flipso_capture_reset(app->capture);
+    /* Whatever was on screen is gone, so the card is nobody's saved card now. */
+    furi_string_reset(app->loaded_path);
     app->status = FlipsoReaderStatusIdle;
     app->selected_product = 0;
     app->card_error_retries = 0;
@@ -62,7 +72,11 @@ void flipso_scene_scan_on_enter(void* context) {
 
     scene_manager_set_scene_state(app->scene_manager, FlipsoSceneScan, FlipsoScanStateIdle);
     flipso_scan_view_set_scanning(app->scan_view, false);
-    flipso_scan_view_set_callback(app->scan_view, flipso_scene_scan_ok_callback, app);
+    /* Asked on every entry rather than once: the user may have just deleted the
+     * last saved card, or saved the first one, and come straight back here. */
+    flipso_scan_view_set_has_saved(app->scan_view, flipso_saved_any());
+    flipso_scan_view_set_callback(
+        app->scan_view, flipso_scene_scan_ok_callback, flipso_scene_scan_saved_callback, app);
 
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipsoViewScan);
 }
@@ -87,6 +101,12 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
     }
 
     if(event.type != SceneManagerEventTypeCustom) return false;
+
+    if(event.event == FlipsoCustomEventOpenSaved) {
+        if(state == FlipsoScanStateScanning) return true;
+        scene_manager_next_scene(app->scene_manager, FlipsoSceneSaved);
+        return true;
+    }
 
     if(event.event == FlipsoCustomEventStartScan) {
         if(state == FlipsoScanStateScanning) return true;
@@ -151,6 +171,9 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
             notification_message(
                 app->notifications,
                 app->card.shell_blocked ? &sequence_error : &sequence_success);
+            /* Stamped here rather than on the worker thread: it is the time the
+             * card was read, and the RTC is the UI thread's to ask. */
+            flipso_capture_set_time(app->capture, flipso_now());
             scene_manager_next_scene(app->scene_manager, FlipsoSceneMenu);
         } else {
             notification_message(app->notifications, &sequence_error);
@@ -165,5 +188,5 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
 void flipso_scene_scan_on_exit(void* context) {
     Flipso* app = context;
     flipso_scene_scan_stop(app);
-    flipso_scan_view_set_callback(app->scan_view, NULL, NULL);
+    flipso_scan_view_set_callback(app->scan_view, NULL, NULL, NULL);
 }

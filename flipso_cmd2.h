@@ -32,9 +32,13 @@ void flipso_cmd2_free(FlipsoCmd2* cmd2);
  * @param cmd2   context holding the scratch buffers.
  * @param poller an activated ISO14443-4A poller; only valid inside its callback.
  * @param card   decoded into; reset before anything is written.
+ * @param capture keeps the raw bytes behind that decode; likewise reset first.
  */
-FlipsoReaderStatus
-    flipso_cmd2_read(FlipsoCmd2* cmd2, Iso14443_4aPoller* poller, ItsoCard* card);
+FlipsoReaderStatus flipso_cmd2_read(
+    FlipsoCmd2* cmd2,
+    Iso14443_4aPoller* poller,
+    ItsoCard* card,
+    FlipsoCapture* capture);
 
 #ifdef __cplusplus
 }

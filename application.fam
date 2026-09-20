@@ -16,6 +16,8 @@ App(
         "flipso_reader.c",
         "flipso_cmd2.c",
         "flipso_media.c",
+        "flipso_capture.c",
+        "flipso_saved.c",
         "flipso_operators.c",
         "flipso_stations.c",
         "flipso_naptan.c",
@@ -35,5 +37,9 @@ App(
     requires=[
         "gui",
         "notification",
+        # Saved cards: the file browser and the "cannot save" message both come
+        # from the dialogs service.
+        "dialogs",
+        "storage",
     ],
 )
