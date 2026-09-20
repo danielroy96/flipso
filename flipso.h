@@ -117,6 +117,22 @@ typedef struct {
 extern const NotificationSequence flipso_sequence_saved;
 extern const NotificationSequence flipso_sequence_deleted;
 
+/**
+ * Text input validator for the name of a saved card, used by both the screen
+ * that names one and the screen that renames one.
+ *
+ * Rejects the characters a file name cannot carry, then defers to the
+ * firmware's own check for a name already taken. The two have to be one
+ * callback because a text input holds only one, and catching a bad character
+ * here rather than at the write is the difference between saying what is wrong
+ * and reporting a failure the user cannot explain.
+ *
+ * @param context a ValidatorIsFile, as validator_is_file_callback expects. Its
+ *                current_name is what makes renaming a card to the name it
+ *                already has allowed rather than a clash with itself.
+ */
+bool flipso_name_validator(const char* text, FuriString* error, void* context);
+
 /* ------------------------------------------------------------------ */
 /* Formatting helpers shared by the detail scenes                      */
 /* ------------------------------------------------------------------ */

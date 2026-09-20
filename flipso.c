@@ -6,6 +6,7 @@
 
 #include "flipso_icons.h"
 
+#include <gui/modules/validators.h>
 #include <furi_hal_rtc.h>
 #include <datetime/datetime.h>
 #include <locale/locale.h>
@@ -41,6 +42,19 @@ const NotificationSequence flipso_sequence_deleted = {
     &message_sound_off,
     NULL,
 };
+
+/* FAT will not take these, and the Flipper's keyboard offers some of them. */
+#define FLIPSO_NAME_FORBIDDEN "\\/:*?\"<>|"
+
+bool flipso_name_validator(const char* text, FuriString* error, void* context) {
+    for(const char* c = text; *c; c++) {
+        if(strchr(FLIPSO_NAME_FORBIDDEN, *c)) {
+            furi_string_printf(error, "Name cannot\ncontain %c", *c);
+            return false;
+        }
+    }
+    return validator_is_file_callback(text, error, context);
+}
 
 uint32_t flipso_now(void) {
     DateTime now;

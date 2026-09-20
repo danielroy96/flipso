@@ -273,6 +273,23 @@ bool flipso_saved_pick(FuriString* path) {
     return picked;
 }
 
+bool flipso_saved_rename(const char* from, const char* to) {
+    furi_assert(from);
+    furi_assert(to);
+
+    /* Renaming to the name it already has: the text input allows it, because
+     * the current name is the one the "already taken" check has to let through,
+     * and the file system need not be asked to move a file onto itself. */
+    if(strcmp(from, to) == 0) return true;
+
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    FS_Error error = storage_common_rename(storage, from, to);
+    furi_record_close(RECORD_STORAGE);
+
+    if(error != FSE_OK) FURI_LOG_E(TAG, "Could not rename %s to %s", from, to);
+    return error == FSE_OK;
+}
+
 void flipso_saved_alert(const char* header, const char* text) {
     DialogsApp* dialogs = furi_record_open(RECORD_DIALOGS);
     DialogMessage* message = dialog_message_alloc();

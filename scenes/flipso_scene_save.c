@@ -25,27 +25,6 @@
 #define FlipsoSaveEventReplace 301
 #define FlipsoSaveEventCancel  302
 
-/* FAT will not take these, and the Flipper's keyboard offers some of them. */
-#define FLIPSO_SAVE_FORBIDDEN "\\/:*?\"<>|"
-
-/**
- * Reject a name that cannot be a file, then fall through to the firmware's own
- * check for one that is already taken.
- *
- * Both have to be one callback because the text input holds only one, and
- * catching the bad character here rather than at the write is the difference
- * between saying what is wrong and reporting a failure the user cannot explain.
- */
-static bool flipso_scene_save_validator(const char* text, FuriString* error, void* context) {
-    for(const char* c = text; *c; c++) {
-        if(strchr(FLIPSO_SAVE_FORBIDDEN, *c)) {
-            furi_string_printf(error, "Name cannot\ncontain %c", *c);
-            return false;
-        }
-    }
-    return validator_is_file_callback(text, error, context);
-}
-
 static void flipso_scene_save_input_callback(void* context) {
     Flipso* app = context;
     view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoSaveEventCommit);
@@ -109,7 +88,7 @@ static void flipso_scene_save_ask_name(Flipso* app) {
      * now can only be a different card someone gave the same name to. */
     ValidatorIsFile* validator =
         validator_is_file_alloc_init(FLIPSO_SAVED_FOLDER, FLIPSO_SAVED_EXTENSION, "");
-    text_input_set_validator(app->text_input, flipso_scene_save_validator, validator);
+    text_input_set_validator(app->text_input, flipso_name_validator, validator);
 
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipsoViewTextInput);
 }

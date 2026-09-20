@@ -111,6 +111,14 @@ bool flipso_saved_pick(FuriString* path);
 bool flipso_saved_delete(const char* path);
 
 /**
+ * Move a saved card to a new name.
+ *
+ * @return false when the move failed, leaving the card where it was. Renaming
+ *         a card onto its own path is a no-op that succeeds.
+ */
+bool flipso_saved_rename(const char* from, const char* to);
+
+/**
  * Show a blocking "something went wrong" dialog with a single OK button.
  *
  * Saving and loading fail for reasons outside the app - no SD card, a full one,

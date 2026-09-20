@@ -46,3 +46,12 @@ bool storage_dir_read(File* file, FileInfo* fileinfo, char* name, uint16_t name_
 bool storage_dir_close(File* file);
 bool storage_simply_mkdir(Storage* storage, const char* path);
 bool storage_simply_remove(Storage* storage, const char* path);
+
+typedef enum {
+    FSE_OK = 0,
+    FSE_NOT_EXIST,
+    FSE_EXIST,
+    FSE_INTERNAL,
+} FS_Error;
+
+FS_Error storage_common_rename(Storage* storage, const char* old_path, const char* new_path);

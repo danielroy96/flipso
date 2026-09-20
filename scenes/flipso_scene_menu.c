@@ -25,6 +25,7 @@ typedef enum {
     FlipsoMenuItemTaps,
     FlipsoMenuItemProducts,
     FlipsoMenuItemSave,
+    FlipsoMenuItemRename,
     FlipsoMenuItemDelete,
 } FlipsoMenuItem;
 
@@ -78,17 +79,24 @@ void flipso_scene_menu_on_enter(void* context) {
             flipso_menu_view_add_item(menu, "Save card", &I_save_10px, FlipsoMenuItemSave);
         }
     } else {
+        /* The name is the only part of a saved card that is the user's rather
+         * than the card's, so it is the only part there is anything to change. */
+        flipso_menu_view_add_item(menu, "Rename card", &I_rename_10px, FlipsoMenuItemRename);
         flipso_menu_view_add_item(menu, "Delete card", &I_delete_10px, FlipsoMenuItemDelete);
     }
 
     /* Restore the highlighted row when coming back from a detail screen. The
-     * last row swaps between Save and Delete as the card is saved, so a
-     * selection stored under one of them has to be read as the other - without
-     * this, saving a card drops the highlight back to the top of the list. */
+     * rows at the bottom swap as the card is saved - Save becomes Rename and
+     * Delete - so a selection stored under a row that is no longer there has to
+     * be read as its counterpart, or saving a card would drop the highlight
+     * back to the top of the list. Rename and Delete both survive as
+     * themselves, which is what keeps Cancel on either of them where it was. */
     uint32_t selected = scene_manager_get_scene_state(app->scene_manager, FlipsoSceneMenu);
-    if(selected == FlipsoMenuItemSave || selected == FlipsoMenuItemDelete) {
-        selected = furi_string_empty(app->loaded_path) ? FlipsoMenuItemSave :
-                                                         FlipsoMenuItemDelete;
+    bool scanned = furi_string_empty(app->loaded_path);
+    if(scanned && (selected == FlipsoMenuItemRename || selected == FlipsoMenuItemDelete)) {
+        selected = FlipsoMenuItemSave;
+    } else if(!scanned && selected == FlipsoMenuItemSave) {
+        selected = FlipsoMenuItemRename;
     }
     flipso_menu_view_set_selected(menu, selected);
 
@@ -119,6 +127,9 @@ bool flipso_scene_menu_on_event(void* context, SceneManagerEvent event) {
         break;
     case FlipsoMenuItemSave:
         next = FlipsoSceneSave;
+        break;
+    case FlipsoMenuItemRename:
+        next = FlipsoSceneRename;
         break;
     case FlipsoMenuItemDelete:
         next = FlipsoSceneDelete;
