@@ -68,7 +68,7 @@ bool flipso_scene_delete_on_event(void* context, SceneManagerEvent event) {
     if(event.event != FlipsoDeleteEventConfirm) return false;
 
     if(flipso_saved_delete(furi_string_get_cstr(app->loaded_path))) {
-        notification_message(app->notifications, &sequence_success);
+        notification_message(app->notifications, &flipso_sequence_deleted);
         /* The file the card came from has gone, so there is nothing sensible
          * left to go back to: the scan screen resets everything on entry. */
         scene_manager_search_and_switch_to_previous_scene(app->scene_manager, FlipsoSceneScan);

@@ -131,7 +131,7 @@ static void flipso_scene_save_commit(Flipso* app) {
         /* The card on screen is now that saved card, so the menu offers to
          * delete it rather than to save it again. */
         furi_string_set(app->loaded_path, app->save_path);
-        notification_message(app->notifications, &sequence_success);
+        notification_message(app->notifications, &flipso_sequence_saved);
         scene_manager_previous_scene(app->scene_manager);
     } else {
         notification_message(app->notifications, &sequence_error);

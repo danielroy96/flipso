@@ -14,6 +14,34 @@
 /* Ticks drive the scan animation; 100 ms is smooth enough and cheap. */
 #define FLIPSO_TICK_PERIOD_MS 100
 
+/* G5 into C6, run together rather than separated by a rest, then out. The
+ * firmware's own note messages are the whole vocabulary the speaker has here:
+ * a message sets a frequency and it sounds until the next one changes it. */
+const NotificationSequence flipso_sequence_saved = {
+    &message_display_backlight_on,
+    &message_blue_255,
+    &message_note_g5,
+    &message_delay_50,
+    &message_note_c6,
+    &message_delay_100,
+    &message_sound_off,
+    NULL,
+};
+
+/* The same two notes the other way up. Red and blue together make the magenta
+ * that separates this from the blue of a card kept. */
+const NotificationSequence flipso_sequence_deleted = {
+    &message_display_backlight_on,
+    &message_red_255,
+    &message_blue_255,
+    &message_note_c6,
+    &message_delay_50,
+    &message_note_g5,
+    &message_delay_100,
+    &message_sound_off,
+    NULL,
+};
+
 uint32_t flipso_now(void) {
     DateTime now;
     furi_hal_rtc_get_datetime(&now);

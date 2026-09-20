@@ -83,6 +83,11 @@ card you called "Mum's bus pass" stays called that, and its balance, season
 ticket and journey log come up to date. Flipso says which record it is about to
 replace, and when that one was read, before it does it.
 
+Each of the three outcomes has its own chirp, because they happen seconds apart
+and you are usually looking at the card rather than the screen: a card **read**
+is the firmware's four rising notes in green, a card **kept** is two quick notes
+rising, in blue, and a card **thrown out** is the same two falling, in magenta.
+
 They live in `/ext/apps_data/flipso/cards/` as `<name>.flipso`, and the same
 file can be replayed through the decoder on a PC:
 
@@ -165,13 +170,13 @@ The Flipper has a **190 KB heap**, and a `.fap` is loaded into it whole before
 `main()` runs, so we have to be a bit careful particularly with the station table.
 
 ```
-dist/flipso.fap       167,456 bytes on disk
+dist/flipso.fap       168,172 bytes on disk
   .fapassets           78,859   ← station table, never mapped into RAM
   .text                31,136   ← in RAM
-  .rodata               9,089   ← in RAM
-  (symbols, relocs)    48,372   ← not loaded
+  .rodata               9,157   ← in RAM
+  (symbols, relocs)    49,020   ← not loaded
   ──────────────────────────
-  TOTAL IN RAM         40,225   21% of the heap
+  TOTAL IN RAM         40,293   21% of the heap
 ```
 
 A card being saved costs a little on top of that, and only while a card is on

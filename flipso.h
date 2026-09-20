@@ -100,6 +100,23 @@ typedef struct {
     uint8_t card_error_retries;
 } Flipso;
 
+/**
+ * The chirps for the two things that happen to a saved card.
+ *
+ * Both are distinct from the firmware's sequence_success, which is what a
+ * completed scan plays: saving happens straight after a read, so the two are
+ * heard seconds apart and have to be told apart without looking. These are two
+ * slurred notes over about a sixth of a second against that one's four staccato
+ * ones over four times as long, so they read as the shorter, smaller events
+ * they are - and they are each other's mirror, rising to file a card away and
+ * falling to throw one out, which is the distinction that matters once the
+ * pair is familiar. The colours follow: green is a card read, blue is a card
+ * kept, magenta is a card gone. Red stays with sequence_error, because none of
+ * these is a failure.
+ */
+extern const NotificationSequence flipso_sequence_saved;
+extern const NotificationSequence flipso_sequence_deleted;
+
 /* ------------------------------------------------------------------ */
 /* Formatting helpers shared by the detail scenes                      */
 /* ------------------------------------------------------------------ */
