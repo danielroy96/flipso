@@ -26,7 +26,10 @@ The one thing that needs the user. Do it once and get everything:
 ```bash
 # 1. wire in the dump module - see tools/debug/flipso_dump.h for the three edits
 # 2. tools/flipper/flipctl deploy
-# 3. ask the user to tap the card once
+# 3. tools/flipper/flipctl arm --shot /tmp/.../armed.png; echo "ARM=$?"
+#    ARM must be 0 before step 4. A deploy leaves the reader switched off, so
+#    "it just deployed" is not a reason to think a tap will be read.
+# 4. ask the user to tap the card once
 tools/flipper/flipctl pull /ext/apps_data/flipso/dump.txt dump.txt
 tools/test/replay.py dump.txt
 ```
@@ -108,5 +111,8 @@ revision and bitmap:
 [D][Flipso] E3: TYP 23.4, 192 bytes, rev 2, bitmap 0x0A
 ```
 
-Watch it with `tools/flipper/flipctl log --grep 'E[0-9]'` while the user taps.
-See the **flipper-hardware** skill for streaming it into the chat live.
+Watch it with `tools/flipper/flipctl log --arm --grep 'E[0-9]'` while the user
+taps — `--arm` starts the scan, proves the NFC field is polling and refuses to
+stream if it is not, so the silence before the tap means something. See the
+**flipper-hardware** skill for streaming it into the chat live, and for why no
+other check settles whether a tap will be read.

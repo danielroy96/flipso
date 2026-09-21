@@ -14,8 +14,12 @@ tools/test/replay.py dump.txt
 $ARGUMENTS
 
 If there is no dump on the device yet, the instrumentation is not wired in —
-see `tools/debug/flipso_dump.h` for the three edits, then deploy and ask the
-user to tap the card once.
+see `tools/debug/flipso_dump.h` for the three edits, then deploy.
+
+Before asking the user to tap, run `tools/flipper/flipctl arm --shot ...` and
+check it exited 0. A deploy leaves the app on its idle scan screen with the
+reader switched off, so "I just deployed" is not a reason to think a tap will
+be read. See the **flipper-hardware** skill.
 
 Afterwards: take the instrumentation back out, and delete the dump from the SD
 card and the working tree. It contains the card number and the holder's name.

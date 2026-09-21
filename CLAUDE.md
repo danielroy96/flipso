@@ -18,6 +18,7 @@ loop, the hardware, and the things that have wasted time before.
 | Compile only | `tools/flipper/flipctl deploy --build-only` |
 | Build, install and launch on the Flipper | `tools/flipper/flipctl deploy` |
 | Check the environment and the device | `tools/flipper/flipctl doctor` |
+| Prove a card can be tapped right now | `tools/flipper/flipctl arm` |
 | Refresh the IDE's index of the sources | `tools/ide/compdb.py` |
 
 Slash commands wrap the common ones: `/deploy`, `/drive`, `/watch`, `/mem`,
@@ -124,19 +125,46 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
 - `ViewPort lockup` and `Incorrect BacklightEnforce use` fire on **every scan**.
   They come from the scan path, not from the detail scenes, and predate the
   current code. Not a symptom of whatever you just changed.
-- **Run `tools/flipper/flipctl ready` before asking the user to tap a card.** It
-  closes and relaunches the app so it is certainly on screen, rebooting first if
-  the loader will not let go. Nothing else tells a usable device from an
-  unusable one: in the state where the app refuses to open, `loader info`, the
-  free heap and the whole `top` thread table are all identical to a healthy run,
-  and only `loader open` answering "Loader is locked" gives it away. Do not
-  send the user to tap on the strength of `doctor` looking fine.
+- **Never ask the user to tap a card until `tools/flipper/flipctl arm` has
+  exited 0.** It relaunches the app, presses Scan, and waits for the NFC
+  poller's own log line — the firmware logs `[D][Nfc] FWT Timeout` every 100 ms
+  while the field is up and nothing at all while it is down, so that line is a
+  measurement that the reader is live rather than an inference that it ought to
+  be. Check the exit status, and Read the `--shot` screenshot. `doctor`,
+  `ready`, a heap figure and a successful deploy are all worthless here: each of
+  them passes in states where a tap does nothing.
+- `flipctl ready` is **not** the pre-tap check, whatever older notes say. Two
+  measured reasons. It ends by asking `loader info`, which reports the app
+  running in every broken state: on 2026-09-21 it printed `ready: Flipso` and
+  exited 0 while a screenshot showed the Flipper desktop. And the scan scene
+  starts idle by design — the field only comes up on OK — so even a healthy
+  `ready` leaves "Ready to read a card" above a reader that is switched off.
+- **Anything that restarts the app disarms the reader.** A deploy, a `ready`, a
+  `close` or a reboot after arming all mean arming again. Arm last, then ask.
+- A screenshot *does* say which screen is up — the dolphin means the app is not
+  on screen no matter what the loader claims, and "Hold an ITSO smartcard"
+  means armed. What it cannot do is prove the reader is on when the idle
+  "Ready to read a card" screen is showing, which is the state that looks
+  fine and reads nothing.
 - `loader info` is not reliable on its own: it keeps reporting an app as running
   after it has exited. The heap is the ground truth, because an app's ~48 KB
   comes back the moment it goes. `flipctl` already cross-checks that way.
 - `loader close` is the only clean way to exit the app. Sending Back presses
   instead wedges the GUI when one lands after the app has gone — the app browser
   is left on screen, input stops being processed, and only a reboot clears it.
+  `flipctl` used to fall back to Back presses when the loader refused, checking
+  between each one; the check costs a round trip, so the app could exit inside
+  the window and the next press still land. That fallback is gone — nothing in
+  `flipctl` injects Back any more, and a close the loader refuses becomes a
+  reboot instead. The wedge it caused is nasty precisely because the device
+  still answers: `loader info` names the app, the heap still shows it resident,
+  and every check says "running" while the desktop owns the screen.
+- **A pipe throws away the exit status.** `flipctl ready | tail -5 && ...`
+  reports `tail`'s success, so a hard failure — a held port, a device that will
+  not come back — reads as a pass. This has already cost one session: the port
+  was held, `ready` never ran, and the device sat at the desktop while
+  everything downstream assumed it was ready. Use `; echo $?`, or
+  `set -o pipefail`.
 - **Do not move megabytes over USB.** The CDC port manages a few KB/s for bulk
   file transfer: the 21 MB NaPTAN table ran for a full hour through
   `storage.py send` without finishing, and halted the device doing it. The same
@@ -162,9 +190,25 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
 ## Working with the user
 
 The Flipper is on the user's desk. Scanning a card needs them to physically tap
-it, so batch those requests: get the build on the device, arm the log, then ask
-once. Everything else — installing, navigating the UI, screenshots, heap
-samples, reboots — is done from here without involving them.
+it, so batch those requests and ask once. Everything else — installing,
+navigating the UI, screenshots, heap samples, reboots — is done from here
+without involving them.
+
+The order for a tap is fixed, and the last two steps are what make the request
+honest rather than hopeful:
+
+1. Get the build on the device (`flipctl deploy`).
+2. `tools/flipper/flipctl arm --shot <scratchpad>/armed.png`, and check the
+   exit status. Non-zero means do not ask.
+3. Read the screenshot. It should say "Hold an ITSO smartcard against the back".
+4. Arm the log stream — `Monitor` on `flipctl log` — so the scan is visible as
+   it happens.
+5. *Then* ask, once, and say what should happen.
+
+Asking without step 2 wastes the user's time in the worst way: they hold a card
+against a dead app, nothing happens, and the device looks broken to them. It
+has happened more than once, so treat a tap request without a green `arm` as a
+mistake, not a shortcut.
 
 Card dumps contain the card number and the holder's name, and so do the cards
 the user saves in the app. Keep them out of the repo. Delete a *dump* from the

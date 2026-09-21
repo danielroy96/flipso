@@ -17,4 +17,9 @@ Then:
 - If the app is not running afterwards, it may have crashed on start — check
   with `tools/flipper/flipctl crash`.
 
+A successful deploy says the `.fap` is installed and launched. It does **not**
+mean a card can be tapped: the scan screen comes up with the reader switched
+off. If the next step needs the user to tap, run `tools/flipper/flipctl arm`
+and check its exit status first.
+
 Follow the **flipper-hardware** skill for the failure modes.

@@ -111,7 +111,8 @@ class Captured(list):
 
 def log_args(**over):
     args = dict(force=False, keys=None, settle=0.1, level="debug",
-                all=True, seconds=2, grep=None)
+                all=True, seconds=2, grep=None, arm=False, shot=None,
+                appid="flipso")
     args.update(over)
     return argparse.Namespace(**args)
 
@@ -178,6 +179,40 @@ def main():
         raised = True
     check("a non-query raises rather than repeating itself", raised)
     check("and did not reopen the port behind our back", len(opened) == 1)
+
+    # The pre-tap check. An armed reader and an app sitting on its idle screen
+    # are indistinguishable from the host in every way except this one: the NFC
+    # poller logs while the field is up and nothing at all while it is down.
+    # Silence must therefore never pass for readiness - that is exactly the
+    # mistake that gets someone sent to tap a card at a dead app.
+    patch([[b"", b"9 [D][Nfc] FWT Timeout\n"]])
+    check("an armed reader is recognised from the NFC poller's own line",
+          flipctl.nfc_field_live("/dev/fake", limit=0.5) is not None)
+
+    patch([[b"", b"", b""]])
+    check("a silent log is not mistaken for an armed reader",
+          flipctl.nfc_field_live("/dev/fake", limit=0.5) is None)
+
+    # A card already lying on the reader is read the moment the field comes up,
+    # so the poller never logs an idle timeout. That is a live reader too.
+    patch([[b"", b"9 [I][Flipso] Shell owner: OID 1 (Example)\n"]])
+    check("a card already on the reader also counts as armed",
+          flipctl.nfc_field_live("/dev/fake", limit=0.5) is not None)
+
+    # An unrelated app being chatty must not be read as an armed NFC field.
+    patch([[b"", b"9 [I][Loader] Starting\n", b""]])
+    check("an unrelated log line does not count as an armed reader",
+          flipctl.nfc_field_live("/dev/fake", limit=0.5) is None)
+
+    # `log --arm` exists so a stream under someone's eyes always means a reader
+    # that will answer. If arming fails it must not stream anyway: an empty log
+    # from a dead app looks just like an empty log from a patient one.
+    flipctl.cmd_arm = lambda a: 1
+    opened = patch([[b"", b"1 [I][Flipso] x\n"]])
+    with Captured():
+        rc = flipctl.cmd_log(log_args(arm=True))
+    check("--arm refuses to stream when the reader could not be armed", rc == 1)
+    check("and does not open the port to stream anyway", len(opened) == 0)
 
     print("FAILED" if failures else "All flipctl recovery tests passed")
     return 1 if failures else 0

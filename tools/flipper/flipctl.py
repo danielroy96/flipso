@@ -374,8 +374,8 @@ def cmd_doctor(args):
                 # at an app that could not receive it.
                 print("                       (the loader reports this even when "
                       "the app is not on screen -")
-                print("                        run `flipctl ready` before relying "
-                      "on it)")
+                print("                        `flipctl arm` before relying on "
+                      "it for a card tap)")
             h = f.heap()
             if h:
                 print(f"  free heap            {h.get('Free heap size', 0):,} of {h.get('Total heap size', 0):,}")
@@ -395,8 +395,14 @@ def cmd_doctor(args):
 
 
 def cmd_ready(args):
-    """Make the device usable, then say so - the check to run before asking
-    someone to tap a card."""
+    """Relaunch the app so the device is usable.
+
+    This is a step, not a guarantee. It proves the CLI answers and that the
+    loader accepted a launch; it cannot prove the app is on screen, because the
+    only thing it can ask afterwards is `loader info`, which says the app is
+    running in every broken state. Use `arm` before asking anyone to tap a
+    card - that checks the NFC field itself.
+    """
     port = find_port()
     require_free_port(port, force=args.force)
     if not cli_alive(port):
@@ -419,6 +425,136 @@ def cmd_ready(args):
               f"{h.get('Total heap size', 0):,}")
     if not args.desktop and running is None:
         return 1
+    if not args.desktop:
+        print("  relaunched, but not verified on screen - run `flipctl arm` "
+              "before asking for a tap")
+    return 0
+
+
+# What the NFC stack logs while the field is up with nothing in it: one line
+# roughly every 100 ms. With the field down the log is completely silent, so
+# this is a positive signal, not an absence of one - and it comes from the
+# firmware's poller rather than from Flipso, so it says the field is really
+# radiating, not that the app thinks it started something.
+#
+# The second group covers the case where a card is already sitting on the
+# reader when the field comes up: the poller finds it immediately and never
+# logs an FWT timeout at all. That is a live reader too.
+NFC_IDLE_POLL = ("FWT Timeout",)
+NFC_CARD_PRESENT = ("Iso14443", "Desfire", "DESFire", "Iso7816", "Flipso")
+
+
+def nfc_field_live(port: str, limit: float = 5.0) -> str | None:
+    """Watch the log for proof that the NFC field is up. Returns the line.
+
+    This is the only observation that separates a device someone can usefully
+    tap a card against from one that will ignore them. Everything else the host
+    can ask - `loader info`, the free heap, the thread table - answers the same
+    way whether Flipso owns the screen or the desktop does, and none of them
+    knows whether the reader within Flipso has been started at all.
+    """
+    import serial
+
+    try:
+        s = open_serial(port)
+    except (serial.SerialException, OSError):
+        return None
+    try:
+        start_log_stream(s, "debug")
+        deadline = time.time() + limit
+        buf = b""
+        while time.time() < deadline:
+            try:
+                chunk = s.read(512)
+            except (serial.SerialException, OSError):
+                return None
+            if not chunk:
+                time.sleep(0.02)
+                continue
+            buf += chunk
+            while b"\n" in buf:
+                raw, buf = buf.split(b"\n", 1)
+                text = log_line(raw)
+                if any(m in text for m in NFC_IDLE_POLL + NFC_CARD_PRESENT):
+                    return text
+    finally:
+        try:
+            s.write(b"\x03")
+            s.close()
+        except Exception:
+            pass
+    return None
+
+
+def cmd_arm(args):
+    """Start a scan and prove the NFC field is polling. Run this, and read its
+    exit status, before asking anyone to tap a card.
+
+    `ready` is not enough and never was. It relaunches the app and then asks
+    `loader info` whether it is running - the one signal this file documents as
+    untrustworthy - so it reports "ready" in the state where the app is resident
+    but the desktop owns the screen. And even when the app really is on screen,
+    Flipso's scan scene starts idle by design: the field only comes up when the
+    user presses OK, because it costs power. So the documented pre-tap check
+    passed in both of the states where a tap does nothing.
+
+    This replaces the guesswork with the one fact that matters: the field is
+    radiating, which is only true if the app is on screen, in the scan scene,
+    and scanning.
+    """
+    port = find_port()
+    require_free_port(port, force=args.force)
+    if not cli_alive(port):
+        print("state: HALTED - the CLI is silent")
+        print()
+        print(HALTED_ADVICE)
+        return 2
+
+    proof = None
+    for attempt in range(1, args.tries + 1):
+        port, message = ensure_usable(port, args, want_running=True)
+        if message == "ready":
+            f = Flipper(port)
+            try:
+                f.press(["ok"], settle=0.3)
+            finally:
+                f.close()
+            time.sleep(0.4)
+            proof = nfc_field_live(port, limit=args.timeout)
+            if proof:
+                break
+        more = " - restarting the app and retrying" if attempt < args.tries else ""
+        print(f"[flipctl] attempt {attempt} of {args.tries}: no NFC activity "
+              f"within {args.timeout:g}s{more}", file=sys.stderr)
+
+    if not proof:
+        # Deliberately loud and deliberately non-zero: the whole point of this
+        # command is that nobody is sent to tap a card on a guess.
+        print()
+        print("NOT ARMED - do not ask anyone to tap a card.")
+        print()
+        print("The app was relaunched and sent OK, and the NFC field never "
+              "started polling.\nTry `tools/flipper/flipctl reboot` and run this "
+              "again; if it still fails,\nthe screen will say why - "
+              "`tools/flipper/flipctl shot`.")
+        return 1
+
+    if args.shot:
+        snapshot(port, args.shot)
+
+    f = Flipper(port)
+    try:
+        h = f.heap()
+    finally:
+        f.close()
+    print("ARMED - the NFC field is polling, a card tapped now will be read")
+    print(f"  proof      {proof}")
+    if h:
+        print(f"  free heap  {h.get('Free heap size', 0):,} of "
+              f"{h.get('Total heap size', 0):,}")
+    # Nothing in the app stops a scan on a timer, so this stays true until the
+    # card arrives, someone presses Back, or something here restarts the app.
+    print("  the scan does not time out - it stays armed until the card arrives")
     return 0
 
 
@@ -514,11 +650,21 @@ def ensure_closed(f: Flipper, tries: int = 3) -> bool:
     goes - so a jump of tens of KB is the real signal, and believing the loader
     instead is what leads to pressing Back once too often.
 
-    And `loader close` is the only clean way out. Injecting Back presses to exit
-    wedges the GUI if one lands after the app has gone: it navigates the
-    desktop's app browser, whose frame then stays on screen with input going
-    nowhere while the next launch runs invisibly behind it. So Back is the
-    fallback for scenes the loader refuses, and never the first move.
+    And `loader close` is the only way out that is worth taking. Injecting Back
+    presses instead wedges the GUI whenever one lands after the app has gone: it
+    navigates the desktop's app browser, whose frame then stays on screen with
+    input going nowhere while the next launch runs invisibly behind it. The
+    device is then in the worst state there is, because it still answers the
+    CLI - `loader info` names the app, the heap still shows it resident - so
+    every later check says the app is up while the desktop owns the screen, and
+    someone gets asked to tap a card at a dead app.
+
+    That cannot be made safe by checking between presses. The check costs a
+    `loader info` and a `free` round trip, so the app can exit inside the window
+    and the next press still lands; the failure is a race, not a missing test.
+    So there are no Back presses here at all. If `loader close` will not do it,
+    say so and let the caller reboot, which is a few seconds slower and always
+    works.
     """
     if f.app_running() is None:
         return True
@@ -530,17 +676,10 @@ def ensure_closed(f: Flipper, tries: int = 3) -> bool:
         return f.heap().get("Free heap size", 0) - baseline > APP_HEAP_JUMP
 
     for _ in range(tries):
-        reply = f.cmd("loader close", limit=10.0, retry=True)
+        f.cmd("loader close", limit=10.0, retry=True)
         time.sleep(1.5)
         if gone():
             return True
-        if "manually" not in reply:
-            continue
-        for _ in range(6):
-            f.key("back")
-            time.sleep(0.4)
-            if gone():
-                return True
     return False
 
 
@@ -742,9 +881,38 @@ def close_running_app(port: str, args) -> str:
     return port
 
 
+def start_log_stream(handle, level: str):
+    """Put a freshly opened port into streaming state."""
+    drain_to_prompt(handle)
+    # The level belongs to this session: sending `log debug` from a previous
+    # connection and `log` here silently gives the system default instead.
+    # That is also why a reconnect has to re-arm rather than just reopen.
+    handle.write(f"log {level}\r\n".encode())
+    time.sleep(0.5)
+    handle.read(65536)
+
+
+def log_line(raw: bytes) -> str:
+    """One log line, stripped of ANSI colour and the carriage return."""
+    return ANSI.sub(b"", raw).decode("utf-8", "replace").replace("\r", "").strip()
+
+
 def cmd_log(args):
     """Stream the device log, line buffered so it works under a Monitor."""
     import serial
+
+    if args.arm:
+        # Arm first and refuse to stream if it fails, so that a stream running
+        # under someone's eyes always means a reader that will answer a card.
+        # An empty log from an unarmed app looks exactly like an empty log from
+        # an armed one waiting patiently, which is how a dead app came to be
+        # watched for a minute while someone tapped at it.
+        rc = cmd_arm(argparse.Namespace(
+            force=args.force, appid=args.appid, no_reboot=False,
+            shot=args.shot, timeout=5.0, tries=2))
+        if rc != 0:
+            return rc
+        print("[flipctl] ---- armed; tap the card now ----", flush=True)
 
     port = find_port()
     require_free_port(port, force=args.force)
@@ -760,14 +928,7 @@ def cmd_log(args):
         time.sleep(0.3)
 
     def arm(handle):
-        """Put a freshly opened port into streaming state."""
-        drain_to_prompt(handle)
-        # The level belongs to this session: sending `log debug` from a previous
-        # connection and `log` here silently gives the system default instead.
-        # That is also why a reconnect has to re-arm rather than just reopen.
-        handle.write(f"log {args.level}\r\n".encode())
-        time.sleep(0.5)
-        handle.read(65536)
+        start_log_stream(handle, args.level)
 
     s = open_serial(port)
     arm(s)
@@ -813,7 +974,7 @@ def cmd_log(args):
             buf += chunk
             while b"\n" in buf:
                 raw, buf = buf.split(b"\n", 1)
-                text = ANSI.sub(b"", raw).decode("utf-8", "replace").replace("\r", "").strip()
+                text = log_line(raw)
                 if not text:
                     continue
                 if pattern:
@@ -899,23 +1060,14 @@ def show_heap(f: Flipper, label: str = "", stats: dict | None = None):
           "(a big gap from free heap means fragmentation)")
 
 
-def cmd_shot(args):
+def snapshot(port: str, out: str, scale: int = 3, invert: bool = False,
+             timeout: float = 20.0):
+    """Capture the screen over RPC and write it as a PNG. Dies on failure."""
     try:
         from flipperzero_protobuf.flipper_proto import FlipperProto
     except ImportError:
         die("flipperzero-protobuf is not installed - run "
             "tools/flipper/flipctl doctor to rebuild the venv")
-
-    port = find_port()
-    require_free_port(port, force=args.force)
-
-    if args.keys or args.settle:
-        f = Flipper(port)
-        try:
-            f.press(args.keys, settle=args.settle)
-        finally:
-            f.close()
-        time.sleep(0.4)
 
     import signal
 
@@ -926,7 +1078,7 @@ def cmd_shot(args):
         raise Timeout()
 
     signal.signal(signal.SIGALRM, on_alarm)
-    signal.alarm(int(args.timeout))
+    signal.alarm(int(timeout))
     proto = None
     try:
         # FlipperProto's constructor opens the port and starts the RPC session;
@@ -934,13 +1086,13 @@ def cmd_shot(args):
         proto = FlipperProto()
         frame = proto.rpc_gui_snapshot_screen()
         signal.alarm(0)
-        write_png(frame, args.out, scale=args.scale, invert=args.invert)
-        print(f"captured {args.out}")
+        write_png(frame, out, scale=scale, invert=invert)
+        print(f"captured {out}")
     except Timeout:
         if not cli_alive(port):
-            die(f"the RPC screenshot did not answer within {args.timeout:g}s, and "
+            die(f"the RPC screenshot did not answer within {timeout:g}s, and "
                 "neither does the CLI.\n\n" + HALTED_ADVICE)
-        die(f"the RPC screenshot did not answer within {args.timeout:g}s, but the "
+        die(f"the RPC screenshot did not answer within {timeout:g}s, but the "
             "CLI is alive - the device is busy (a scan in progress, or ufbt still "
             "holding the port). Retry, or `tools/flipper/flipctl reboot`.")
     finally:
@@ -952,6 +1104,22 @@ def cmd_shot(args):
                 proto.rpc_stop_session()
             except Exception:
                 pass
+
+
+def cmd_shot(args):
+    port = find_port()
+    require_free_port(port, force=args.force)
+
+    if args.keys or args.settle:
+        f = Flipper(port)
+        try:
+            f.press(args.keys, settle=args.settle)
+        finally:
+            f.close()
+        time.sleep(0.4)
+
+    snapshot(port, args.out, scale=args.scale, invert=args.invert,
+             timeout=args.timeout)
     return 0
 
 
@@ -1341,6 +1509,19 @@ def build_parser():
                    help="fail rather than rebooting a device that will not let go")
     s.set_defaults(func=cmd_ready)
 
+    s = sub.add_parser("arm", help="start a scan and prove the NFC field is "
+                                   "polling - the check to run before asking "
+                                   "anyone to tap a card")
+    s.add_argument("--shot", metavar="PATH",
+                   help="also capture the armed screen as a PNG")
+    s.add_argument("--timeout", type=float, default=5.0,
+                   help="seconds to watch for NFC activity (default: 5)")
+    s.add_argument("--tries", type=int, default=2,
+                   help="relaunch-and-retry attempts (default: 2)")
+    s.add_argument("--no-reboot", action="store_true",
+                   help="fail rather than rebooting a device that will not let go")
+    s.set_defaults(func=cmd_arm)
+
     s = sub.add_parser("cmd", help="run Flipper CLI commands")
     s.add_argument("command", nargs="+")
     s.add_argument("--timeout", type=float, default=20.0)
@@ -1380,6 +1561,11 @@ def build_parser():
     s.add_argument("--keys", nargs="+", default=[],
                    help="key presses to send before streaming starts")
     s.add_argument("--settle", type=float, default=0.3)
+    s.add_argument("--arm", action="store_true",
+                   help="run `arm` first and refuse to stream unless the NFC "
+                        "field is polling")
+    s.add_argument("--shot", metavar="PATH",
+                   help="with --arm, capture the armed screen as a PNG")
     s.set_defaults(func=cmd_log)
 
     s = sub.add_parser("mem", help="heap snapshot, sampling, or the app's cost")

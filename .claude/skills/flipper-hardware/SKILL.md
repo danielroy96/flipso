@@ -11,32 +11,94 @@ Run it from the project root. It creates its virtualenv on first use.
 Never use raw `ufbt launch`, and never write a one-off pyserial script: the
 behaviours below exist because past sessions lost time to each of them.
 
-## Before asking the user to do anything
+## Before asking the user to tap a card
 
 ```bash
-tools/flipper/flipctl ready
+tools/flipper/flipctl arm --shot /tmp/.../armed.png
 ```
 
-Closes and relaunches the app so it is certainly on screen and accepting input,
-rebooting first if the loader will not let go. Takes about 15 s. **Run it before
-asking the user to tap a card**, every time - it is the difference between them
-tapping at a live app and tapping at a dead one and having to reboot by hand.
+**This, and nothing else, is what earns the right to ask for a tap.** Run it,
+check its exit status, and Read the screenshot. If it exits non-zero it has
+printed `NOT ARMED`; fix that or tell the user the device needs attention. Do
+not ask for a tap on the strength of anything else - not `doctor`, not `ready`,
+not a heap figure, and not because a deploy just succeeded.
 
-Do not try to check instead. There is no signal that separates a usable device
-from an unusable one:
+`arm` relaunches the app, presses Scan, and then waits for the NFC poller's own
+log line. The firmware logs `[D][Nfc] FWT Timeout` about every 100 ms while the
+field is up and **nothing at all** while it is down, so seeing one is a
+measurement that the field is radiating - which is only true when the app is on
+screen, in the scan scene, and scanning. It exits 0 only when it has seen that
+line.
+
+It restarts and retries on its own if the first attempt does not arm, which
+does happen - measured on 2026-09-21, attempt 1 pressed OK into an app that
+never started polling and attempt 2 succeeded after a reboot. That retry is the
+whole point: it is a failure that used to be handed to the user as "tap now".
+
+Once armed it stays armed. Nothing in the app stops a scan on a timer, so the
+gap between arming and the user actually picking up their card does not matter.
+What does matter is not disturbing it afterwards: **anything that restarts the
+app disarms the reader.** A `deploy`, a `ready`, a `close`, a `reboot` after
+arming all mean you must `arm` again before asking.
+
+### Why `ready` is not the check
+
+`ready` used to be the rule on this page. It was wrong twice over, both
+measured:
+
+- It finishes by asking `loader info` whether the app is running - the one
+  signal this page already called worthless. On 2026-09-21 it printed
+  `ready: Flipso` and exited 0 while a screenshot taken seconds later showed
+  the Flipper desktop. The app was resident, the loader named it, the heap
+  agreed, and it did not own the screen.
+- Even when the app really is on screen, Flipso's scan scene **starts idle on
+  purpose** - the field costs power, so it only comes up when someone presses
+  OK. A completely healthy `ready` still leaves a screen reading "Ready to read
+  a card" above a reader that is switched off.
+
+`ready` is still the right way to get the app up before driving the UI. It is
+not a pre-tap check, and it now says so in its own output.
+
+### What can and cannot tell you the device is usable
 
 | What you might check | Why it does not work |
 | --- | --- |
 | `loader info` | says the app is running in every broken state |
 | free heap | the app's memory is still held, so it looks like a healthy run |
 | `top` thread table | measured byte-for-byte identical, healthy vs unusable |
-| a screenshot | the firmware never says which app owns the screen |
+| `ready` exiting 0 | measured printing `ready: Flipso` at the desktop |
+| an empty log | an unarmed app and an armed one waiting are equally silent |
+| a screenshot | says whether Flipso is on screen - see below - but not whether the reader is on |
+| **`flipctl arm`** | **the field is polling: the only positive proof** |
 
-The one state that *is* visible from the host is the app browser wedge, where
-the loader keeps `LoaderMenu`, `LoaderApplications` and `BrowserWorker` alive on
-top of the app - 25 threads against a healthy 22. That is a real signal but only
-catches one presentation of the fault, which is why `ready` restarts rather than
-inspects.
+A screenshot *does* tell you which screen is up, and the old claim here that it
+cannot was wrong. The firmware never names the app that owns the display, but
+the picture is unmistakable, and all three of these have been captured:
+
+| What the screen shows | What it means |
+| --- | --- |
+| the dolphin | the app is not on screen, whatever `loader info` says |
+| "Ready to read a card" with a `Scan` button | app up, **reader off** - a tap does nothing |
+| "Hold an ITSO smartcard against the back" | armed |
+
+So screenshot freely, and show the user the armed one. Just do not use a
+screenshot *instead of* `arm`: the middle row is the trap, because it looks
+ready and reads nothing.
+
+### Check the exit status, and never hide it
+
+`flipctl` reports failure in its exit status, and a pipe throws that away:
+
+```bash
+tools/flipper/flipctl arm | tail -5      # WRONG: $? is tail's, always 0
+tools/flipper/flipctl arm; echo "ARM=$?" # right
+```
+
+This is not hypothetical. In the session that produced this page, a
+`flipctl ready | tail -5 && ...` swallowed a hard "the serial port is held by
+another process" failure and carried on as though the device had been made
+ready. If you must trim the output of a command whose verdict matters, use
+`set -o pipefail`, or echo `$?` and read it.
 
 ## Check first, once per session
 
@@ -47,6 +109,24 @@ tools/flipper/flipctl doctor
 Reports the port and who is holding it, the host tooling, and — if the device
 answers — what is running and how much heap is free. If there is no port, the
 Flipper is unplugged or in DFU; say so and stop rather than retrying.
+
+What it says about the running app comes from the loader, which is not a
+witness: it names Flipso in states where the desktop owns the screen. Treat
+`doctor` as a check on the *connection*, not on the app.
+
+## Get the app up, to drive it
+
+```bash
+tools/flipper/flipctl ready
+```
+
+Closes and relaunches the app so that whatever scene it was left in is gone and
+the UI can be driven from a known start. Takes about 15 s, and reboots first if
+the loader will not let go.
+
+It cannot tell you the app reached the screen — it has nothing to ask but
+`loader info` — so pair it with a screenshot when that matters, and use `arm`,
+never this, before a card tap.
 
 ## Deploy
 
@@ -113,19 +193,26 @@ changes.
 tools/flipper/flipctl log --seconds 30            # filtered to app/NFC/errors
 tools/flipper/flipctl log --all                   # everything, until stopped
 tools/flipper/flipctl log --grep 'E[0-9]:'        # just the product lines
-tools/flipper/flipctl log --keys ok --seconds 60  # start a scan, then watch
+tools/flipper/flipctl log --arm --seconds 120     # arm, prove it, then watch
 ```
+
+`--arm` runs `arm` first and **refuses to stream unless the field came up**,
+which is the right shape when the whole thing runs under one Monitor: it means
+the silence the user is looking at is an armed reader waiting, not a dead app.
 
 For anything the user has to do — tapping a card, above all — run the log in the
 background and stream it into the chat with the **Monitor** tool, so they can
 see the scan happening as it happens:
 
 ```
-Monitor(command: "tools/flipper/flipctl log --seconds 120",
+Monitor(command: "tools/flipper/flipctl log --arm --seconds 120",
         description: "Flipso debug log from the Flipper")
 ```
 
-Then ask them to tap the card once. Arm the log *before* asking.
+Then ask them to tap the card once. Arm the log *before* asking — and the
+reader before that, which is what `--arm` is for. Watch the first lines: if
+`ARMED` does not appear, the stream stopped instead of starting, and nobody
+should be tapping anything.
 
 - The log level belongs to the session that starts it. `flipctl log` sends
   `log debug` on its own connection, which is why it works; sending `log debug`
@@ -140,7 +227,10 @@ Then ask them to tap the card once. Arm the log *before* asking.
 - Streaming holds the port for its whole duration, so keys cannot be sent while
   it runs. Send them first with `--keys`.
 - An idle app logs nothing. The tool says so explicitly rather than leaving an
-  empty capture to be misread as a broken stream.
+  empty capture to be misread as a broken stream. An *armed* app is not idle:
+  the NFC poller logs `[D][Nfc] FWT Timeout` every 100 ms or so with nothing on
+  the reader. Those lines are the field working, not a fault, and their absence
+  during a scan someone is about to make means the scan is not running.
 
 ## When it goes wrong
 
@@ -151,13 +241,20 @@ Then ask them to tap the card once. Arm the log *before* asking.
 | The port exists but nothing answers | a crashed app halts the device, or an RPC session was left open | `flipctl crash`, then `flipctl reboot` |
 | `the serial port is held by another process` | a log stream or `ufbt` from an earlier session | `flipctl` clears its own helpers; `--force` clears anything |
 | `[flipctl] serial dropped - reconnecting` | macOS dropped the CDC endpoint, usually just after an RPC call (a screenshot, `ufbt launch`) | nothing: the stream reopens and re-arms itself and keeps watching |
-| The screen shows the app browser and nothing responds | a Back press landed after the app exited and wedged the GUI | `flipctl ready` |
-| The app will not open, or the desktop is showing while `loader info` says it runs | a zombie still holds the loader lock: `loader open` answers "Loader is locked" | `flipctl ready` |
+| The screen shows the app browser and nothing responds | a Back press landed after the app exited and wedged the GUI | `flipctl reboot` |
+| The app will not open, or the desktop is showing while `loader info` says it runs | a zombie still holds the loader lock: `loader open` answers "Loader is locked" | `flipctl reboot`, then `flipctl arm` |
+| `arm` says `NOT ARMED` | the app is not on screen, or the OK press did not reach the scan scene | it has already retried and rebooted; `flipctl shot` and look |
 
 `flipctl reboot` is the universal escape hatch: it reboots, waits for the port
 to come back, and reports the fresh heap baseline. It takes about 20 s and is
 safe — it is a development device, and the alternative is asking the user to
 press buttons.
+
+`flipctl` itself never injects Back. It used to, as a fallback when the loader
+refused `loader close`, checking the heap between presses — but that check
+costs a round trip, so the app could exit inside the window and the next press
+still land, which is the wedge in the first row of that table. The fallback is
+now a reboot.
 
 ## Files on the device
 
@@ -173,6 +270,22 @@ tools/flipper/flipctl cmd "storage info /ext" "device_info"
 ## Anything the user must do
 
 Only two things need the user: tapping a card on the reader, and unplugging a
-device that has stopped enumerating. Batch them, ask once, and have the log or
-the screenshot armed first. Installing, navigating, screenshotting, sampling the
-heap and rebooting are all done from here.
+device that has stopped enumerating. Batch them and ask once. Installing,
+navigating, screenshotting, sampling the heap and rebooting are all done from
+here.
+
+For a tap, the order is fixed, and the check is not optional:
+
+1. `flipctl deploy`, if there is anything to install.
+2. `flipctl arm --shot <scratchpad>/armed.png; echo "ARM=$?"` — **and read the
+   status**. Non-zero means do not ask.
+3. Read the screenshot; show it to the user.
+4. `Monitor` the log so the scan is visible as it happens.
+5. Ask, once, and say what should happen.
+
+Steps 1 and 4 both touch the device, but only step 1 disarms it — a log stream
+does not. Anything that restarts the app after step 2 means going back to it.
+
+The cost of getting this wrong is not a wasted command, it is the user holding
+a card against a dead app and concluding the thing is broken. It has happened
+more than once. A tap request without a green `arm` behind it is a mistake.

@@ -1,23 +1,48 @@
 ---
-description: Stream the Flipper's debug log into the chat while the user taps a card
+description: Arm the reader, prove it, and stream the log while the user taps a card
 argument-hint: "[seconds] [--grep PATTERN]"
-allowed-tools: Bash(tools/flipper/flipctl:*)
+allowed-tools: Bash(tools/flipper/flipctl:*), Read
 ---
 
-Arm the device log and stream it into the chat so the user can watch the scan
-happen: $ARGUMENTS
+Get the Flipper into the one state where a tap will be read, prove it, then
+stream the scan into the chat: $ARGUMENTS
 
-Use the **Monitor** tool so the lines appear live:
+**Step 1 — arm the reader and check that it worked.** Nothing else in this
+command matters if this step is skipped:
+
+```bash
+tools/flipper/flipctl arm --shot /tmp/.../armed.png; echo "ARM=$?"
+```
+
+- `ARM=0` and a screenshot reading "Hold an ITSO smartcard against the back":
+  go on. Read the PNG, and show it to the user — it is the evidence that their
+  tap will do something.
+- Anything else: **do not ask for a tap.** `arm` prints why and has already
+  retried and rebooted on its own. Say what is wrong and what you are doing
+  about it.
+
+Do not substitute `ready`, `doctor` or a successful deploy. The app's scan
+screen starts with the reader switched off, and `loader info` reports Flipso
+running even when the desktop owns the screen — so both of those pass in states
+where a tap does nothing. See the **flipper-hardware** skill.
+
+**Step 2 — arm the log** with the **Monitor** tool, so the lines appear live:
 
 ```
 Monitor(command: "tools/flipper/flipctl log --seconds 120",
         description: "Flipso debug log from the Flipper")
 ```
 
-Arm it *before* asking the user to do anything. Then ask them to tap the card
-once, and interpret the lines as they arrive — the `E<n>: TYP x.y` lines are one
-per directory entry on the card.
+**Step 3 — ask the user to tap, once**, and say what to expect.
 
-An idle app logs nothing; the tool says so rather than leaving you guessing.
-Keys cannot be sent while the log holds the port — pass `--keys` to send them
-first. See the **flipper-hardware** skill.
+Then read the lines as they arrive: `E<n>: TYP x.y` is one per directory entry
+on the card. A stream of `[D][Nfc] FWT Timeout` is the field polling with
+nothing on it — that is the armed idle state, not a fault.
+
+`flipctl log --arm` does steps 1 and 2 in one process and refuses to stream
+unless the reader came up, which is the better shape when the whole thing runs
+under a single Monitor.
+
+Keys cannot be sent while the log holds the port; pass `--keys` to send them
+first. Do not restart the app after arming — a deploy, a `ready`, a `close` or
+a reboot all disarm the reader and the arming has to be redone.
