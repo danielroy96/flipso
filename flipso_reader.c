@@ -103,19 +103,36 @@ struct FlipsoReader {
     /* Sector to file mapping derived from the shell (see flipso_sector_to_fid). */
     uint8_t shell_fid;
     bool descending;
+    /** A read stopped because the card stopped answering, not because there was
+     *  nothing to find. Reset per attempt in flipso_read_card(). */
+    bool lost_card;
 };
 
 /**
  * Read a whole file into @p out.
+ *
+ * @param[out] error where the transport stopped, or MfDesfireErrorNone if it
+ *             did not. May be NULL. A zero return says only that no bytes
+ *             arrived, which covers both "there is no such file" and "the card
+ *             left the field"; those want different answers from the caller,
+ *             and the error code is the only thing that tells them apart. A
+ *             short read - fewer bytes than the settings promised - reports
+ *             MfDesfireErrorNone, because the card answered; the caller sees it
+ *             as a length shorter than it asked for.
  * @return number of bytes read, or 0 on any failure.
  */
 static size_t flipso_read_file(
     MfDesfirePoller* poller,
     MfDesfireFileId fid,
     uint8_t* out,
-    size_t capacity) {
+    size_t capacity,
+    MfDesfireError* error) {
+    if(error) *error = MfDesfireErrorNone;
+
     MfDesfireFileSettings settings = {0};
-    if(mf_desfire_poller_read_file_settings(poller, fid, &settings) != MfDesfireErrorNone) {
+    MfDesfireError settings_error = mf_desfire_poller_read_file_settings(poller, fid, &settings);
+    if(settings_error != MfDesfireErrorNone) {
+        if(error) *error = settings_error;
         return 0;
     }
     if(settings.type != MfDesfireFileTypeStandard && settings.type != MfDesfireFileTypeBackup) {
@@ -129,14 +146,70 @@ static size_t flipso_read_file(
     MfDesfireFileData data = {.data = simple_array_alloc(&simple_array_config_uint8_t)};
     size_t read = 0;
 
-    if(mf_desfire_poller_read_file_data(poller, fid, 0, size, &data) == MfDesfireErrorNone) {
+    MfDesfireError data_error = mf_desfire_poller_read_file_data(poller, fid, 0, size, &data);
+    if(data_error == MfDesfireErrorNone) {
         read = simple_array_get_count(data.data);
         if(read > capacity) read = capacity;
         if(read) memcpy(out, simple_array_cget_data(data.data), read);
+        if(read < size) {
+            FURI_LOG_W(
+                TAG, "File %u: short read, %u of %u bytes", fid, (unsigned)read, (unsigned)size);
+        }
+    } else if(error) {
+        *error = data_error;
     }
 
     simple_array_free(data.data);
     return read;
+}
+
+/** True if @p error means the card stopped answering rather than said no. */
+static bool flipso_error_is_card_gone(MfDesfireError error) {
+    return error == MfDesfireErrorNotPresent || error == MfDesfireErrorTimeout;
+}
+
+/**
+ * flipso_read_file() for the ITSO read sequence, remembering a card that
+ * stopped answering.
+ *
+ * Every step of the sequence treats a zero-length read as "nothing here and
+ * carry on", which is right for a file the card does not have and wrong for a
+ * file it simply did not live long enough to send. Only the error code tells
+ * them apart, and only the caller can decide what to do about it, so this
+ * records the distinction and leaves the length alone.
+ */
+static size_t flipso_reader_read_file(
+    FlipsoReader* reader,
+    MfDesfirePoller* poller,
+    MfDesfireFileId fid,
+    uint8_t* out,
+    size_t capacity) {
+    MfDesfireError error = MfDesfireErrorNone;
+    size_t len = flipso_read_file(poller, fid, out, capacity, &error);
+    if(flipso_error_is_card_gone(error)) {
+        FURI_LOG_W(TAG, "Card left the field reading file %u", fid);
+        reader->lost_card = true;
+    }
+    return len;
+}
+
+/**
+ * Log a block of card bytes as hex, for diagnosing a read we then rejected.
+ *
+ * Only ever called on a failure path: a shell is at most 64 bytes, which is two
+ * log lines, and the alternative is asking the user to tap the card again with
+ * a debug build on.
+ */
+static void flipso_log_bytes(const char* what, const uint8_t* data, size_t len) {
+    char hex[3 * 32 + 1];
+    for(size_t offset = 0; offset < len; offset += 32) {
+        size_t chunk = len - offset;
+        if(chunk > 32) chunk = 32;
+        for(size_t i = 0; i < chunk; i++) {
+            snprintf(hex + i * 3, 4, "%02X ", data[offset + i]);
+        }
+        FURI_LOG_D(TAG, "%s[%u]: %s", what, (unsigned)offset, hex);
+    }
 }
 
 /**
@@ -158,33 +231,79 @@ void flipso_log_shell_owner(const ItsoCard* card) {
     FURI_LOG_I(TAG, "Shell owner: OID %u (%s)", card->oid, name ? name : "unknown");
 }
 
+/**
+ * Decide what a shell-shaped file that would not parse tells us.
+ *
+ * Logged rather than acted on: which of these is the intermittent one seen on
+ * the bench is not yet known, and a card that genuinely cannot be decoded must
+ * keep getting a clear error rather than a retry loop.
+ */
+static void flipso_log_shell_rejected(const ItsoCard* card, uint8_t fid, size_t len) {
+    FURI_LOG_W(
+        TAG,
+        "Shell in file %u rejected: %s (%u bytes, claims %u)",
+        fid,
+        itso_shell_reject_name(card->shell_reject),
+        (unsigned)len,
+        (unsigned)card->shell_len * ITSO_SHELL_BLOCK_LEN);
+    /* The checksum separates the two explanations: bytes that are intact but
+     * laid out in a way we do not understand, and bytes that did not survive
+     * the read. Only the second is worth tapping again for. */
+    if(card->secrc_checked) {
+        FURI_LOG_W(
+            TAG,
+            "Shell checksum %s: stored %04X, computed %04X",
+            card->secrc_valid ? "verifies" : "FAILS",
+            card->secrc_stored,
+            card->secrc_computed);
+    } else {
+        FURI_LOG_W(TAG, "Shell too short for its own checksum - read did not finish");
+    }
+}
+
 /** Locate and decode the ITSO Shell Environment Data Group. */
 static bool flipso_read_shell(FlipsoReader* reader, MfDesfirePoller* poller) {
     /* Try the documented location first so the common case costs one read. */
     static const uint8_t preferred[] = {FLIPSO_SHELL_FID_DEFAULT, 0x00};
 
     for(size_t i = 0; i < COUNT_OF(preferred); i++) {
-        size_t len = flipso_read_file(poller, preferred[i], reader->shell, FLIPSO_SHELL_BUF);
+        size_t len =
+            flipso_reader_read_file(reader, poller, preferred[i], reader->shell, FLIPSO_SHELL_BUF);
+        if(reader->lost_card) return false;
         if(len && itso_looks_like_shell(reader->shell, len)) {
-            if(!itso_parse_shell(reader->card, reader->shell, len)) return false;
+            if(!itso_parse_shell(reader->card, reader->shell, len)) {
+                flipso_log_shell_rejected(reader->card, preferred[i], len);
+                flipso_log_bytes("Shell", reader->shell, len);
+                return false;
+            }
             flipso_capture_add(reader->capture, FlipsoBlockShell, 0, reader->shell, len);
             reader->shell_fid = preferred[i];
             return true;
+        }
+        if(len) {
+            FURI_LOG_D(TAG, "File %u is not shell-shaped (%u bytes)", preferred[i], (unsigned)len);
         }
     }
 
     /* Unknown media definition: sweep the application for a shell-shaped file. */
     for(uint8_t fid = 0; fid <= FLIPSO_MAX_FID; fid++) {
         if(fid == FLIPSO_SHELL_FID_DEFAULT || fid == 0x00) continue;
-        size_t len = flipso_read_file(poller, fid, reader->shell, FLIPSO_SHELL_BUF);
+        size_t len =
+            flipso_reader_read_file(reader, poller, fid, reader->shell, FLIPSO_SHELL_BUF);
+        if(reader->lost_card) return false;
         if(len && itso_looks_like_shell(reader->shell, len)) {
-            if(!itso_parse_shell(reader->card, reader->shell, len)) return false;
+            if(!itso_parse_shell(reader->card, reader->shell, len)) {
+                flipso_log_shell_rejected(reader->card, fid, len);
+                flipso_log_bytes("Shell", reader->shell, len);
+                return false;
+            }
             flipso_capture_add(reader->capture, FlipsoBlockShell, 0, reader->shell, len);
             reader->shell_fid = fid;
             return true;
         }
     }
 
+    FURI_LOG_W(TAG, "No shell-shaped file anywhere in the ITSO application");
     return false;
 }
 
@@ -201,12 +320,16 @@ static size_t flipso_read_product_group(
         if(sector == 0 || sector >= card->sector_count) break;
         if(total + card->sector_size > ITSO_MAX_GROUP_LEN) break;
 
-        size_t read = flipso_read_file(
+        size_t read = flipso_reader_read_file(
+            reader,
             poller,
             flipso_sector_to_fid(reader, sector),
             reader->group + total,
             ITSO_MAX_GROUP_LEN - total);
-        if(read == 0) break;
+        /* Stop on a card that has gone as well as on a chain that has ended:
+         * the bytes gathered so far are the front of a product, and decoding
+         * them would report a half-read product as a whole one. */
+        if(read == 0 || reader->lost_card) break;
         total += read;
 
         uint8_t next = itso_sct_entry(card, reader->dir, reader->dir_len, sector);
@@ -450,6 +573,7 @@ static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller
     /* Each attempt starts clean: a transport that got half a card before losing
      * it must not leave those blocks for the next one to save. */
     flipso_capture_reset(reader->capture);
+    reader->lost_card = false;
 
     MfDesfireError error = mf_desfire_poller_select_application(poller, &flipso_itso_aid);
     if(error != MfDesfireErrorNone) {
@@ -465,6 +589,16 @@ static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller
     }
 
     if(!flipso_read_shell(reader, poller)) {
+        /* A shell that would not parse and a shell that never arrived are not
+         * the same problem, and only the first is the card's. Measured on the
+         * bench: a CMD7 SWR card dropped out reading file 15 and read cleanly
+         * on the retry, having spent that tap on "Unreadable shell" - which is
+         * a statement about the card, made on the strength of bytes that were
+         * never seen. The select is already treated this way one step above. */
+        if(reader->lost_card) {
+            FURI_LOG_W(TAG, "Shell read lost the card");
+            return FlipsoReaderStatusCardLost;
+        }
         FURI_LOG_W(TAG, "ITSO application present but no readable shell");
         return FlipsoReaderStatusBadShell;
     }
@@ -476,7 +610,8 @@ static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller
     reader->descending = (reader->shell_fid + 1) >= card->sector_count;
 
     uint8_t dir_fid = flipso_sector_to_fid(reader, card->sector_count - 1);
-    reader->dir_len = flipso_read_file(poller, dir_fid, reader->dir, FLIPSO_DIR_BUF);
+    reader->dir_len = flipso_reader_read_file(reader, poller, dir_fid, reader->dir, FLIPSO_DIR_BUF);
+    if(reader->lost_card) return FlipsoReaderStatusCardLost;
     /* Kept even when it will not parse: a saved card should hold what the card
      * said, so that a later build with a fix for it can be pointed at the file. */
     flipso_capture_add(reader->capture, FlipsoBlockDirectory, 0, reader->dir, reader->dir_len);
@@ -490,7 +625,7 @@ static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller
     for(uint8_t i = 0; i < card->product_count; i++) {
         ItsoProduct* product = &card->products[i];
         size_t len = flipso_read_product_group(reader, poller, product->dir_index);
-        if(len) {
+        if(len && !reader->lost_card) {
             flipso_capture_add(
                 reader->capture, FlipsoBlockProduct, product->dir_index, reader->group, len);
             itso_parse_ipe(product, reader->group, len, card->sector_size);
@@ -505,11 +640,30 @@ static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller
             (unsigned)len,
             product->format_rev,
             product->bitmap);
+
+        /* A product that could not be read is not a product the card does not
+         * have. Carrying on would finish the scan with entries the directory
+         * names and nothing behind them, chirp success and show the user a card
+         * that looks read and is empty - so stop, and let the scan retry the
+         * way it does for a card that drops out anywhere else. Stopping at the
+         * first one also saves the timeout on each remaining file, which is
+         * most of the second the failed read takes. */
+        if(reader->lost_card) {
+            FURI_LOG_W(TAG, "Card left the field at entry %u of %u", i + 1, card->product_count);
+            return FlipsoReaderStatusCardLost;
+        }
     }
 
     if(card->log_dir_index) {
         uint8_t log_fid = flipso_sector_to_fid(reader, card->sector_count - 2);
-        size_t len = flipso_read_file(poller, log_fid, reader->log, FLIPSO_LOG_BUF);
+        size_t len = flipso_reader_read_file(reader, poller, log_fid, reader->log, FLIPSO_LOG_BUF);
+        /* The journey list is the last thing read and the same argument applies
+         * to it: a card showing four of its taps because the fifth did not
+         * arrive is worse than being asked to tap again. */
+        if(reader->lost_card) {
+            FURI_LOG_W(TAG, "Card left the field reading the journey log");
+            return FlipsoReaderStatusCardLost;
+        }
         if(len) {
             flipso_capture_add(reader->capture, FlipsoBlockLog, 0, reader->log, len);
             itso_parse_log(card, reader->log, len);

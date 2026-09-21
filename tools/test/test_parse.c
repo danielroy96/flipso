@@ -369,6 +369,67 @@ static void shell_checksum(void) {
     free(truncated);
 }
 
+/*
+ * A rejected shell has to say which test rejected it.
+ *
+ * The distinction is what separates a card whose layout Flipso does not know
+ * from a card whose bytes did not arrive intact - the error screen shows one
+ * of these, and a read that is retried on the second is a hang on the first.
+ */
+static void shell_reject_reasons(void) {
+    ItsoCard card;
+
+    itso_card_reset(&card);
+    check("a shell that parses reports no rejection",
+          itso_parse_shell(&card, card_shell, sizeof(card_shell)) &&
+              card.shell_reject == ItsoShellAccepted);
+
+    /* A buffer too short to hold the header: what a truncated read looks like. */
+    itso_card_reset(&card);
+    check("a short buffer is rejected as short",
+          !itso_parse_shell(&card, card_shell, 23) && card.shell_reject == ItsoShellRejectShort);
+
+    /* Long enough, but not ITSO's issuer number. */
+    uint8_t* wrong_iin = malloc(sizeof(card_shell));
+    memcpy(wrong_iin, card_shell, sizeof(card_shell));
+    wrong_iin[3] ^= 0xFF;
+    itso_card_reset(&card);
+    check("a foreign IIN is rejected as such",
+          !itso_parse_shell(&card, wrong_iin, sizeof(card_shell)) &&
+              card.shell_reject == ItsoShellRejectIin);
+    free(wrong_iin);
+
+    /* Bitmap bit 0 clear: a compact shell, with no directory behind it. */
+    uint8_t* compact = malloc(sizeof(card_shell));
+    memcpy(compact, card_shell, sizeof(card_shell));
+    compact[0] &= (uint8_t)~0x02; /* Bitmap starts at bit 6, so bit 0 is byte 0 bit 1. */
+    compact[1] &= (uint8_t)~0xF8;
+    itso_card_reset(&card);
+    check("a compact shell is rejected as compact",
+          !itso_parse_shell(&card, compact, sizeof(card_shell)) &&
+              card.shell_reject == ItsoShellRejectCompact);
+    free(compact);
+
+    /* Header intact, geometry impossible. */
+    uint8_t* geometry = malloc(sizeof(card_shell));
+    memcpy(geometry, card_shell, sizeof(card_shell));
+    geometry[16] = 0; /* Sector size zero. */
+    itso_card_reset(&card);
+    check("impossible geometry is rejected as geometry",
+          !itso_parse_shell(&card, geometry, sizeof(card_shell)) &&
+              card.shell_reject == ItsoShellRejectGeometry);
+    /* The checksum runs before the geometry check, so a shell rejected for its
+     * geometry still says whether the bytes themselves arrived intact - which
+     * is the whole point of reporting it on a failed read. */
+    check("a shell rejected for geometry still carries a checksum verdict",
+          card.secrc_checked && !card.secrc_valid);
+    free(geometry);
+
+    /* Nothing offered at all reads as "not read", not as an accepted shell. */
+    itso_card_reset(&card);
+    check("an untouched card reports no shell", card.shell_reject == ItsoShellRejectNone);
+}
+
 static void oversized_directory(void) {
     ItsoCard card;
     itso_card_reset(&card);
@@ -748,6 +809,7 @@ int main(void) {
 
     printf("\n== Robustness ==\n");
     bus_stop_locations();
+    shell_reject_reasons();
     oversized_directory();
     robustness();
 

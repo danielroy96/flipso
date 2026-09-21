@@ -68,6 +68,7 @@ void flipso_scene_scan_on_enter(void* context) {
     app->status = FlipsoReaderStatusIdle;
     app->selected_product = 0;
     app->card_error_retries = 0;
+    app->card_dropped = false;
     flipso_reader_reset_transport(app->reader);
 
     scene_manager_set_scene_state(app->scene_manager, FlipsoSceneScan, FlipsoScanStateIdle);
@@ -115,6 +116,7 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
             app->scene_manager, FlipsoSceneScan, FlipsoScanStateScanning);
         flipso_scan_view_set_scanning(app->scan_view, true);
         app->card_error_retries = 0;
+        app->card_dropped = false;
 
         /* Reading takes a second or two of holding still; keep the screen lit and
          * the LED pulsing so it is obvious the app is waiting on the user. */
@@ -134,10 +136,16 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
         /* Stop polling from the UI thread: the poller cannot stop itself. */
         flipso_reader_stop(app->reader);
 
+        if(app->status == FlipsoReaderStatusCardError ||
+           app->status == FlipsoReaderStatusCardLost) {
+            app->card_dropped = true;
+        }
+
         /* The card left the field part way through. Try the same transport
          * again rather than concluding anything from it: a half-finished read
          * says nothing about what the card is. */
-        if(app->status == FlipsoReaderStatusCardError &&
+        if((app->status == FlipsoReaderStatusCardError ||
+            app->status == FlipsoReaderStatusCardLost) &&
            app->card_error_retries < FLIPSO_CARD_ERROR_RETRIES) {
             app->card_error_retries++;
             flipso_scene_scan_start_reader(app);
@@ -152,13 +160,29 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
          * A card that kept dropping out gets the same treatment, because some
          * cards answer a command set they do not implement with silence rather
          * than with an error - and a CMD2 card that did that would never be
-         * read if a timeout ended the scan here. */
+         * read if a timeout ended the scan here.
+         *
+         * FlipsoReaderStatusCardLost is deliberately not in that list. It means
+         * the ITSO application had already selected when the card went, so this
+         * transport is the right one and the next could only report that it
+         * found no ITSO application - which is how a card that had just named
+         * its operator came to be called "Not an ITSO card". */
         if((app->status == FlipsoReaderStatusNotItso ||
             app->status == FlipsoReaderStatusCardError) &&
            flipso_reader_next_transport(app->reader)) {
             app->card_error_retries = 0;
             flipso_scene_scan_start_reader(app);
             return true;
+        }
+
+        /* Every transport has had its turn and the last one found no ITSO
+         * application. That is only worth saying of a card we managed to ask
+         * properly: if the card was dropping out of the field along the way,
+         * the more likely story is that it left before it could answer, and
+         * "Not an ITSO card" is a verdict on a card nobody ever read. Say the
+         * read failed, which is both true and the one the user can act on. */
+        if(app->status == FlipsoReaderStatusNotItso && app->card_dropped) {
+            app->status = FlipsoReaderStatusCardError;
         }
 
         flipso_scene_scan_stop(app);

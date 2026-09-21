@@ -31,6 +31,10 @@ void flipso_scene_error_on_enter(void* context) {
 
     const char* title;
     const char* detail;
+    /* Only the unreadable-shell case builds its text, and it has to outlive
+     * this function: the widget element is handed a const char*, and nothing in
+     * its contract promises a copy. Freed in on_exit alongside the widget. */
+    FuriString* built = NULL;
     const Icon* icon;
     const char* button = "Scan again";
     uint32_t action = FlipsoErrorEventRetry;
@@ -64,12 +68,42 @@ void flipso_scene_error_on_enter(void* context) {
     case FlipsoReaderStatusBadShell:
         icon = &I_bad_shell_14px;
         title = "Unreadable shell";
-        detail = "The ITSO application is\n"
-                 "present but its shell\n"
-                 "could not be decoded.\n\n"
-                 "The card may use a media\n"
-                 "definition Flipso does\n"
-                 "not know about.";
+        /* Built rather than fixed, because the two causes want opposite advice:
+         * bytes that fail their own checksum mean the read was at fault and
+         * tapping again is worth doing, while bytes that verify mean the card
+         * is laid out in a way Flipso does not understand and tapping again
+         * will say exactly the same thing. */
+        built = furi_string_alloc_set(
+            "The ITSO application is\n"
+            "present but its shell\n"
+            "could not be decoded.\n\n");
+        if(app->card.secrc_checked && !app->card.secrc_valid) {
+            furi_string_cat(
+                built,
+                "The shell failed its own\n"
+                "checksum, so the read did\n"
+                "not come through cleanly.\n"
+                "Hold the card still and\n"
+                "try again.\n\n");
+        } else if(app->card.secrc_checked) {
+            furi_string_cat(
+                built,
+                "The shell passed its own\n"
+                "checksum, so the card may\n"
+                "use a media definition\n"
+                "Flipso does not know\n"
+                "about.\n\n");
+        } else {
+            furi_string_cat(
+                built,
+                "The card may use a media\n"
+                "definition Flipso does\n"
+                "not know about.\n\n");
+        }
+        /* The reason itself goes last: it is for a bug report, not for the user. */
+        furi_string_cat_printf(
+            built, "Reason: %s", itso_shell_reject_name(app->card.shell_reject));
+        detail = furi_string_get_cstr(built);
         break;
     default:
         icon = &I_read_failed_14px;
@@ -93,6 +127,8 @@ void flipso_scene_error_on_enter(void* context) {
 
     scene_manager_set_scene_state(app->scene_manager, FlipsoSceneError, action);
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipsoViewWidget);
+
+    app->error_detail = built;
 }
 
 bool flipso_scene_error_on_event(void* context, SceneManagerEvent event) {
@@ -117,4 +153,8 @@ bool flipso_scene_error_on_event(void* context, SceneManagerEvent event) {
 void flipso_scene_error_on_exit(void* context) {
     Flipso* app = context;
     widget_reset(app->widget);
+    if(app->error_detail) {
+        furi_string_free(app->error_detail);
+        app->error_detail = NULL;
+    }
 }

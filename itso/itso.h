@@ -90,6 +90,23 @@ typedef enum {
     ItsoTypMultiUse = 29,
 } ItsoTyp;
 
+/**
+ * Why itso_parse_shell() refused a block of bytes.
+ *
+ * A failed shell read is the one error the user sees with no way to tell a
+ * card Flipso does not understand from a card it simply did not read cleanly,
+ * so the parser records which test rejected the bytes rather than only that
+ * one did.
+ */
+typedef enum {
+    ItsoShellRejectNone, /**< No shell has been offered to the parser yet. */
+    ItsoShellRejectShort, /**< Fewer bytes than the header occupies. */
+    ItsoShellRejectIin, /**< Bytes 2-4 are not ITSO's 63 35 97. */
+    ItsoShellRejectCompact, /**< Bitmap bit 0 clear: no directory to walk. */
+    ItsoShellRejectGeometry, /**< Sector or directory sizes out of range. */
+    ItsoShellAccepted,
+} ItsoShellReject;
+
 /** Lifecycle of a product, derived from the Sector Chain Table terminator. */
 typedef enum {
     ItsoProductStatusUnknown,
@@ -373,6 +390,7 @@ typedef struct {
 typedef struct {
     /* --- ITSO Shell Environment Data Group (TS 1000-2 clause 4) --- */
     bool shell_valid;
+    ItsoShellReject shell_reject; /**< Which test rejected the shell, if one did. */
     char isrn[ITSO_ISRN_DIGITS + 1]; /**< 18-digit card number, IIN+OID+ISSN+check. */
     bool isrn_check_ok; /**< Luhn check digit verifies. */
     uint32_t iin; /**< Issuer Identification Number as a decimal value. */
@@ -581,6 +599,7 @@ const char* itso_entitlement_name(uint8_t code);
 const char* itso_profile_name(uint8_t code);
 const char* itso_transaction_name(uint8_t code);
 const char* itso_status_name(ItsoProductStatus status);
+const char* itso_shell_reject_name(ItsoShellReject reject);
 
 /** EN1545 PaymentMeansCode, e.g. "Cash" (TS 1000-5 annex A.12). */
 const char* itso_payment_name(uint8_t code);

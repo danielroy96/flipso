@@ -483,6 +483,15 @@ FlipsoReaderStatus flipso_cmd2_read(
     }
 
     if(!flipso_cmd2_read_directory(cmd2, poller, card)) {
+        /* Same distinction the shell read above makes: a directory that would
+         * not parse is a card we cannot decode, a directory that never arrived
+         * is a card that went away, and only the second is worth tapping again
+         * for. Reported rather than shrugged off, because carrying on would
+         * finish with a card that looks read and has nothing on it. */
+        if(cmd2->link_error) {
+            FURI_LOG_W(TAG, "Card left the field reading the directory (CMD2)");
+            return FlipsoReaderStatusCardLost;
+        }
         FURI_LOG_W(TAG, "CMD2 directory read or parse failed");
         /* The shell alone still gives the card number and expiry, so report
          * success and let the UI show what we have. Nothing is captured: unlike
@@ -496,7 +505,7 @@ FlipsoReaderStatus flipso_cmd2_read(
     for(uint8_t i = 0; i < card->product_count; i++) {
         ItsoProduct* product = &card->products[i];
         size_t len = flipso_cmd2_read_group(cmd2, poller, card, product->dir_index);
-        if(len) {
+        if(len && !cmd2->link_error) {
             flipso_capture_add(
                 capture, FlipsoBlockProduct, product->dir_index, cmd2->group, len);
             itso_parse_ipe(product, cmd2->group, len, card->sector_size);
@@ -511,12 +520,22 @@ FlipsoReaderStatus flipso_cmd2_read(
             (unsigned)len,
             product->format_rev,
             product->bitmap);
+
+        if(cmd2->link_error) {
+            FURI_LOG_W(
+                TAG, "Card left the field at entry %u of %u (CMD2)", i + 1, card->product_count);
+            return FlipsoReaderStatusCardLost;
+        }
     }
 
     /* CMD2 reserves no sector for the cyclic log: it is an ordinary data group
      * starting at the sector its Directory entry names, exactly like a product. */
     if(card->log_dir_index) {
         size_t len = flipso_cmd2_read_group(cmd2, poller, card, card->log_dir_index);
+        if(cmd2->link_error) {
+            FURI_LOG_W(TAG, "Card left the field reading the journey log (CMD2)");
+            return FlipsoReaderStatusCardLost;
+        }
         if(len) {
             flipso_capture_add(capture, FlipsoBlockLog, 0, cmd2->group, len);
             itso_parse_log(card, cmd2->group, len);

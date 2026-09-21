@@ -195,6 +195,23 @@ const char* itso_status_name(ItsoProductStatus status) {
     }
 }
 
+const char* itso_shell_reject_name(ItsoShellReject reject) {
+    switch(reject) {
+    case ItsoShellRejectShort:
+        return "Too short";
+    case ItsoShellRejectIin:
+        return "Bad IIN";
+    case ItsoShellRejectCompact:
+        return "Compact shell";
+    case ItsoShellRejectGeometry:
+        return "Bad geometry";
+    case ItsoShellAccepted:
+        return "Accepted";
+    default:
+        return "Not read";
+    }
+}
+
 /* EN1545 PaymentMeansCode, reproduced in TS 1000-5 annex A.12. ITSO stores the
  * code in four bits, so only the sixteen codes below can appear. */
 const char* itso_payment_name(uint8_t code) {

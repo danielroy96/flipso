@@ -84,6 +84,9 @@ typedef struct {
     /** File the card on screen came from; empty when it was just scanned. */
     FuriString* loaded_path;
 
+    /** Detail text built by the error scene, alive only while that scene is. */
+    FuriString* error_detail;
+
     /** Where the save screen is about to write: a new file, or one being replaced. */
     FuriString* save_path;
 
@@ -105,6 +108,16 @@ typedef struct {
 
     /** Reads lost to the card leaving the field during the current scan. */
     uint8_t card_error_retries;
+
+    /**
+     * The card dropped out at least once during this scan, on any transport.
+     *
+     * Unlike card_error_retries this is not cleared when the scan moves on to
+     * the next transport, because what it is for is the verdict at the end:
+     * a scan that never once got a clean look at the card cannot conclude
+     * anything about what the card is.
+     */
+    bool card_dropped;
 } Flipso;
 
 /**

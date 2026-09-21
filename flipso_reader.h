@@ -48,6 +48,16 @@ typedef enum {
     FlipsoReaderStatusNotItso, /**< No ITSO application in this transport. */
     FlipsoReaderStatusBadShell, /**< The ITSO application is present but unreadable. */
     FlipsoReaderStatusCardError, /**< The card moved away or the read failed. */
+    /**
+     * The card moved away part way through an ITSO read.
+     *
+     * Distinct from CardError because of what has already been proved by the
+     * time it happens: the ITSO application selected, so this is an ITSO card
+     * in this transport and there is no point asking another one. CardError can
+     * arrive before anything is known about the card, which is why that one
+     * does move on. Both are worth retrying.
+     */
+    FlipsoReaderStatusCardLost,
     FlipsoReaderStatusOyster, /**< A TfL Oyster: known, and deliberately not decoded. */
 } FlipsoReaderStatus;
 

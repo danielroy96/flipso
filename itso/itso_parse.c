@@ -24,11 +24,28 @@ void itso_card_reset(ItsoCard* card) {
 /* ITSO Shell Environment Data Group (TS 1000-2 clause 4)             */
 /* ------------------------------------------------------------------ */
 
-bool itso_looks_like_shell(const uint8_t* data, size_t len) {
+/**
+ * The header tests, reported individually.
+ *
+ * itso_looks_like_shell() and itso_shell_card_number() both answer yes or no;
+ * this is the same work with the reason kept, so that a rejected shell can say
+ * which test it failed. ItsoShellAccepted means only that the header is
+ * plausible - the geometry has not been looked at yet.
+ */
+static ItsoShellReject itso_shell_header_reject(const uint8_t* data, size_t len) {
     /* The IIN is the only fixed marker: ITSO's registered issuer number, 633597,
      * held as six BCD digits at byte 2. */
-    if(len < 24) return false;
-    return data[2] == 0x63 && data[3] == 0x35 && data[4] == 0x97;
+    if(len < 24) return ItsoShellRejectShort;
+    if(data[2] != 0x63 || data[3] != 0x35 || data[4] != 0x97) return ItsoShellRejectIin;
+    /* A compact shell (bitmap zero) carries only a format version code: there is
+     * no directory to walk, so there is nothing for us to show. */
+    if((itso_bits(data, 6, 6) & 0x01) == 0) return ItsoShellRejectCompact;
+    return ItsoShellAccepted;
+}
+
+bool itso_looks_like_shell(const uint8_t* data, size_t len) {
+    ItsoShellReject reject = itso_shell_header_reject(data, len);
+    return reject != ItsoShellRejectShort && reject != ItsoShellRejectIin;
 }
 
 /** Luhn "double-add-double" check over the 18 ISRN digits (ISO/IEC 7812-1). */
@@ -50,11 +67,7 @@ static bool itso_isrn_check(const char* isrn) {
 }
 
 bool itso_shell_card_number(const uint8_t* data, size_t len, char* out) {
-    if(!itso_looks_like_shell(data, len)) return false;
-
-    /* A compact shell (bitmap zero) carries only a format version code: there is
-     * no directory to walk, so there is nothing for us to show. */
-    if((itso_bits(data, 6, 6) & 0x01) == 0) return false;
+    if(itso_shell_header_reject(data, len) != ItsoShellAccepted) return false;
 
     /* ISRN = IIN(6) + OID(4) + ISSN(7) + check digit, all BCD. TS 1000-2 4.1.4. */
     itso_bcd(data, 16, 6, out);
@@ -65,7 +78,9 @@ bool itso_shell_card_number(const uint8_t* data, size_t len, char* out) {
 }
 
 bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
-    if(!itso_shell_card_number(data, len, card->isrn)) return false;
+    card->shell_reject = itso_shell_header_reject(data, len);
+    if(card->shell_reject != ItsoShellAccepted) return false;
+    itso_shell_card_number(data, len, card->isrn);
 
     uint8_t bitmap = itso_bits(data, 6, 6);
     card->isrn_check_ok = itso_isrn_check(card->isrn);
@@ -123,6 +138,7 @@ bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
     /* Sanity-check the geometry before anything downstream trusts it. */
     if(card->sector_size == 0 || card->sector_count < 4 || card->dir_entries == 0 ||
        card->dir_entries > ITSO_MAX_PRODUCTS || card->sct_len == 0 || card->sct_len > 64) {
+        card->shell_reject = ItsoShellRejectGeometry;
         return false;
     }
 
