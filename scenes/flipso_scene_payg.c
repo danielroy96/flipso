@@ -47,6 +47,10 @@ void flipso_scene_payg_on_enter(void* context) {
         furi_string_cat_printf(text, "Status: %s\n", itso_status_name(product->status));
 
         flipso_cat_purse_terms(text, product);
+        /* Last, because the terms are what the purse is and the history is what
+         * has happened to it: a card that has been read more than once can
+         * carry several screenfuls of the latter. */
+        flipso_cat_value_history(text, product);
     }
 
     if(!found) {

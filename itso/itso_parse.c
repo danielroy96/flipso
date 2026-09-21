@@ -15,7 +15,6 @@
 #define ITSO_IPE_BLOCK_LEN   4 /* BL for every IPE type we decode. */
 #define ITSO_INSTANCE_ID_LEN 8
 #define ITSO_SEAL_LEN        8
-#define ITSO_VALUE_RECORD_LEN 15
 #define ITSO_DIR_ENTRY_LEN   5
 
 void itso_card_reset(ItsoCard* card) {
@@ -289,41 +288,146 @@ static bool itso_ts_newer(uint16_t a, uint16_t b) {
     return delta != 0 && delta < 0x800;
 }
 
+uint8_t itso_value_records(
+    const uint8_t* group,
+    size_t len,
+    uint8_t sector_size,
+    size_t* offset) {
+    /* The value group starts at a sector boundary, so its offset cannot be found
+     * without a sector size. A shell that reached the transports has one, but the
+     * decoder is also driven directly by the host tests. */
+    if(sector_size == 0 || len < 2) return 0;
+
+    size_t dataset_len = (size_t)itso_bits(group, 0, 6) * ITSO_IPE_BLOCK_LEN;
+    if(dataset_len < 4 || dataset_len > len) return 0;
+
+    /* TS 1000-2 clause 5.1.5.3 rule 2: the group begins in the next chained
+     * sector after the one the IPE data group ends in. */
+    size_t ipe_group_len = dataset_len + ITSO_INSTANCE_ID_LEN + ITSO_SEAL_LEN;
+    size_t sectors_used = (ipe_group_len + sector_size - 1) / sector_size;
+    size_t vg_offset = sectors_used * sector_size;
+    if(vg_offset + 2 > len) return 0;
+
+    /* Table 14: the upper five flags of VGBitMap count the records the group
+     * supports, and its LSB flags a Value Group Extension we have no use for. */
+    uint8_t vg_bitmap = itso_bits(group + vg_offset, 6, 6);
+    uint8_t records = 0;
+    for(uint8_t bit = 1; bit < 6; bit++) {
+        if(vg_bitmap & (1 << bit)) records++;
+    }
+    /* Keep the count to what is actually there, so a caller may slice records
+     * out without re-checking the length of each. */
+    while(records &&
+          vg_offset + 2 + (size_t)records * ITSO_VALUE_RECORD_LEN > len) {
+        records--;
+    }
+    if(records == 0) return 0;
+
+    if(offset) *offset = vg_offset + 2;
+    return records;
+}
+
+/**
+ * Decode one value record: the common header, and whichever of a balance or a
+ * counter the IPE type keeps in the tail.
+ *
+ * Those two are what a history is made of, and they are the only part of a
+ * record whose meaning is worth working out for a transaction that is over.
+ * Offsets in the TS 1000-5 tables are absolute from the start of the data
+ * group, so an element the table puts at offset N sits at record byte N-2: the
+ * two-byte value group header precedes the first record.
+ */
+static void itso_decode_value_record(ItsoValueRecord* out, const uint8_t* record, uint8_t typ) {
+    memset(out, 0, sizeof(*out));
+
+    /* TS 1000-2 table 15 defines the first ten bytes of every value record
+     * identically, whatever the IPE type. */
+    out->txn = (uint8_t)itso_bits(record, 0, 4);
+    out->ts = (uint16_t)itso_bits(record, 4, 12);
+    out->dts = itso_bits(record, 16, 24);
+
+    switch(typ) {
+    case ItsoTypStoredTravelRights: /* TS 1000-5 table 4. */
+    case ItsoTypChargeToAccount1: /* Table 12: the same bytes, counting up. */
+        itso_decode_money(itso_int16(record + 10), (record[12] >> 4) & 0x0F, &out->amount);
+        break;
+
+    case ItsoTypLoyalty1:
+        /* Table 9: points rather than money, and three bytes of them. */
+        out->count = itso_bits(record, 80, 24);
+        out->has_count = true;
+        break;
+
+    case ItsoTypPeriodTicket:
+        /* Tables 29, 29a and 3.29: a stock of unactivated passes, six bits. */
+        out->count = itso_bits(record, 80, 6);
+        out->has_count = true;
+        break;
+
+    case ItsoTypChargeToAccount2: /* Table 17: transactions this charge period. */
+    case ItsoTypJourneyTicket: /* Tables 33, 33a, 33b: rides left. */
+    case ItsoTypReservationTicket: /* Table 139. */
+    case ItsoTypVoucher: /* Table 38. */
+    case ItsoTypTolling: /* Table 42, identical to 38. */
+        out->count = record[10];
+        out->has_count = true;
+        break;
+
+    default:
+        /* A type whose tail we do not decode. The header still read cleanly, so
+         * the record belongs in the history with a date and no amount. */
+        break;
+    }
+}
+
+/** Keep one record in the product's history, newest first, deduplicated. */
+static void itso_add_value_record(ItsoProduct* product, const ItsoValueRecord* record) {
+    /* The same record twice: a card read again offers the records the last read
+     * already saw. TS# identifies a write within a product, and the timestamp
+     * separates the two records that could share one across a wrap of the
+     * 12-bit counter - which takes 4096 transactions to reach. */
+    for(uint8_t i = 0; i < product->value_history_count; i++) {
+        if(product->value_history[i].ts == record->ts &&
+           product->value_history[i].dts == record->dts) {
+            return;
+        }
+    }
+
+    /* Newest first, by TS# rather than by time: see itso_parse_value_records. */
+    uint8_t pos = product->value_history_count;
+    for(uint8_t i = 0; i < product->value_history_count; i++) {
+        if(itso_ts_newer(record->ts, product->value_history[i].ts)) {
+            pos = i;
+            break;
+        }
+    }
+    if(pos >= ITSO_MAX_VALUE_RECORDS) return; /* Older than everything we keep. */
+
+    for(uint8_t i = product->value_history_count; i > pos; i--) {
+        if(i < ITSO_MAX_VALUE_RECORDS) product->value_history[i] = product->value_history[i - 1];
+    }
+    product->value_history[pos] = *record;
+    if(product->value_history_count < ITSO_MAX_VALUE_RECORDS) product->value_history_count++;
+}
+
 /**
  * Decode the Value Record Data Group bound to an IPE (TS 1000-2 clause 7).
  *
- * The group starts at the beginning of the next chained sector after the IPE
- * data group ends (TS 1000-2 clause 5.1.5.3 rule 2). It is not a purse feature:
- * any IPE may carry one, and table 15 gives every value record the same 10-byte
- * common header. The five bytes after that header are defined per IPE type in
- * TS 1000-5, which is what the switch at the end is for.
+ * It is not a purse feature: any IPE may carry one, and table 15 gives every
+ * value record the same 10-byte common header. The five bytes after that header
+ * are defined per IPE type in TS 1000-5, which is what the switch at the end is
+ * for.
+ *
+ * Every record is decoded, not only the live one. The others are the
+ * transactions before it, which is the only statement a card keeps.
  */
 static void itso_parse_value_records(
     ItsoProduct* product,
     const uint8_t* group,
     size_t len,
-    size_t dataset_len,
     uint8_t sector_size) {
-    /* The value group starts at a sector boundary, so its offset cannot be found
-     * without a sector size. A shell that reached the transports has one, but the
-     * decoder is also driven directly by the host tests. */
-    if(sector_size == 0) return;
-
-    size_t ipe_group_len = dataset_len + ITSO_INSTANCE_ID_LEN + ITSO_SEAL_LEN;
-    size_t sectors_used = (ipe_group_len + sector_size - 1) / sector_size;
-    size_t offset = sectors_used * sector_size;
-    if(offset + 2 > len) return;
-
-    const uint8_t* vg = group + offset;
-    size_t vg_len = len - offset;
-
-    uint8_t vg_bitmap = itso_bits(vg, 6, 6);
-    /* Table 14: the upper five flags count the supported records, the LSB flags a
-     * Value Group Extension we do not need here. */
-    uint8_t records = 0;
-    for(uint8_t bit = 1; bit < 6; bit++) {
-        if(vg_bitmap & (1 << bit)) records++;
-    }
+    size_t offset = 0;
+    uint8_t records = itso_value_records(group, len, sector_size, &offset);
     if(records == 0) return;
 
     /* Records are written cyclically, so the live one is the newest, and TS# is
@@ -332,26 +436,25 @@ static void itso_parse_value_records(
      * the tap in - two records, one timestamp, and picking either at random.
      *
      * Records the card has not written yet are all zeros. Skip them: a blank TS#
-     * of zero would beat a live record that has since wrapped past it. */
+     * of zero would beat a live record that has since wrapped past it, and a
+     * blank DTS decodes to 2028, which is later than any real timestamp. */
     const uint8_t* newest = NULL;
     uint16_t newest_ts = 0;
     for(uint8_t i = 0; i < records; i++) {
-        size_t record_offset = 2 + (size_t)i * ITSO_VALUE_RECORD_LEN;
-        if(record_offset + ITSO_VALUE_RECORD_LEN > vg_len) break;
-        const uint8_t* record = vg + record_offset;
+        const uint8_t* record = group + offset + (size_t)i * ITSO_VALUE_RECORD_LEN;
         if(itso_is_blank(record, ITSO_VALUE_RECORD_LEN)) continue;
 
-        uint16_t ts = (uint16_t)itso_bits(record, 4, 12);
-        if(newest == NULL || itso_ts_newer(ts, newest_ts)) {
+        ItsoValueRecord decoded;
+        itso_decode_value_record(&decoded, record, product->typ);
+        itso_add_value_record(product, &decoded);
+
+        if(newest == NULL || itso_ts_newer(decoded.ts, newest_ts)) {
             newest = record;
-            newest_ts = ts;
+            newest_ts = decoded.ts;
         }
     }
     if(newest == NULL) return;
 
-    /* TS 1000-2 table 15 defines the first ten bytes of every value record
-     * identically, whatever the IPE type: what the transaction was, how many
-     * times the record has been written, when, and by which POST. */
     product->value_parsed = true;
     product->value_txn = (uint8_t)itso_bits(newest, 0, 4);
     product->value_ts = newest_ts;
@@ -359,14 +462,19 @@ static void itso_parse_value_records(
     product->value_isam = itso_bits(newest, 40, 32);
     product->value_action_seq = newest[9];
 
-    /* The remaining five bytes are defined per IPE type in TS 1000-5. Offsets in
-     * those tables are absolute from the start of the data group, so an element
-     * the table puts at offset N sits at record byte N-2: the two-byte value
-     * group header precedes the first record. */
+    /* What the tail of the newest record says about the product as it stands.
+     * The balance and the counter come from the record itself, which
+     * itso_decode_value_record() has already read: they are the same field
+     * whether they are being shown as the current value or as a line of the
+     * history, and deciding what those bytes mean in two places is how the two
+     * views come to disagree. What is left here is the part of the tail that
+     * describes the product rather than the transaction. */
+    const ItsoValueRecord* live = &product->value_history[0];
+
     switch(product->typ) {
     case ItsoTypStoredTravelRights:
         /* TS 1000-5 table 4. */
-        itso_decode_money(itso_int16(newest + 10), (newest[12] >> 4) & 0x0F, &product->balance);
+        product->balance = live->amount;
         product->journey_legs = newest[12] & 0x0F;
         itso_decode_money(
             (int32_t)itso_bits(newest, 104, 13), (newest[12] >> 4) & 0x0F,
@@ -383,13 +491,13 @@ static void itso_parse_value_records(
     case ItsoTypLoyalty1:
         /* TS 1000-5 table 9: points rather than money, and three bytes of them. */
         product->count_kind = ItsoCountPoints;
-        product->count = itso_bits(newest, 80, 24);
+        product->count = live->count;
         break;
 
     case ItsoTypChargeToAccount1:
         /* TS 1000-5 table 12. The layout matches TYP 2 exactly; what differs is
          * the meaning, so the same bytes are read and flagged as spend. */
-        itso_decode_money(itso_int16(newest + 10), (newest[12] >> 4) & 0x0F, &product->balance);
+        product->balance = live->amount;
         product->balance_is_spend = true;
         product->journey_legs = newest[12] & 0x0F;
         itso_decode_money(
@@ -403,7 +511,7 @@ static void itso_parse_value_records(
         /* TS 1000-5 table 17: a count of transactions in the charge period, and
          * the date that count was last cleared. */
         product->count_kind = ItsoCountTransactions;
-        product->count = newest[10];
+        product->count = live->count;
         product->last_reset = (uint16_t)itso_bits(newest, 90, 14);
         product->has_last_reset = true;
         product->journey_legs = newest[14] & 0x0F;
@@ -415,7 +523,7 @@ static void itso_parse_value_records(
          * revisions. A period ticket keeps a stock of unactivated passes, and
          * two expiry dates: one for the stock, one for the pass in use. */
         product->count_kind = ItsoCountPasses;
-        product->count = itso_bits(newest, 80, 6);
+        product->count = live->count;
         {
             uint8_t flags = (uint8_t)itso_bits(newest, 86, 6);
             product->auto_renew = (flags & 0x01) != 0;
@@ -432,7 +540,7 @@ static void itso_parse_value_records(
          * purse would render the ride count and the transfer count as one
          * 16-bit amount, and take a currency from a flags byte. */
         product->count_kind = ItsoCountRides;
-        product->count = newest[10];
+        product->count = live->count;
         product->transfers = newest[11];
         product->has_transfers = true;
         product->auto_renew = (newest[12] & 0x01) != 0;
@@ -448,14 +556,14 @@ static void itso_parse_value_records(
     case ItsoTypReservationTicket:
         /* TS 1000-5 table 139. */
         product->count_kind = ItsoCountRides;
-        product->count = newest[10];
+        product->count = live->count;
         break;
 
     case ItsoTypVoucher:
     case ItsoTypTolling:
         /* TS 1000-5 tables 38 and 42, which are identical. */
         product->count_kind = ItsoCountRides;
-        product->count = newest[10];
+        product->count = live->count;
         product->auto_renew = (newest[11] & 0x01) != 0;
         break;
 
@@ -860,7 +968,7 @@ void itso_parse_ipe(ItsoProduct* product, const uint8_t* group, size_t len, uint
      * decode it wherever VGP says one is there. It is decoded before the dataset
      * because the dataset's amounts take their currency from the value record. */
     if(product->value_group) {
-        itso_parse_value_records(product, group, len, dataset_len, sector_size);
+        itso_parse_value_records(product, group, len, sector_size);
     }
 
     switch(product->typ) {

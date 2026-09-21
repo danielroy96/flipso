@@ -51,7 +51,7 @@ specification.
   <tr>
     <td align="center" width="33%"><img src="docs/screenshots/card.png" width="250" alt="Card screen showing an 18-digit card number and expiry"><br><b>Card</b><br><sub>18-digit ISRN with check-digit validation, expiry, issuer, media type, shell layout and the shell checksum</sub></td>
     <td align="center" width="33%"><img src="docs/screenshots/payg.png" width="250" alt="Pay as you go screen showing balance and operator"><br><b>Pay as you go</b><br><sub>Balance and currency, owning operator, retailer, last transaction and journey in progress</sub></td>
-    <td align="center" width="33%"><img src="docs/screenshots/payg-terms.png" width="250" alt="Purse terms showing last action, expiry and status"><br><b>Purse terms</b><br><sub>Ceiling, overdraft, auto-top-up rule, deposit, and the "No expiry" that a stored zero really means</sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/payg-terms.png" width="250" alt="Purse terms showing last action, expiry and status"><br><b>Purse terms</b><br><sub>Ceiling, overdraft, auto-top-up rule, deposit, the "No expiry" that a stored zero really means, and the transactions before the last one</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/entitlement.png" width="250" alt="Entitlement screen showing Limited free ride and class Disabled"><br><b>ID &amp; entitlement</b><br><sub>Holder details, entitlement type, concessionary class, validity dates and area, companion and photo flags</sub></td>

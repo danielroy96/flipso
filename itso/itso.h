@@ -44,6 +44,22 @@ extern "C" {
  * sector plus the value record sector that follows it. */
 #define ITSO_MAX_GROUP_LEN 512
 
+/**
+ * Value records kept per product, newest first.
+ *
+ * A Value Record Data Group holds at most five (TS 1000-2 table 14), and the
+ * cards to hand are issued with two. The rest of the room is for the records an
+ * earlier read of the same card saw, which a saved card keeps: the store on the
+ * card is a rolling window, so a history is only ever as long as something off
+ * the card remembers. Eight is a compromise - the array is per product, so it
+ * is paid for sixteen times over whether a product has a value group or not.
+ */
+#define ITSO_MAX_VALUE_RECORDS 8
+
+/* One value record: a 10-byte common header (TS 1000-2 table 15) and a 5-byte
+ * tail whose meaning TS 1000-5 defines per IPE type. */
+#define ITSO_VALUE_RECORD_LEN 15
+
 /* IPE types we decode beyond the directory entry (ITSO TS 1000-5 clause 2). */
 typedef enum {
     ItsoTypStoredTravelRights = 2,  /**< Pay as you go purse. */
@@ -142,6 +158,29 @@ typedef struct {
     bool valid;
 } ItsoMoney;
 
+/**
+ * One record of a product's Value Record Data Group.
+ *
+ * The group is a small cyclic store (TS 1000-2 clause 7): the live record is
+ * the one with the highest TS#, and the records beside it are the transactions
+ * before it - the balance as it was, and when it changed. Cards do not keep a
+ * statement anywhere else, so this is the only history a product carries.
+ *
+ * Only the common header (table 15) and whichever of a balance or a counter the
+ * IPE type keeps in its tail are held per record. The rest of the newest
+ * record's tail - journey legs, flags, the expiry dates a period ticket keeps
+ * there - is decoded into the product itself, because it describes the product
+ * as it stands rather than a transaction that happened.
+ */
+typedef struct {
+    uint32_t dts; /**< Raw DTS of the transaction. */
+    ItsoMoney amount; /**< Balance after it, for the types that keep money. */
+    uint32_t count; /**< Counter after it; meaning per ItsoProduct::count_kind. */
+    uint16_t ts; /**< TS#: which write to the group this was. */
+    uint8_t txn; /**< EventTypeCode: what the transaction was. */
+    bool has_count;
+} ItsoValueRecord;
+
 /** One entry of the Directory Data Group, plus whatever its IPE dataset yielded. */
 typedef struct {
     bool present;
@@ -209,6 +248,14 @@ typedef struct {
      * it mean whatever the IPE type says they mean, which is what the
      * type-specific fields below are for. */
     bool value_parsed; /**< A live value record was found and decoded. */
+
+    /* Every record the group held, newest first, value_history[0] being the
+     * live one the fields below describe. A saved card read again adds the
+     * records the file already had, so this grows past what the card itself
+     * keeps: see flipso_capture_merge_history(). */
+    ItsoValueRecord value_history[ITSO_MAX_VALUE_RECORDS];
+    uint8_t value_history_count;
+
     uint32_t value_dts; /**< Raw DTS of the value record we picked. */
     uint8_t value_txn; /**< EventTypeCode: what the last transaction was. */
     uint16_t value_ts; /**< TS#: how many times the record has been written. */
@@ -442,6 +489,22 @@ uint8_t itso_sct_bits(uint8_t sector_count);
  * @param group  bytes of every chained sector, concatenated in chain order.
  */
 void itso_parse_ipe(ItsoProduct* product, const uint8_t* group, size_t len, uint8_t sector_size);
+
+/**
+ * Locate the value records inside a product's concatenated sector chain.
+ *
+ * The Value Record Data Group starts in the sector after the one the IPE data
+ * group ends in, which takes the IPE's own length and the card's geometry to
+ * work out - so anything wanting the records themselves, rather than the
+ * decode of them, would otherwise have to repeat that arithmetic.
+ *
+ * @param      group       every chained sector, concatenated in chain order.
+ * @param      sector_size B from the shell; zero means the offset is unknowable.
+ * @param[out] offset      offset of the first record within @p group.
+ * @return number of ITSO_VALUE_RECORD_LEN records present, 0 when there is no
+ *         group or it does not fit; @p offset is untouched in that case.
+ */
+uint8_t itso_value_records(const uint8_t* group, size_t len, uint8_t sector_size, size_t* offset);
 
 /** Decode the cyclic log into card->taps. */
 void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len);

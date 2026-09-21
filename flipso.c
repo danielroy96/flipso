@@ -342,6 +342,39 @@ void flipso_cat_product(FuriString* out, Flipso* app, const ItsoProduct* product
     }
 }
 
+void flipso_cat_value_history(FuriString* out, const ItsoProduct* product) {
+    /* Index 0 is the live record, which the screen has already shown as the
+     * balance or the counter, so a product whose group holds one written record
+     * has no history to show rather than a section with one line in it. */
+    if(product->value_history_count < 2) return;
+
+    furi_string_cat(out, "\n\e#Earlier\n");
+    for(uint8_t i = 1; i < product->value_history_count; i++) {
+        const ItsoValueRecord* record = &product->value_history[i];
+
+        /* Three short lines rather than one wide one: a date and time is
+         * sixteen characters, which leaves nothing for what happened or for
+         * what the balance became. */
+        furi_string_cat_printf(out, "%s\n", itso_transaction_name(record->txn));
+        furi_string_cat(out, "  ");
+        flipso_cat_datetime(out, record->dts);
+        furi_string_push_back(out, '\n');
+
+        if(record->amount.valid) {
+            char money[24];
+            itso_format_money(&record->amount, money, sizeof(money));
+            furi_string_cat_printf(out, "  %s\n", money);
+        } else if(record->has_count) {
+            /* The counter means whatever the product's type says it means, and
+             * it means the same thing in every record. */
+            const char* label = itso_count_name(product->count_kind);
+            if(label) {
+                furi_string_cat_printf(out, "  %s: %lu\n", label, (unsigned long)record->count);
+            }
+        }
+    }
+}
+
 void flipso_cat_purse_terms(FuriString* out, const ItsoProduct* product) {
     if(product->has_limits && product->max_value.valid && product->max_value.value) {
         flipso_cat_money(out, "Maximum", &product->max_value);

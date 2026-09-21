@@ -190,6 +190,10 @@ static void cmd2_card(void) {
     check(
         "CMD2 balance skips the unwritten record",
         strcmp(fmt_unix(itso_dts_to_unix(purse->value_dts)), "2025-04-16 14:31") == 0);
+    /* And the unwritten record must not become a history entry either: a blank
+     * record would read as a zero balance in 2028, which is both the wrong
+     * amount and later than the record it sits beside. */
+    check("CMD2 history holds only the written record", purse->value_history_count == 1);
 
     ItsoProduct* id = &card.products[1];
     memcpy(group, cmd2_sector2, sizeof(cmd2_sector2));
@@ -473,6 +477,30 @@ int main(void) {
     check("modifying POST ISAM read", card.products[0].value_isam == 0xC0FFEE01);
     check("action sequence number read", card.products[0].value_action_seq == 3);
 
+    /* The records the live one displaced are the transactions before it, which
+     * is the only statement a card keeps. The group holds two, so the purse
+     * should offer the balance as it was as well as the balance as it is. */
+    const ItsoProduct* purse = &card.products[0];
+    check("purse keeps both value records", purse->value_history_count == 2);
+    check("newest history entry is the live record",
+          purse->value_history[0].ts == purse->value_ts &&
+          purse->value_history[0].dts == purse->value_dts);
+    itso_format_money(&purse->value_history[0].amount, money, sizeof(money));
+    check("history[0] balance is GBP 12.34", strcmp(money, "GBP 12.34") == 0);
+    itso_format_money(&purse->value_history[1].amount, money, sizeof(money));
+    printf("      previously %s at %s (TS# %u, %s)\n", money,
+           fmt_unix(itso_dts_to_unix(purse->value_history[1].dts)),
+           purse->value_history[1].ts,
+           itso_transaction_name(purse->value_history[1].txn));
+    check("history[1] is the earlier balance of GBP 15.60", strcmp(money, "GBP 15.60") == 0);
+    check("history[1] keeps its own timestamp",
+          strcmp(fmt_unix(itso_dts_to_unix(purse->value_history[1].dts)),
+                 "2026-09-01 12:00") == 0);
+    check("history[1] keeps its own transaction type and TS#",
+          purse->value_history[1].txn == 4 && purse->value_history[1].ts == 100);
+    check("a purse history carries no counter",
+          !purse->value_history[0].has_count && !purse->value_history[1].has_count);
+
     /* The IPE dataset: the commercial terms of the purse. */
     itso_format_money(&card.products[0].max_value, money, sizeof(money));
     check("purse ceiling is GBP 90.00",
@@ -573,6 +601,9 @@ int main(void) {
           card.products[2].count_kind == ItsoCountPasses &&
           !card.products[2].balance.valid);
     check("four passes remain", card.products[2].count == 4);
+    check("the period ticket history shows five passes before that",
+          card.products[2].value_history_count == 2 &&
+          card.products[2].value_history[1].count == 5);
     check("current pass expires 2025-02-28",
           card.products[2].has_current_expiry &&
           strcmp(fmt_unix(itso_date_to_unix(card.products[2].current_expiry)),
@@ -612,6 +643,19 @@ int main(void) {
     check("TS# picks the newer record over an equal DTS",
           card.products[3].count == 0 && card.products[3].ticket_used);
 
+    /* And the history has to be ordered the same way. Both records share a
+     * timestamp to the minute, so a history sorted by time would put them in
+     * either order and read as a ride being restored rather than spent. */
+    check("journey ticket keeps both records",
+          card.products[3].value_history_count == 2);
+    check("history is ordered by TS#, not by an equal DTS",
+          card.products[3].value_history[0].ts == 5 &&
+          card.products[3].value_history[1].ts == 4);
+    check("the earlier record still had the ride",
+          card.products[3].value_history[1].has_count &&
+          card.products[3].value_history[1].count == 1 &&
+          card.products[3].value_history[0].count == 0);
+
     /* E5: loyalty. A points balance is three bytes wide, so decoding it as a
      * purse would silently truncate it to the low two. */
     memset(group, 0, sizeof(group));
@@ -625,6 +669,9 @@ int main(void) {
           card.products[4].count_kind == ItsoCountPoints &&
           !card.products[4].balance.valid);
     check("74500 points does not truncate to 16 bits", card.products[4].count == 74500);
+    check("the loyalty history keeps the earlier points balance",
+          card.products[4].value_history_count == 2 &&
+          card.products[4].value_history[1].count == 1200);
     check("loyalty remove date is 30 days",
           card.products[4].has_remove_date && card.products[4].remove_date == 30);
 

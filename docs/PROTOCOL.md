@@ -324,7 +324,8 @@ the directory entry's VGP flag can be set on any product — and the records sha
 a common header (TS 1000-2 table 15) whatever the product is. What the last five
 bytes of a record mean depends on the type: a purse keeps a balance there, a
 journey ticket keeps a count of rides remaining. Flipso reads the header for any
-product that has one, and decodes those two tails.
+product that has one, decodes those two tails, and keeps every record in the
+group rather than only the live one.
 
 Two things about value records are easy to get wrong, and both show up on an
 ordinary rail ticket:
@@ -336,6 +337,30 @@ ordinary rail ticket:
 - A blank record is all zeros, including its TS# and its DTS — and since the DTS
   epoch sits in 2028, an unwritten record otherwise reads as the most recent one
   on the card. Skip them.
+
+### The records behind the live one
+
+The records the live one displaces are the transactions before it, and Flipso
+keeps them all rather than only the newest: the balance as it was, what changed
+it, and when. A card holds no statement anywhere else, so those few records are
+the only history it carries.
+
+They are shown under **Earlier** on the Pay as you go and product screens. Each
+record contributes whichever of a balance or a counter its IPE type keeps in the
+tail — the same field the screen shows above as the current value, decoded in one
+place rather than two, because a history that disagreed with the balance above it
+would be worse than no history.
+
+The store is small: TS 1000-2 table 14 allows five records and every real card
+to hand is issued with two, so a card straight off the reader shows at most one
+earlier transaction. What makes the section worth having is that a saved card
+accumulates them — see [Saved cards](#saved-cards).
+
+Ordering matters more here than for picking the live record. Both records of a
+journey ticket that has just been used carry the *same* DTS to the minute, so
+sorting a history by time would show the ride being restored as often as spent.
+TS# is the order; a wrap of the 12-bit counter takes 4096 transactions, and the
+timestamp separates the two records that could then collide.
 
 Locations are rendered from the encoding the card uses: rail NLC codes, NaPTAN
 and ATCO bus stop codes, zone numbers and bit maps, fare stages and service

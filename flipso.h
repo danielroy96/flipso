@@ -210,6 +210,17 @@ void flipso_cat_purse_terms(FuriString* out, const ItsoProduct* product);
 /** Append what the product's newest value record says the last transaction was. */
 void flipso_cat_last_transaction(FuriString* out, const ItsoProduct* product);
 
+/**
+ * Append the transactions before the live one, newest first.
+ *
+ * The value record group is a small cyclic store, so a product carries the last
+ * few transactions as well as its current state - the balance as it was, and
+ * when it changed. Nothing at all is appended when the product holds only the
+ * one record, which is what an unused product and most of a fresh card look
+ * like.
+ */
+void flipso_cat_value_history(FuriString* out, const ItsoProduct* product);
+
 #ifdef __cplusplus
 }
 #endif

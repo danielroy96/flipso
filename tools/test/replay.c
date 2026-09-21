@@ -13,6 +13,17 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
+
+/** A DTS as a readable UTC timestamp, which is what a history is read by. */
+static const char* fmt_dts(uint32_t dts) {
+    static char buf[24];
+    time_t when = (time_t)itso_dts_to_unix(dts);
+    struct tm tm;
+    gmtime_r(&when, &tm);
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &tm);
+    return buf;
+}
 
 static void show_location(const char* label, const ItsoLocation* loc) {
     if(loc->valid) printf("      %-12s %s (LocDefType %u)\n", label, loc->text, loc->def_type);
@@ -46,6 +57,10 @@ int main(void) {
            card.format_rev);
     printf("  geometry      %u sectors of %u bytes, %u directory entries, SCTL %u\n",
            card.sector_count, card.sector_size, card.dir_entries, card.sct_len);
+    printf("  checksum      %s\n",
+           !card.secrc_checked ? "not checked (shell shorter than it claims)" :
+           card.secrc_valid    ? "verified" :
+                                 "MISMATCH - these bytes are not what the card wrote");
 
     printf("\nDirectory (%zu bytes)\n", replay_dir_len);
     if(replay_dir_len && !itso_parse_directory(&card, replay_dir, replay_dir_len)) {
@@ -87,6 +102,23 @@ int main(void) {
         show_money("balance", &product->balance);
         show_location("from", &product->from);
         show_location("to", &product->to);
+        /* Every value record, not only the live one: the others are what the
+         * product looked like before the last few transactions, and on a saved
+         * card they reach further back than the card itself keeps. */
+        for(uint8_t v = 0; v < product->value_history_count; v++) {
+            const ItsoValueRecord* record = &product->value_history[v];
+            printf("      %-12s TS#%-4u %-16s %s", v ? "" : "records", record->ts,
+                   itso_transaction_name(record->txn), fmt_dts(record->dts));
+            if(record->amount.valid) {
+                char money[24];
+                itso_format_money(&record->amount, money, sizeof(money));
+                printf("  %s", money);
+            } else if(record->has_count) {
+                printf("  %s %lu", itso_count_name(product->count_kind) ?: "count",
+                       (unsigned long)record->count);
+            }
+            printf("%s\n", v ? "" : "  <- live");
+        }
         if(product->value_group && !product->body_parsed)
             printf("      has a value record that could not be read\n");
     }

@@ -23,6 +23,7 @@ void flipso_scene_product_on_enter(void* context) {
 
     flipso_cat_last_transaction(text, product);
     flipso_cat_purse_terms(text, product);
+    flipso_cat_value_history(text, product);
 
     if(product->value_group && !product->value_parsed) {
         furi_string_cat(text, "Has a value record that\ncould not be read.\n");
