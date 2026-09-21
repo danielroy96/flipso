@@ -183,19 +183,19 @@ The Flipper has a **190 KB heap**, and a `.fap` is loaded into it whole before
 `main()` runs, so we have to be a bit careful particularly with the station table.
 
 ```
-dist/flipso.fap       170,164 bytes on disk
+dist/flipso.fap       175,712 bytes on disk
   .fapassets           78,859   ← station table, never mapped into RAM
-  .text                31,712   ← in RAM
-  .rodata               9,333   ← in RAM
-  (symbols, relocs)    50,260   ← not loaded
+  .text                34,344   ← in RAM
+  .rodata               9,585   ← in RAM
+  (symbols, relocs)    52,145   ← not loaded
   ──────────────────────────
-  TOTAL IN RAM         41,045   22% of the heap
+  TOTAL IN RAM         43,929   23% of the heap
 ```
 
 A card being saved costs a little on top of that, and only while a card is on
 screen: the raw blocks are kept in one buffer that grows to fit the card, which
-is about a kilobyte for a typical CMD7 one. It is released when the scan screen
-comes back.
+is about a kilobyte for a typical CMD7 one, plus the records an earlier read of
+it left in the file. It is released when the scan screen comes back.
 
 Both reference tables stay on the SD card and are binary-searched in place, so a
 lookup costs a handful of short reads and no memory that grows with the table.

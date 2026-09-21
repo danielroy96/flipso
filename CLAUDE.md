@@ -88,10 +88,12 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-today about 30 KB of the 143 KB file, because the 79 KB station table lives in
+today about 44 KB of the 176 KB file, because the 79 KB station table lives in
 `.fapassets`, which the firmware unpacks to the SD card and never maps. Anything
-added as a `const` array *does* reach RAM. Flipso itself costs roughly 48 KB of
-heap while running.
+added as a `const` array *does* reach RAM. Flipso costs about 70 KB of heap all
+told while running, of which that 44 KB is the image and the rest is what it
+allocates - measured as the difference between `flipctl mem` with the app up
+and with the desktop showing, which is the only honest way to read it.
 
 So: no large static tables, no growing a scene's buffers without checking, and
 `tools/flipper/flipctl mem` before and after anything structural.
