@@ -315,6 +315,56 @@ static void bus_stop_locations(void) {
     check("truncated bus stop locations survive", 1);
 }
 
+/*
+ * The shell's SECRC (TS 1000-2 clause 4.1.15), which is the one thing on a card
+ * that can be checked without a key.
+ *
+ * The three CRC_B vectors come from Annex A of the same part, and pin the
+ * algorithm independently of any card: a CRC that agrees with itself while
+ * disagreeing with the specification would verify every synthetic shell and
+ * reject every real one.
+ */
+static void shell_checksum(void) {
+    static const uint8_t v1[] = {0x00, 0x00, 0x00};
+    static const uint8_t v2[] = {0x0F, 0xAA, 0xFF};
+    static const uint8_t v3[] = {0x0A, 0x12, 0x34, 0x56};
+    check("CRC_B Annex A example 1", itso_crc_b(v1, sizeof(v1)) == 0xC6CC);
+    check("CRC_B Annex A example 2", itso_crc_b(v2, sizeof(v2)) == 0xD1FC);
+    check("CRC_B Annex A example 3", itso_crc_b(v3, sizeof(v3)) == 0xF62C);
+
+    ItsoCard card;
+    itso_card_reset(&card);
+    itso_parse_shell(&card, card_shell, sizeof(card_shell));
+    check("shell length is 6 blocks", card.shell_len == 6);
+    check("shell checksum verifies", card.secrc_checked && card.secrc_valid);
+
+    itso_card_reset(&card);
+    itso_parse_shell(&card, cmd2_shell, sizeof(cmd2_shell));
+    check("CMD2 shell checksum verifies", card.secrc_checked && card.secrc_valid);
+
+    /* One flipped bit anywhere in the dataset has to be caught, including in
+     * the elements below the checksum that nothing else on the card repeats. */
+    uint8_t* damaged = malloc(sizeof(card_shell));
+    memcpy(damaged, card_shell, sizeof(card_shell));
+    damaged[17] ^= 0x01; /* Number of sectors: plausible, and wrong. */
+    itso_card_reset(&card);
+    itso_parse_shell(&card, damaged, sizeof(card_shell));
+    check("a corrupted shell fails its checksum", card.secrc_checked && !card.secrc_valid);
+    check("a corrupted shell still reports both numbers",
+          card.secrc_stored != card.secrc_computed);
+    free(damaged);
+
+    /* A shell whose declared length runs past what was read cannot be checked,
+     * and must say so rather than checksumming whatever follows in memory. */
+    uint8_t* truncated = malloc(sizeof(card_shell));
+    memcpy(truncated, card_shell, sizeof(card_shell));
+    truncated[0] = (uint8_t)((31 << 2) | (truncated[0] & 0x03)); /* ShellLength 31 blocks. */
+    itso_card_reset(&card);
+    itso_parse_shell(&card, truncated, 24);
+    check("a shell shorter than it claims is not checked", !card.secrc_checked);
+    free(truncated);
+}
+
 static void oversized_directory(void) {
     ItsoCard card;
     itso_card_reset(&card);
@@ -642,6 +692,9 @@ int main(void) {
           rev4->has_entry &&
           strcmp(fmt_unix(itso_dts_to_unix(rev4->entry_dts)), "2026-09-12 08:12") == 0);
     check("entry operator is 109", rev4->has_entry_oid && rev4->entry_oid == 109);
+
+    printf("\n== Shell checksum ==\n");
+    shell_checksum();
 
     printf("\n== CMD2 card ==\n");
     cmd2_card();

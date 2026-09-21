@@ -11,6 +11,8 @@ Contents:
 - [Bus stop names](#bus-stop-names)
 - [How it reads the card](#how-it-reads-the-card)
 - [Specification references](#specification-references)
+- [Blocking](#blocking)
+- [Integrity](#integrity)
 - [Product coverage](#product-coverage)
 - [Limitations](#limitations)
 
@@ -255,6 +257,36 @@ Concessionary Travel Scheme pass issued by Reading Borough Council, which the
 holder confirmed no longer works, reads blocked, and a Freedom Pass in daily use
 reads active.
 
+## Integrity
+
+ITSO protects data groups with **seals** — a MAC over a key held in an ISAM
+(TS 1000-7). That is what makes a ticket unforgeable, and it is why Flipso can
+read a card without keys while being unable to say whether what it read is
+genuine. Every field on every screen is reported on the card's own word.
+
+One check needs no key. The Shell Environment Data Group ends with a
+**SECRC** (TS 1000-2 clause 4.1.15): a two-byte CRC over every element before
+it, of the CRC_B variety that Annex A of the same part defines and gives test
+vectors for. Flipso computes it and says on the Card screen whether it matches.
+
+Two details are worth recording, because neither is in the clause:
+
+- **The checksum is stored low byte first**, which is the order Annex A appends
+  a CRC to a transmission in rather than anything clause 4.1.15 states. The
+  other order fails every card; this one verifies all five real cards on hand,
+  across four schemes and both command sets.
+- **ShellLength locates it**, not a fixed offset. The table gives byte 22 or 30
+  depending on whether the shell carries an MCRN, and the buffer is longer than
+  the dataset in either case — a CMD7 reader gets a whole file back, not as many
+  bytes as the shell says it uses. So the CRC covers `ShellLength × 4 - 2` bytes
+  and the stored value follows them.
+
+What this catches is a misread, not tampering: anyone able to rewrite a shell
+can recompute a CRC. That is still worth having, because a misread is the
+failure that actually happens — and a wrong geometry or a phantom byte offset
+shows up here as a mismatch rather than as plausible nonsense further down the
+screen.
+
 ## Product coverage
 
 Every product is reported from its directory entry: operator, type, expiry,
@@ -322,8 +354,9 @@ LocDefType 212 carries several stops and names the first, counting the rest.
   definitions are not supported, nor is CMD11, which replaces the file system
   with a proprietary command set.
 - Oyster cards are recognised and described, but the data is encrypted
-- Seals are not verified. Flipso reports what the card says; it cannot tell you
-  whether a card has been tampered with.
+- Seals are not verified, so Flipso cannot tell you whether a card has been
+  tampered with - only the shell's own checksum is checked. See
+  [Integrity](#integrity).
 - Read only. Flipso never writes to a card.
 - The built-in operator name table is small, because ITSO does not publish its
   OID register.

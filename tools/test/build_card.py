@@ -42,6 +42,32 @@ def pad(data, size):
     assert len(data) <= size, (len(data), size)
     return bytes(data) + bytes(size - len(data))
 
+def crc_b(data):
+    """CRC_B over data, as ITSO TS 1000-2 Annex A defines it.
+
+    The shell carries one as its SECRC, so a synthetic shell has to compute it
+    rather than invent it: the decoder checks it, and a made-up value would make
+    every synthetic card look corrupt.
+    """
+    crc = 0xFFFF
+    for b in data:
+        ch = b ^ (crc & 0xFF)
+        ch = (ch ^ (ch << 4)) & 0xFF
+        crc = ((crc >> 8) ^ (ch << 8) ^ (ch << 3) ^ (ch >> 4)) & 0xFFFF
+    return (~crc) & 0xFFFF
+
+
+def put_secrc(shell):
+    """Seal a shell with its SECRC, low byte first (TS 1000-2 clause 4.1.15).
+
+    ShellLength says where it goes, which is byte 22 without an MCRN and byte 30
+    with one, and the CRC covers everything before it.
+    """
+    dataset_len = (shell.buf[0] >> 2) * 4
+    crc = crc_b(bytes(shell.buf[:dataset_len - 2]))
+    shell.putb(dataset_len - 2, bytes([crc & 0xFF, crc >> 8]))
+
+
 def luhn(num17):
     total, dbl = 0, True
     for ch in reversed(num17):
@@ -74,7 +100,7 @@ shell.buf[16] = 64          # B
 shell.buf[17] = 16          # S
 shell.buf[18] = 8           # e#
 shell.buf[19] = 7           # SCTL
-shell.putb(22, b"\xAB\xCD") # SECRC (not verified by the app)
+put_secrc(shell)            # SECRC over everything above
 
 # ---------------------------------------------------------------- Directory (FID 0)
 def dir_entry(oid, typ, ptyp, vgp, expiry, extended=False):
@@ -451,6 +477,7 @@ cmd2_shell.buf[16] = CMD2_B
 cmd2_shell.buf[17] = CMD2_S
 cmd2_shell.buf[18] = CMD2_E
 cmd2_shell.buf[19] = CMD2_SCTL
+put_secrc(cmd2_shell)
 
 cmd2_dir = Bits(CMD2_DIR_LEN)
 cmd2_dir.put(0, 6, 0)

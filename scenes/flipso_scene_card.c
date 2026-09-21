@@ -69,6 +69,20 @@ void flipso_scene_card_on_enter(void* context) {
                                             "Other";
     furi_string_cat_printf(text, "Media: %s\n", media);
     furi_string_cat_printf(text, "Shell revision: %u\n", card->format_rev);
+    /* The shell's own checksum, which is the only thing on the card Flipso can
+     * actually verify: the data groups are sealed with keys it does not have,
+     * so everything else on these screens is reported on the card's word. Both
+     * outcomes are stated, and a mismatch shows its numbers, because the useful
+     * thing to do with one is to report the card. TS 1000-2 clause 4.1.15. */
+    if(card->secrc_checked) {
+        if(card->secrc_valid) {
+            furi_string_cat(text, "Checksum: verified\n");
+        } else {
+            furi_string_cat_printf(
+                text, "Checksum: MISMATCH\n  stored %04X\n  computed %04X\n",
+                card->secrc_stored, card->secrc_computed);
+        }
+    }
     furi_string_cat_printf(text, "Keys: KSC %u, KVC %u\n", card->ksc, card->kvc);
     furi_string_cat_printf(
         text, "Layout: %u x %u bytes\n", card->sector_count, card->sector_size);

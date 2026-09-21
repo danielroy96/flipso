@@ -39,6 +39,21 @@ bool itso_is_blank(const uint8_t* data, size_t len) {
     return true;
 }
 
+uint16_t itso_crc_b(const uint8_t* data, size_t len) {
+    /* The ISO 14443-3 type B CRC, which ITSO TS 1000-2 Annex A reproduces along
+     * with the reference implementation this follows: the ITU-T X.25 polynomial
+     * reflected, seeded with 0xFFFF and complemented at the end. Annex A also
+     * gives three test vectors, which tools/test/test_parse.c checks. */
+    uint16_t crc = 0xFFFF;
+    for(size_t i = 0; i < len; i++) {
+        uint8_t ch = (uint8_t)(data[i] ^ (crc & 0x00FF));
+        ch = (uint8_t)(ch ^ (ch << 4));
+        crc = (uint16_t)(
+            (crc >> 8) ^ ((uint16_t)ch << 8) ^ ((uint16_t)ch << 3) ^ ((uint16_t)ch >> 4));
+    }
+    return (uint16_t)~crc;
+}
+
 uint32_t itso_date_to_unix(uint16_t date) {
     uint32_t days = (date == 0) ? ITSO_DATE_MAX : date;
     return ITSO_DATE_EPOCH + days * 86400UL;

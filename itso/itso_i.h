@@ -34,6 +34,14 @@ size_t itso_parse_location(
 /** Decode a VALC nibble and a raw amount into an ItsoMoney. */
 void itso_decode_money(int32_t raw, uint8_t valc, ItsoMoney* out);
 
+/**
+ * CRC_B over @p len bytes, as ITSO TS 1000-2 Annex A defines it.
+ *
+ * Every CRC in the specification is of this variety; the shell's SECRC is the
+ * only one Flipso has any use for.
+ */
+uint16_t itso_crc_b(const uint8_t* data, size_t len);
+
 #ifdef __cplusplus
 }
 #endif

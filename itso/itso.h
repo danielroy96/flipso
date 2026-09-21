@@ -35,6 +35,10 @@ extern "C" {
 #define ITSO_LOC_CODE_LEN  13
 #define ITSO_ISRN_DIGITS   18
 
+/* BL for the ITSO Shell Environment Data Group. ShellFormatRevision 1 is the
+ * only revision TS 1000-2 table 2 defines a block size for, and it is 4. */
+#define ITSO_SHELL_BLOCK_LEN 4
+
 /* Largest IPE + Value Record group we assemble from chained sectors. Permitted
  * DESFire geometries allow sectors of up to 240 bytes, and a purse needs its IPE
  * sector plus the value record sector that follows it. */
@@ -320,6 +324,20 @@ typedef struct {
     uint8_t fvc; /**< Format Version Code: 7 = DESFire CMD7, 12 = CMD12. */
     uint8_t ksc;
     uint8_t kvc;
+    uint8_t shell_len; /**< ShellLength, in blocks of ITSO_SHELL_BLOCK_LEN. */
+
+    /* ITSO Shell Environment Checksum (TS 1000-2 clause 4.1.15).
+     *
+     * This is the only integrity check on the shell that can be made without
+     * keys. The data groups are sealed rather than encrypted, and a seal is a
+     * MAC over a key Flipso does not have, so Flipso can report what a card
+     * says but never whether it has been tampered with. A CRC cannot tell you
+     * that either - anyone rewriting a shell would recompute it - but it does
+     * catch the thing that actually goes wrong here, which is a misread. */
+    bool secrc_checked; /**< The shell was long enough to hold its checksum. */
+    bool secrc_valid;
+    uint16_t secrc_stored;
+    uint16_t secrc_computed;
     uint8_t sector_size; /**< B */
     uint8_t sector_count; /**< S */
     uint8_t dir_entries; /**< e# */

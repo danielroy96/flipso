@@ -81,6 +81,7 @@ bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
     }
 
     card->format_rev = (uint8_t)itso_bits(data, 12, 4);
+    card->shell_len = (uint8_t)itso_bits(data, 0, 6);
     card->fvc = data[11];
     card->ksc = data[12];
     card->kvc = data[13];
@@ -100,6 +101,25 @@ bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
             *out++ = digits[i];
         }
         *out = '\0';
+    }
+
+    /* The SECRC covers every element of the dataset before it (TS 1000-2 clause
+     * 4.1.15), so ShellLength is what locates it: whether the shell carries an
+     * MCRN decides whether it sits at byte 22 or byte 30, and the buffer may be
+     * longer than the dataset either way - a CMD7 reader gets back a whole file
+     * rather than as many bytes as the shell claims to use.
+     *
+     * Stored low byte first, which is the order Annex A appends a CRC to a
+     * transmission in. Confirmed against five cards from four schemes; nothing
+     * in the clause itself says which way round a "two byte binary integer"
+     * goes, and the other order would fail every card. */
+    size_t dataset_len = (size_t)card->shell_len * ITSO_SHELL_BLOCK_LEN;
+    if(dataset_len >= 4 && dataset_len <= len) {
+        card->secrc_stored =
+            (uint16_t)(data[dataset_len - 2] | ((uint16_t)data[dataset_len - 1] << 8));
+        card->secrc_computed = itso_crc_b(data, dataset_len - 2);
+        card->secrc_valid = card->secrc_stored == card->secrc_computed;
+        card->secrc_checked = true;
     }
 
     /* Sanity-check the geometry before anything downstream trusts it. */
