@@ -345,11 +345,16 @@ void flipso_cat_product(FuriString* out, Flipso* app, const ItsoProduct* product
 void flipso_cat_value_history(FuriString* out, const ItsoProduct* product) {
     /* Index 0 is the live record, which the screen has already shown as the
      * balance or the counter, so a product whose group holds one written record
-     * has no history to show rather than a section with one line in it. */
-    if(product->value_history_count < 2) return;
+     * has no history to show rather than a section with one line in it.
+     *
+     * Unless there is no live record: a saved card whose product group did not
+     * read still has whatever records the file kept, and every one of those is
+     * earlier by definition. Skipping the first regardless would hide one. */
+    uint8_t first = product->value_parsed ? 1 : 0;
+    if(product->value_history_count <= first) return;
 
     furi_string_cat(out, "\n\e#Earlier\n");
-    for(uint8_t i = 1; i < product->value_history_count; i++) {
+    for(uint8_t i = first; i < product->value_history_count; i++) {
         const ItsoValueRecord* record = &product->value_history[i];
 
         /* Three short lines rather than one wide one: a date and time is

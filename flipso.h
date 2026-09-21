@@ -90,6 +90,13 @@ typedef struct {
     /** Name being edited on the save screen. */
     char save_name[FLIPSO_SAVED_NAME_LEN];
 
+    /**
+     * What the record being replaced knew that this read does not, and the
+     * other way round. Filled in when the save screen finds a record to update,
+     * because that is the one moment both are in hand.
+     */
+    FlipsoCaptureDiff save_diff;
+
     /** What a card that is not an ITSO one said about itself. */
     FlipsoMedia media;
 

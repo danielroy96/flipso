@@ -27,7 +27,11 @@ extern "C" {
  * generous one. The directory parser stops here, leaving an unusual geometry
  * short of a product or two rather than overflowing the array. */
 #define ITSO_MAX_PRODUCTS  16
-#define ITSO_MAX_TAPS      6
+/* Four 48-byte records fit the DESFire cyclic log, and a saved card adds the
+ * records earlier reads of it saw: the log on the card is a rolling window, so
+ * a journey history is only as long as something off the card remembers. Twelve
+ * holds a full log plus the eight a saved card keeps. */
+#define ITSO_MAX_TAPS      12
 #define ITSO_NAME_LEN      40
 #define ITSO_LOC_LEN       28
 /* Twelve-character AtcoCode plus terminator, the longest code a location can
@@ -59,6 +63,13 @@ extern "C" {
 /* One value record: a 10-byte common header (TS 1000-2 table 15) and a 5-byte
  * tail whose meaning TS 1000-5 defines per IPE type. */
 #define ITSO_VALUE_RECORD_LEN 15
+
+/* One IPE Directory Entry (TS 1000-2 clause 6.1). */
+#define ITSO_DIR_ENTRY_LEN 5
+
+/* One slot of the DESFire cyclic log, which holds fixed-length Transient Ticket
+ * Records whatever the record inside it claims to be (TS 1000-10 clause 8.7.5). */
+#define ITSO_TAP_RECORD_LEN 48
 
 /* IPE types we decode beyond the directory entry (ITSO TS 1000-5 clause 2). */
 typedef enum {
@@ -506,8 +517,60 @@ void itso_parse_ipe(ItsoProduct* product, const uint8_t* group, size_t len, uint
  */
 uint8_t itso_value_records(const uint8_t* group, size_t len, uint8_t sector_size, size_t* offset);
 
+/**
+ * Decode value records an earlier read of this card saw.
+ *
+ * @param data ITSO_VALUE_RECORD_LEN records back to back, in any order.
+ *
+ * They join the product's history and are deduplicated against it, so a record
+ * still on the card is not counted twice. Nothing here touches the product's
+ * live fields: the card itself is the authority on what a product holds now,
+ * and this is only what it held before.
+ */
+void itso_parse_value_history(ItsoProduct* product, const uint8_t* data, size_t len);
+
 /** Decode the cyclic log into card->taps. */
 void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len);
+
+/**
+ * Decode Transient Ticket Records an earlier read of this card saw.
+ *
+ * @param data ITSO_TAP_RECORD_LEN records back to back, in any order.
+ *
+ * Call it after itso_parse_log(), so that the record the card itself calls its
+ * newest keeps the latest flag and so that the live log fills the array first.
+ */
+void itso_parse_log_history(ItsoCard* card, const uint8_t* data, size_t len);
+
+/* ------------------------------------------------------------------ */
+/* Raw records, for code that stores them rather than decoding them    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * B, the size of a memory sector, from a Shell Environment Data Group.
+ *
+ * Enough of the shell to find the value records in a product group, without
+ * decoding a whole card to get at one byte. Zero when @p data is not a shell.
+ */
+uint8_t itso_shell_sector_size(const uint8_t* data, size_t len);
+
+/**
+ * The 1-based @p index'th IPE Directory Entry within a Directory Data Group.
+ *
+ * @return ITSO_DIR_ENTRY_LEN bytes, or NULL when the group is too short. The
+ *         entry is returned whether or not it holds a product: an all-zero
+ *         entry is an unused one.
+ */
+const uint8_t* itso_dir_entry(const uint8_t* dir, size_t len, uint8_t index);
+
+/** True when a log slot holds a Transient Ticket Record at all. */
+bool itso_tap_record_present(const uint8_t* record, size_t len);
+
+/** True when tap record @p a was written later than @p b. */
+bool itso_tap_record_newer(const uint8_t* a, const uint8_t* b);
+
+/** True when value record @p a was written later than @p b, by TS#. */
+bool itso_value_record_newer(const uint8_t* a, const uint8_t* b);
 
 /* ------------------------------------------------------------------ */
 /* Human-readable names for coded values                              */

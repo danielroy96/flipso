@@ -326,6 +326,335 @@ static void hostile_files(void) {
     flipso_capture_free(capture);
 }
 
+/* ------------------------------------------------------------------ */
+/* Merging in what an earlier read of the same card saw                 */
+/* ------------------------------------------------------------------ */
+
+/** A copy of tap record @p from, restamped, which is a different journey. */
+static void restamp_tap(uint8_t* out, const uint8_t* from, uint32_t dts) {
+    memcpy(out, from, ITSO_TAP_RECORD_LEN);
+    /* DateTimeStamp is 24 bits at bit 32, so bytes 4 to 6. */
+    out[4] = (uint8_t)(dts >> 16);
+    out[5] = (uint8_t)(dts >> 8);
+    out[6] = (uint8_t)dts;
+}
+
+/** A copy of value record @p from with a new TS#, timestamp and balance. */
+static void restamp_value(
+    uint8_t* out,
+    const uint8_t* from,
+    uint16_t ts,
+    uint32_t dts,
+    int16_t amount) {
+    memcpy(out, from, ITSO_VALUE_RECORD_LEN);
+    /* TS# is 12 bits at bit 4 and the DTS 24 bits at bit 16; a purse keeps its
+     * balance in the two bytes at 10 (TS 1000-5 table 4). */
+    out[0] = (uint8_t)((out[0] & 0xF0) | ((ts >> 8) & 0x0F));
+    out[1] = (uint8_t)ts;
+    out[2] = (uint8_t)(dts >> 16);
+    out[3] = (uint8_t)(dts >> 8);
+    out[4] = (uint8_t)dts;
+    out[10] = (uint8_t)((uint16_t)amount >> 8);
+    out[11] = (uint8_t)amount;
+}
+
+/** The purse's value records: after its IPE sector, past the two-byte header. */
+#define GROUP1_VALUE_0 (64 + 2)
+#define GROUP1_VALUE_1 (64 + 2 + ITSO_VALUE_RECORD_LEN)
+
+/** True when a decoded card holds a journey stamped @p dts. */
+static bool holds_tap(const ItsoCard* card, uint32_t dts) {
+    for(uint8_t i = 0; i < card->tap_count; i++) {
+        if(card->taps[i].dts == dts) return true;
+    }
+    return false;
+}
+
+/**
+ * Fill a capture with the card as it is "now": every block as the read found
+ * it, except that entry 1 and the log are whatever the caller has rewritten.
+ */
+static void fill_now(
+    FlipsoCapture* capture,
+    const ItsoCard* reference,
+    const uint8_t* dir,
+    size_t dir_len,
+    const uint8_t* group_one,
+    size_t group_one_len,
+    const uint8_t* log,
+    size_t log_len) {
+    flipso_capture_add(capture, FlipsoBlockShell, 0, card_shell, sizeof(card_shell));
+    flipso_capture_add(capture, FlipsoBlockDirectory, 0, dir, dir_len);
+    flipso_capture_add(capture, FlipsoBlockProduct, 1, group_one, group_one_len);
+    for(uint8_t i = 1; i < reference->product_count && i < 5; i++) {
+        flipso_capture_add(
+            capture, FlipsoBlockProduct, reference->products[i].dir_index, groups[i].data,
+            groups[i].len);
+    }
+    flipso_capture_add(capture, FlipsoBlockLog, 0, log, log_len);
+}
+
+/*
+ * A card read twice, a few journeys apart.
+ *
+ * The card keeps four journey slots and two value records per product, and
+ * writes each new one over the oldest. So a second read of a card that has been
+ * used since the first cannot see everything the first read saw - and the file
+ * written then is the only place those records still exist.
+ */
+static void merge_history(void) {
+    ItsoCard reference;
+    reference_decode(&reference);
+
+    /* Taps decode newest first, so the last is the one the card will overwrite
+     * next. Both timestamps are taken from the card rather than written down:
+     * a DTS is a signed count of minutes from an epoch in 2028, so every record
+     * here is a negative number and the arithmetic reads backwards. */
+    uint32_t oldest_dts = reference.taps[reference.tap_count - 1].dts;
+    uint32_t new_tap_dts = reference.taps[0].dts + 1440; /* A day later. */
+    uint32_t new_value_dts = new_tap_dts + 1;
+
+    FlipsoCapture* previous = flipso_capture_alloc();
+    fill(previous, &reference);
+
+    /* The card as it is now: one journey and one purse transaction later, each
+     * written over the oldest record of its kind. */
+    static uint8_t log_now[sizeof(card_log)];
+    memcpy(log_now, card_log, sizeof(card_log));
+    restamp_tap(log_now + 3 * ITSO_TAP_RECORD_LEN, card_log, new_tap_dts);
+
+    static uint8_t group1_now[sizeof(group1)];
+    memcpy(group1_now, group1, sizeof(group1));
+    restamp_value(
+        group1_now + GROUP1_VALUE_0, group1 + GROUP1_VALUE_1, 102, new_value_dts, 900);
+
+    FlipsoCapture* now = flipso_capture_alloc();
+    fill_now(
+        now, &reference, card_dir, sizeof(card_dir), group1_now, sizeof(group1_now), log_now,
+        sizeof(log_now));
+
+    /* What the card alone can say, before the file is consulted. */
+    ItsoCard live;
+    flipso_capture_decode(now, &live);
+    check("the card itself holds four journeys", live.tap_count == 4);
+    check("and two value records on the purse", live.products[0].value_history_count == 2);
+    check("the oldest journey has rolled off the card", !holds_tap(&live, oldest_dts));
+    check("and the new one is there instead", holds_tap(&live, new_tap_dts));
+
+    FlipsoCaptureDiff diff;
+    flipso_capture_merge_history(now, previous, &diff);
+    printf("      +%u journeys, +%u transactions, kept %u and %u\n", diff.new_taps,
+           diff.new_values, diff.kept_taps, diff.kept_values);
+    check("one journey is new since the file was written", diff.new_taps == 1);
+    check("one transaction is new", diff.new_values == 1);
+    check("the journey that rolled off is kept", diff.kept_taps == 1);
+    check("so is the value record that rolled off", diff.kept_values == 1);
+
+    ItsoCard merged;
+    check("the merged capture decodes", flipso_capture_decode(now, &merged));
+    check("the card now holds five journeys", merged.tap_count == 5);
+    check("including the one only the file remembered", holds_tap(&merged, oldest_dts));
+    check("and the new one", holds_tap(&merged, new_tap_dts));
+    check("no journey is listed twice", ({
+        bool duplicate = false;
+        for(uint8_t i = 0; i < merged.tap_count; i++) {
+            for(uint8_t j = (uint8_t)(i + 1); j < merged.tap_count; j++) {
+                if(merged.taps[i].dts == merged.taps[j].dts &&
+                   merged.taps[i].transaction_type == merged.taps[j].transaction_type) {
+                    duplicate = true;
+                }
+            }
+        }
+        !duplicate;
+    }));
+    check("exactly one journey is the card's own latest", ({
+        uint8_t latest = 0;
+        for(uint8_t i = 0; i < merged.tap_count; i++) {
+            if(merged.taps[i].latest) latest++;
+        }
+        latest == 1;
+    }));
+
+    /* The balance series: three transactions where the card holds two, which is
+     * the whole point of keeping the file's records. */
+    const ItsoProduct* purse = &merged.products[0];
+    check("the purse has three value records", purse->value_history_count == 3);
+    check("newest first, by TS#",
+          purse->value_history[0].ts == 102 && purse->value_history[1].ts == 101 &&
+              purse->value_history[2].ts == 100);
+    check("the balance series runs 9.00, 12.34, 15.60",
+          purse->value_history[0].amount.value == 900 &&
+              purse->value_history[1].amount.value == 1234 &&
+              purse->value_history[2].amount.value == 1560);
+    check("and the live balance is the newest of them",
+          purse->balance.value == 900 && purse->value_ts == 102);
+
+    /* Merging the same file again must change nothing: the records it holds are
+     * already here, and a second copy would read as a second journey. */
+    FlipsoCaptureDiff again;
+    flipso_capture_merge_history(now, previous, &again);
+    ItsoCard twice;
+    flipso_capture_decode(now, &twice);
+    check("merging the same record twice changes nothing",
+          memcmp(&twice, &merged, sizeof(ItsoCard)) == 0);
+
+    /* The file: new keys, same Version, so a build that predates them loses the
+     * history and reads the rest. */
+    size_t count = 0;
+    char** lines = to_lines(now, &count);
+    bool version_unchanged = false, has_log_history = false, has_value_history = false;
+    for(size_t i = 0; i < count; i++) {
+        if(strcmp(lines[i], "Version: 1") == 0) version_unchanged = true;
+        if(strncmp(lines[i], "Log history:", 12) == 0) has_log_history = true;
+        if(strncmp(lines[i], "Value history 1:", 16) == 0) has_value_history = true;
+    }
+    check("the history is written under its own keys", has_log_history && has_value_history);
+    check("and the file version is unchanged", version_unchanged);
+
+    FlipsoCapture* loaded = flipso_capture_alloc();
+    for(size_t i = 0; i < count; i++) {
+        flipso_capture_parse_line(loaded, lines[i]);
+    }
+    ItsoCard reloaded;
+    check("a merged file loads", flipso_capture_decode(loaded, &reloaded));
+    check("and decodes to the same card", memcmp(&reloaded, &merged, sizeof(ItsoCard)) == 0);
+
+    free_lines(lines, count);
+    flipso_capture_free(loaded);
+    flipso_capture_free(now);
+    flipso_capture_free(previous);
+}
+
+/*
+ * A directory entry that has changed hands.
+ *
+ * Entry numbers are reused: a ticket that expires and is replaced leaves its
+ * slot to another product, and the transactions of the old one are not the new
+ * one's. The entry bytes - owner, type, subtype, expiry - are what say so.
+ */
+static void merge_replaced_product(void) {
+    ItsoCard reference;
+    reference_decode(&reference);
+
+    /* E1 as a product that has only just been created: two records of its own,
+     * numbered from one, where the file remembers TS# 100 and 101. */
+    static uint8_t group1_now[sizeof(group1)];
+    memcpy(group1_now, group1, sizeof(group1));
+    restamp_value(group1_now + GROUP1_VALUE_0, group1 + GROUP1_VALUE_1, 1, 0xEE0000u, 500);
+    restamp_value(group1_now + GROUP1_VALUE_1, group1 + GROUP1_VALUE_1, 2, 0xEE0001u, 400);
+
+    /* The same card, except that E1's entry now carries a different expiry. */
+    static uint8_t dir_now[sizeof(card_dir)];
+    memcpy(dir_now, card_dir, sizeof(card_dir));
+    dir_now[6] = (uint8_t)(dir_now[6] ^ 0x0F);
+
+    FlipsoCapture* previous = flipso_capture_alloc();
+    fill(previous, &reference);
+    FlipsoCapture* now = flipso_capture_alloc();
+    fill_now(
+        now, &reference, dir_now, sizeof(dir_now), group1_now, sizeof(group1_now), card_log,
+        sizeof(card_log));
+
+    FlipsoCaptureDiff diff;
+    flipso_capture_merge_history(now, previous, &diff);
+    ItsoCard merged;
+    flipso_capture_decode(now, &merged);
+    check("a replaced product keeps no history", diff.kept_values == 0);
+    check("so its records are only its own",
+          merged.products[0].value_history_count == 2 &&
+              merged.products[0].value_history[0].ts == 2 &&
+              merged.products[0].value_history[1].ts == 1);
+    /* The journey log belongs to the card rather than to a product, so it is
+     * unaffected by what happened to an entry. */
+    check("the journey log is unaffected", merged.tap_count == 4);
+
+    /* The control: the same two reads with the entry bytes left alone. Now the
+     * records the file holds do belong to the product in that slot, and all
+     * four are kept - which is what says the guard above is the entry and not
+     * something else about these blocks. */
+    FlipsoCapture* same = flipso_capture_alloc();
+    fill_now(
+        same, &reference, card_dir, sizeof(card_dir), group1_now, sizeof(group1_now),
+        card_log, sizeof(card_log));
+    FlipsoCaptureDiff unchanged;
+    flipso_capture_merge_history(same, previous, &unchanged);
+    ItsoCard kept;
+    flipso_capture_decode(same, &kept);
+    check("an unchanged entry keeps its history", unchanged.kept_values == 2);
+    check("and shows all four records", kept.products[0].value_history_count == 4);
+
+    flipso_capture_free(same);
+    flipso_capture_free(now);
+    flipso_capture_free(previous);
+}
+
+/*
+ * The cap. A history cannot grow without bound, so the oldest records fall off
+ * the end of the file the way they fell off the card - and what the decoder has
+ * room to show is what bounds what the file bothers to keep.
+ */
+static void merge_cap(void) {
+    ItsoCard reference;
+    reference_decode(&reference);
+    uint32_t oldest_dts = reference.taps[reference.tap_count - 1].dts;
+
+    /* A file saved from an earlier read: its own live log, plus a full history
+     * of records older than any of them. */
+    FlipsoCapture* previous = flipso_capture_alloc();
+    fill(previous, &reference);
+
+    static uint8_t history[FLIPSO_CAPTURE_MAX_LOG_HISTORY * ITSO_TAP_RECORD_LEN];
+    for(uint8_t i = 0; i < FLIPSO_CAPTURE_MAX_LOG_HISTORY; i++) {
+        restamp_tap(
+            history + (size_t)i * ITSO_TAP_RECORD_LEN, card_log,
+            oldest_dts - 1440u * (i + 1));
+    }
+    check("a full history is a block a capture will hold",
+          flipso_capture_add(
+              previous, FlipsoBlockLogHistory, 0, history, sizeof(history)));
+
+    /* One more journey since, so the oldest of the card's own four rolls off
+     * and there are nine records competing for eight places. */
+    static uint8_t log_now[sizeof(card_log)];
+    memcpy(log_now, card_log, sizeof(card_log));
+    restamp_tap(log_now + 3 * ITSO_TAP_RECORD_LEN, card_log, reference.taps[0].dts + 1440);
+
+    FlipsoCapture* now = flipso_capture_alloc();
+    fill_now(
+        now, &reference, card_dir, sizeof(card_dir), group1, sizeof(group1), log_now,
+        sizeof(log_now));
+
+    FlipsoCaptureDiff diff;
+    flipso_capture_merge_history(now, previous, &diff);
+    check("the kept history stops at the cap",
+          diff.kept_taps == FLIPSO_CAPTURE_MAX_LOG_HISTORY);
+
+    ItsoCard merged;
+    flipso_capture_decode(now, &merged);
+    printf("      %u journeys decoded, of %u the card holds plus %u kept\n",
+           merged.tap_count, 4, diff.kept_taps);
+    check("the decoded card fills its own array exactly",
+          merged.tap_count == ITSO_MAX_TAPS);
+
+    /* What was dropped has to be the oldest of them, which is only true if the
+     * whole candidate set was ordered before the cap was applied. */
+    check("the journey that just rolled off the card is kept",
+          holds_tap(&merged, oldest_dts));
+    check("the oldest invented record is the one dropped",
+          !holds_tap(&merged, oldest_dts - 1440u * FLIPSO_CAPTURE_MAX_LOG_HISTORY));
+
+    bool descending = true;
+    for(uint8_t i = 1; i < merged.tap_count; i++) {
+        if(itso_dts_to_unix(merged.taps[i].dts) > itso_dts_to_unix(merged.taps[i - 1].dts)) {
+            descending = false;
+        }
+    }
+    check("the whole history is ordered newest first", descending);
+
+    flipso_capture_free(now);
+    flipso_capture_free(previous);
+}
+
 int main(void) {
     build_groups();
     groups[0] = (Group){group1, sizeof(group1)};
@@ -343,6 +672,10 @@ int main(void) {
     limits();
     printf("\nHostile files\n");
     hostile_files();
+    printf("\nA card read twice\n");
+    merge_history();
+    merge_replaced_product();
+    merge_cap();
 
     printf("\n%s\n", failures ? "FAILURES" : "All capture tests passed");
     return failures ? 1 : 0;

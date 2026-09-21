@@ -213,6 +213,54 @@ nothing after that says which card the file holds.
 `tools/test/replay.py` reads these files, so a saved card is also a decoder test
 case that needs neither the Flipper nor the card.
 
+### A saved card remembers more than the card does
+
+Everything a card tells you about its own past is a rolling window. The DESFire
+cyclic log has four slots and the Value Record Data Group of a product has two,
+and each new record is written over the oldest. Read a card in March and again
+in June and the June read cannot see the March journeys: they are gone from the
+card, and the only place they still exist is the file written in March.
+
+So a re-save merges rather than replaces. The records the file holds and the
+read does not are kept alongside the read, under two further keys:
+
+```
+Log history: 14 02 00 DB EE 5A ...
+Value history 1: 40 64 EE 5E 09 ...
+```
+
+Both hold **raw records**, exactly as some earlier read found them — 48 bytes
+each for a tap, 15 for a value record — so a saved card stays a record of bytes
+rather than of decisions. They go through the same decoders the live blocks do,
+and the build that is running decides what they mean.
+
+A few things that matter about the merge:
+
+- **Records are matched byte for byte.** A record is written once and never
+  altered, so a record still on the card is the same bytes in the file, and the
+  ones that are not in the new read are exactly the ones that have rolled off.
+  Nothing has to be decoded to work that out.
+- **The `Version` stays 1.** Nothing existing changed shape; two keys were
+  added, and unknown keys were always skipped rather than rejected. So a build
+  that predates this reads such a file, loses the history and shows the card.
+- **The caps are set by what the decoder can show**: eight tap records, which
+  with a full log fills `ITSO_MAX_TAPS` exactly, and eight value records per
+  product. What falls off the end of the file is what would have fallen off the
+  end of the screen.
+- **Value records only carry forward for an unchanged directory entry.** Entry
+  numbers are reused: a ticket that expires and is replaced leaves its slot to
+  another product, and the old one's transactions are not the new one's. The
+  five entry bytes - owner, type, subtype, VGP and expiry - are what decide it.
+  The journey log is the card's rather than a product's, so it always carries.
+- **The live blocks are decoded first**, so the card is the authority on what it
+  holds now and the file only fills in what has since rolled off. That is also
+  what keeps the card's own newest record flagged as the latest tap.
+
+Because the merge happens before the "update this card?" screen rather than
+after it, that screen can say what the update is worth - how many journeys and
+transactions are new since the record was written, and how many older records
+are being carried forward. A read that adds nothing says so.
+
 ## Specification references
 
 Field offsets are taken from ITSO TS 1000 version 2.1.5 (March 2025), published

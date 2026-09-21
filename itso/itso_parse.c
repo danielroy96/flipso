@@ -15,7 +15,6 @@
 #define ITSO_IPE_BLOCK_LEN   4 /* BL for every IPE type we decode. */
 #define ITSO_INSTANCE_ID_LEN 8
 #define ITSO_SEAL_LEN        8
-#define ITSO_DIR_ENTRY_LEN   5
 
 void itso_card_reset(ItsoCard* card) {
     memset(card, 0, sizeof(ItsoCard));
@@ -1119,28 +1118,30 @@ static bool itso_parse_tap(ItsoTap* tap, const uint8_t* data, size_t len) {
     return true;
 }
 
-void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len) {
-    /* TS 1000-10 clause 8.7.5: the DESFire cyclic log holds fixed 48-byte records.
-     * Record Offset in the Log Directory Entry names the *next* slot to be used,
-     * so the newest record is the one before it. */
-    const size_t record_len = 48;
-    uint8_t slots = (uint8_t)(len / record_len);
-    if(slots == 0) return;
-    if(slots > ITSO_MAX_TAPS) slots = ITSO_MAX_TAPS;
-
-    for(uint8_t i = 0; i < slots; i++) {
-        ItsoTap* tap = &card->taps[card->tap_count];
-        memset(tap, 0, sizeof(ItsoTap));
-        if(!itso_parse_tap(tap, data + (size_t)i * record_len, record_len)) continue;
-
-        /* Mark the slot the Log Directory Entry points back at. */
-        uint8_t newest_slot = (uint8_t)((card->log_record_offset + slots - 1) % slots);
-        tap->latest = card->log_entry_valid && card->log_normal_mode && (i == newest_slot);
-        card->tap_count++;
+/**
+ * Keep one decoded tap, if it is not one we already have.
+ *
+ * A tap carries no sequence number of its own, so a record is identified by
+ * when it happened and what it was. That is what a saved card needs: reading
+ * the same card again offers the records the last read of it already saw, and a
+ * journey listed twice reads as two journeys.
+ */
+static void itso_add_tap(ItsoCard* card, const ItsoTap* tap) {
+    for(uint8_t i = 0; i < card->tap_count; i++) {
+        if(card->taps[i].dts == tap->dts &&
+           card->taps[i].transaction_type == tap->transaction_type) {
+            return;
+        }
     }
+    /* Full: the live log is parsed first, and a saved card offers its records
+     * newest first, so what is dropped here is the oldest of what was offered. */
+    if(card->tap_count >= ITSO_MAX_TAPS) return;
+    card->taps[card->tap_count++] = *tap;
+}
 
-    /* Newest first, so the most recent journey is the first thing on screen.
-     * At most ITSO_MAX_TAPS records, so an insertion sort is plenty. */
+/** Newest first, so the most recent journey is the first thing on screen. */
+static void itso_sort_taps(ItsoCard* card) {
+    /* At most ITSO_MAX_TAPS records, so an insertion sort is plenty. */
     for(uint8_t i = 1; i < card->tap_count; i++) {
         ItsoTap held = card->taps[i];
         uint32_t held_time = itso_dts_to_unix(held.dts);
@@ -1151,4 +1152,88 @@ void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len) {
         }
         card->taps[j + 1] = held;
     }
+}
+
+void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len) {
+    /* TS 1000-10 clause 8.7.5: the DESFire cyclic log holds fixed-length records.
+     * Record Offset in the Log Directory Entry names the *next* slot to be used,
+     * so the newest record is the one before it - counted over the slots the log
+     * has rather than the ones we have room for. */
+    uint8_t slots = (uint8_t)(len / ITSO_TAP_RECORD_LEN);
+    if(slots == 0) return;
+    uint8_t newest_slot = (uint8_t)((card->log_record_offset + slots - 1) % slots);
+
+    for(uint8_t i = 0; i < slots; i++) {
+        ItsoTap tap;
+        memset(&tap, 0, sizeof(tap));
+        if(!itso_parse_tap(&tap, data + (size_t)i * ITSO_TAP_RECORD_LEN, ITSO_TAP_RECORD_LEN)) {
+            continue;
+        }
+
+        tap.latest = card->log_entry_valid && card->log_normal_mode && (i == newest_slot);
+        itso_add_tap(card, &tap);
+    }
+
+    itso_sort_taps(card);
+}
+
+void itso_parse_log_history(ItsoCard* card, const uint8_t* data, size_t len) {
+    /* No latest flag on any of these: the record the card itself calls its
+     * newest is in the live log, which has already been parsed. */
+    for(size_t offset = 0; offset + ITSO_TAP_RECORD_LEN <= len;
+        offset += ITSO_TAP_RECORD_LEN) {
+        ItsoTap tap;
+        memset(&tap, 0, sizeof(tap));
+        if(!itso_parse_tap(&tap, data + offset, ITSO_TAP_RECORD_LEN)) continue;
+        itso_add_tap(card, &tap);
+    }
+
+    itso_sort_taps(card);
+}
+
+void itso_parse_value_history(ItsoProduct* product, const uint8_t* data, size_t len) {
+    for(size_t offset = 0; offset + ITSO_VALUE_RECORD_LEN <= len;
+        offset += ITSO_VALUE_RECORD_LEN) {
+        const uint8_t* record = data + offset;
+        if(itso_is_blank(record, ITSO_VALUE_RECORD_LEN)) continue;
+
+        ItsoValueRecord decoded;
+        itso_decode_value_record(&decoded, record, product->typ);
+        itso_add_value_record(product, &decoded);
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Raw records, for code that stores them rather than decoding them    */
+/* ------------------------------------------------------------------ */
+
+uint8_t itso_shell_sector_size(const uint8_t* data, size_t len) {
+    if(!itso_looks_like_shell(data, len)) return 0;
+    return data[16]; /* B, TS 1000-2 clause 4.1.9. */
+}
+
+const uint8_t* itso_dir_entry(const uint8_t* dir, size_t len, uint8_t index) {
+    if(index == 0) return NULL;
+    size_t offset = 2 + (size_t)(index - 1) * ITSO_DIR_ENTRY_LEN;
+    if(offset + ITSO_DIR_ENTRY_LEN > len) return NULL;
+    return dir + offset;
+}
+
+bool itso_tap_record_present(const uint8_t* record, size_t len) {
+    if(len < 7 || itso_is_blank(record, 7)) return false;
+    /* TTFormatRevision zero is not a revision any record is written at, which
+     * is how a slot holding something other than a record is told apart from
+     * one holding a record of a revision we do not decode. */
+    return itso_bits(record, 12, 4) != 0;
+}
+
+bool itso_tap_record_newer(const uint8_t* a, const uint8_t* b) {
+    /* Through the DTS conversion rather than on the raw field: a DTS is a
+     * two's complement count of minutes, so the larger number is the earlier
+     * time for every record written before the 2028 epoch. */
+    return itso_dts_to_unix(itso_bits(a, 32, 24)) > itso_dts_to_unix(itso_bits(b, 32, 24));
+}
+
+bool itso_value_record_newer(const uint8_t* a, const uint8_t* b) {
+    return itso_ts_newer((uint16_t)itso_bits(a, 4, 12), (uint16_t)itso_bits(b, 4, 12));
 }

@@ -41,18 +41,45 @@ static void
     }
 }
 
+/** "2 new journeys", or nothing at all when a count is zero. */
+static void flipso_scene_save_cat_count(
+    FuriString* out,
+    uint8_t count,
+    const char* singular,
+    const char* plural) {
+    if(!count) return;
+    furi_string_cat_printf(out, "\n%u new %s", count, count == 1 ? singular : plural);
+}
+
 /** The "you have this card already" screen. */
 static void flipso_scene_save_ask_update(Flipso* app, uint32_t read_at) {
     FuriString* name = furi_string_alloc();
     flipso_saved_name(name, furi_string_get_cstr(app->save_path));
 
-    /* The name, and how old the record is. Two lines, which is what fits above
-     * the buttons without scrolling, and the date is the half that answers the
-     * question being asked: what is about to be thrown away. */
+    /* The name, and how old the record is: the date is the half that answers
+     * the question being asked, which is what is about to be replaced. */
     FuriString* text = furi_string_alloc_set(name);
     if(read_at) {
         furi_string_cat(text, "\nRead ");
         flipso_cat_time(text, read_at);
+    }
+
+    /* Then what the update is worth, which is the other half of the same
+     * question. The record is not being thrown away - the journeys and
+     * transactions that have rolled off the card since it was written are kept
+     * - so what changes is that this read's are added to them. */
+    const FlipsoCaptureDiff* diff = &app->save_diff;
+    if(diff->new_taps || diff->new_values) {
+        flipso_scene_save_cat_count(text, diff->new_taps, "journey", "journeys");
+        flipso_scene_save_cat_count(text, diff->new_values, "transaction", "transactions");
+    } else {
+        furi_string_cat(text, "\nNothing new on the card");
+    }
+
+    uint16_t kept = (uint16_t)(diff->kept_taps + diff->kept_values);
+    if(kept) {
+        furi_string_cat_printf(
+            text, "\nKeeping %u older record%s", kept, kept == 1 ? "" : "s");
     }
 
     widget_reset(app->widget);
@@ -95,9 +122,25 @@ static void flipso_scene_save_ask_name(Flipso* app) {
 
 void flipso_scene_save_on_enter(void* context) {
     Flipso* app = context;
+    memset(&app->save_diff, 0, sizeof(app->save_diff));
 
     uint32_t read_at = 0;
     if(flipso_saved_find(app->capture, app->save_path, &read_at)) {
+        /* Take what that record knows before offering to replace it. A card
+         * keeps only its last four journeys and its last couple of
+         * transactions, so everything older than that exists solely in the
+         * file, and writing this read out on its own would lose it.
+         *
+         * Done here rather than after the user agrees so that the screen can
+         * say what the update is worth - and it costs nothing if they decline,
+         * because the merge only adds records to a capture that is thrown away
+         * when the scan screen comes back. */
+        FlipsoCapture* previous = flipso_capture_alloc();
+        if(flipso_saved_read(previous, furi_string_get_cstr(app->save_path))) {
+            flipso_capture_merge_history(app->capture, previous, &app->save_diff);
+        }
+        flipso_capture_free(previous);
+
         flipso_scene_save_ask_update(app, read_at);
     } else {
         flipso_scene_save_ask_name(app);
@@ -110,6 +153,14 @@ static void flipso_scene_save_commit(Flipso* app) {
         /* The card on screen is now that saved card, so the menu offers to
          * delete it rather than to save it again. */
         furi_string_set(app->loaded_path, app->save_path);
+        /* And it now knows more than the card in the reader does, so decode it
+         * again: the history that came out of the file belongs on the screens
+         * without waiting for the card to be opened afresh. Only when there was
+         * something to merge, so a first save leaves the card exactly as the
+         * read left it. */
+        if(app->save_diff.kept_taps || app->save_diff.kept_values) {
+            flipso_capture_decode(app->capture, &app->card);
+        }
         notification_message(app->notifications, &flipso_sequence_saved);
         scene_manager_previous_scene(app->scene_manager);
     } else {

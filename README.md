@@ -85,7 +85,16 @@ Reading a card you have saved before updates that record instead of making a
 second copy. Cards are matched by card number rather than by file name, so the
 card you called "Mum's bus pass" stays called that, and its balance, season
 ticket and journey log come up to date. Flipso says which record it is about to
-replace, and when that one was read, before it does it.
+replace and when that one was read, plus how many journeys and transactions are
+new since, before it does it.
+
+**A saved card ends up remembering more than the card does.** A card keeps four
+journeys and two transactions per product, writing each new one over the oldest,
+so a second read cannot see what the first one saw. Updating a record therefore
+keeps the records that have rolled off the card since — as the raw bytes they
+were, decoded by the build that is running like everything else in the file — so
+the journey log and the balance history grow with every read, past what the card
+itself has room for.
 
 Each of the three outcomes has its own chirp, because they happen seconds apart
 and you are usually looking at the card rather than the screen: a card **read**

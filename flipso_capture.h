@@ -30,8 +30,23 @@
 extern "C" {
 #endif
 
-/** A shell, a directory, a cyclic log, and one group per directory entry. */
-#define FLIPSO_CAPTURE_MAX_BLOCKS (ITSO_MAX_PRODUCTS + 3)
+/**
+ * A shell, a directory, a cyclic log and its history, one group per directory
+ * entry, and one value history per entry.
+ */
+#define FLIPSO_CAPTURE_MAX_BLOCKS (ITSO_MAX_PRODUCTS * 2 + 4)
+
+/**
+ * Tap records kept from earlier reads of the same card.
+ *
+ * A DESFire log holds four, so four live records plus these fill ITSO_MAX_TAPS
+ * exactly: there is no point keeping records in the file that the decoder would
+ * not have room to show.
+ */
+#define FLIPSO_CAPTURE_MAX_LOG_HISTORY 8
+
+/** Value records kept from earlier reads, per product, for the same reason. */
+#define FLIPSO_CAPTURE_MAX_VALUE_HISTORY ITSO_MAX_VALUE_RECORDS
 
 /**
  * Ceiling on the bytes one capture holds.
@@ -43,13 +58,16 @@ extern "C" {
  */
 #define FLIPSO_CAPTURE_MAX_BYTES (FLIPSO_CAPTURE_MAX_BLOCKS * ITSO_MAX_GROUP_LEN)
 
+/** Longest key the file uses, terminator included: "Value history 16". */
+#define FLIPSO_CAPTURE_KEY_MAX 24
+
 /**
  * Longest line flipso_capture_line() writes, terminator included.
  *
  * A key, then three characters per byte. Too large for the app's 4 KB stack:
  * the caller allocates this buffer on the heap.
  */
-#define FLIPSO_CAPTURE_LINE_MAX (16 + ITSO_MAX_GROUP_LEN * 3)
+#define FLIPSO_CAPTURE_LINE_MAX (FLIPSO_CAPTURE_KEY_MAX + ITSO_MAX_GROUP_LEN * 3)
 
 /** Which data group a block of captured bytes came from. */
 typedef enum {
@@ -57,7 +75,29 @@ typedef enum {
     FlipsoBlockDirectory, /**< Directory Data Group. */
     FlipsoBlockProduct, /**< One product's IPE and Value Record groups, chained. */
     FlipsoBlockLog, /**< The cyclic log of Transient Ticket Records. */
+
+    /* The two blocks that are not what the card said this time. Both hold raw
+     * records exactly as some earlier read of the same card found them, which
+     * is what keeps a saved card a record of bytes rather than of decisions:
+     * they go through the same decoder, and the build that is running decides
+     * what they mean. */
+    FlipsoBlockLogHistory, /**< Tap records earlier reads saw, newest first. */
+    FlipsoBlockValueHistory, /**< Value records earlier reads saw, per entry. */
 } FlipsoBlockKind;
+
+/**
+ * What changed between the card in the reader and the record already saved.
+ *
+ * Counted in records rather than worked out from the decode, because the merge
+ * is the only point at which both sides are in hand: afterwards the two are one
+ * history and nothing distinguishes what came from where.
+ */
+typedef struct {
+    uint8_t new_taps; /**< Journeys the card has made since that record. */
+    uint8_t kept_taps; /**< Older journeys carried forward out of the file. */
+    uint8_t new_values; /**< Transactions on products since that record. */
+    uint8_t kept_values; /**< Older transactions carried forward. */
+} FlipsoCaptureDiff;
 
 typedef struct FlipsoCapture FlipsoCapture;
 
@@ -117,6 +157,32 @@ bool flipso_capture_card_number(const FlipsoCapture* capture, char* out);
  * @return false when there is no shell, or the shell does not parse.
  */
 bool flipso_capture_decode(const FlipsoCapture* capture, ItsoCard* card);
+
+/**
+ * Fold the history @p previous holds into @p capture, so that saving over it
+ * keeps what it knew.
+ *
+ * A card keeps a rolling window: four slots of journey log, two value records
+ * per product. Reading a card again and writing the file fresh would throw away
+ * everything that has since rolled off, so instead the records the previous
+ * file holds and this read does not are kept alongside it - which makes a saved
+ * card a longer history of the card than the card itself has room to be.
+ *
+ * Records are matched byte for byte. A record is written once and never
+ * altered, so a record still on the card is the same bytes in both, and the
+ * ones that are not in @p capture are exactly the ones that have rolled off.
+ *
+ * Value records are only carried forward for a directory entry whose entry
+ * bytes are unchanged - same owner, type, subtype and expiry. A product that
+ * has been removed and replaced leaves its slot to something else, and its
+ * transactions would otherwise be shown as that new product's own.
+ *
+ * @param[out] diff what was found, for telling the user. May be NULL.
+ */
+void flipso_capture_merge_history(
+    FlipsoCapture* capture,
+    const FlipsoCapture* previous,
+    FlipsoCaptureDiff* diff);
 
 /* ------------------------------------------------------------------ */
 /* The saved file, a line at a time                                    */
