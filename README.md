@@ -56,7 +56,7 @@ specification.
   <tr>
     <td align="center"><img src="docs/screenshots/entitlement.png" width="250" alt="Entitlement screen showing Limited free ride and class Disabled"><br><b>ID &amp; entitlement</b><br><sub>Holder details, entitlement type, concessionary class, validity dates and area, companion and photo flags</sub></td>
     <td align="center"><img src="docs/screenshots/journey-log.png" width="250" alt="Journey log showing tap out from Feltham to Woking"><br><b>Last taps</b><br><sub>Tap in/out state and time, the product used, passback, and the journey log with origin, destination and fare</sub></td>
-    <td align="center"><img src="docs/screenshots/products.png" width="250" alt="Products list with per-type icons and status flags"><br><b>Products</b><br><sub>Every product in the directory, flagged expired / blocked / unused, each with an icon from its ITSO type</sub></td>
+    <td align="center"><img src="docs/screenshots/products.png" width="250" alt="Products list with per-type icons and status flags"><br><b>Products</b><br><sub>Every product in the directory, flagged expired / blocked / unused, each with an icon from its ITSO type — and, on a saved card, the ones it no longer carries</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/product-detail.png" width="250" alt="Period ticket detail showing operator, status, expiry and from station"><br><b>Product detail</b><br><sub>Operator, validity window, from/to stations, counters, and the instance identity of that one ticket</sub></td>
@@ -95,6 +95,18 @@ keeps the records that have rolled off the card since — as the raw bytes they
 were, decoded by the build that is running like everything else in the file — so
 the journey log and the balance history grow with every read, past what the card
 itself has room for.
+
+Whole products are kept the same way. A directory entry is freed when a ticket
+expires and is removed, and reused when the next one is sold, so the card's
+account of what it carries is only ever the present tense. A record that saw the
+ticket keeps it, and the product list shows it below the ones the card still
+holds — with a clock for an icon instead of its own, **[off card]** after its
+name, and the date of the last read that found it on the card at the top of its
+detail screen. The same distinction runs through a product's transactions: what
+is still in its value records is listed under **Earlier on card**, and what only
+the file remembers under **From past reads**. The screens that describe the card
+as it is — the purse, the ID, the product count on the card's own menu — count
+only what is on it.
 
 Each of the three outcomes has its own chirp, because they happen seconds apart
 and you are usually looking at the card rather than the screen: a card **read**

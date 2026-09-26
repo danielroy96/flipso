@@ -256,10 +256,58 @@ A few things that matter about the merge:
   holds now and the file only fills in what has since rolled off. That is also
   what keeps the card's own newest record flagged as the latest tap.
 
+### And products the card has dropped
+
+A directory entry is not the product's for good. When a ticket expires and is
+removed the entry is freed, and the next product sold takes the slot - so the
+Directory Data Group is only ever a statement about the card as it is now, and a
+read taken after that has no way of knowing a ticket was ever there.
+
+A record that saw it does. Alongside the record histories, a re-save carries the
+whole product forward under a third key:
+
+```
+Product history 100: 69 0F 1C 00 01 40 64 EE 5E 09 ...
+```
+
+The block is the IPE group exactly as that read assembled it, behind a ten-byte
+header - four bytes of Unix time for the read that last found the product on the
+card, one for the directory entry E(i) it held, and the five bytes of IPE
+Directory Entry that described it. The header is the only part of any block in
+the file that is not card bytes, and it is there because a product the card has
+forgotten has nothing else to say when it was last true, and because the
+directory that numbered it is not the one in the file any more.
+
+The key is a **history slot**, numbered from 100, rather than a directory entry:
+the entry is the one thing about a gone product that is no longer its own, and a
+ticket that expired and was replaced shares its number with whatever took the
+slot. `Value history 100` then holds that product's own archived transactions,
+keyed by the same slot for the same reason. 100 is clear of any entry number a
+shell can carry, so old and new keys cannot collide.
+
+What counts as gone is the entry bytes changing, which is the test the value
+records already used: same owner, type, subtype, VGP and expiry, or it is not
+the same product. A renewed season ticket therefore leaves its old self behind
+here in the same way a replaced one does - both are products the card used to
+hold and does not now.
+
+Four are kept, which is what `ITSO_MAX_HISTORIC_PRODUCTS` is for and what the
+product list has room to show; the newest by last-seen date win. A read that
+lost its Directory block keeps none, because a read that could not see the
+directory is not a card that has shed its products, and from here the two look
+alike.
+
+The decoder appends them to `ItsoCard::products` after the live ones, with
+`on_card` false and `last_seen` set, so a screen walking the array in order
+shows the card before it shows the card's past. `ItsoValueRecord::on_card`
+carries the same distinction one level down: true for a record read out of the
+group the card just offered, false for one that only a file remembers.
+
 Because the merge happens before the "update this card?" screen rather than
 after it, that screen can say what the update is worth - how many journeys and
-transactions are new since the record was written, and how many older records
-are being carried forward. A read that adds nothing says so.
+transactions are new since the record was written, how many older records are
+being carried forward, and how many products the card no longer carries. A read
+that adds nothing says so.
 
 ## Specification references
 

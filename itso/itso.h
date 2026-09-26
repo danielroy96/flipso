@@ -27,6 +27,15 @@ extern "C" {
  * generous one. The directory parser stops here, leaving an unusual geometry
  * short of a product or two rather than overflowing the array. */
 #define ITSO_MAX_PRODUCTS  16
+/* Products a saved card keeps after they have left the card, which a live read
+ * never produces. A directory entry is freed when a ticket expires and is
+ * removed, so a product the card no longer carries exists only in the file that
+ * was written while it did - and four of them is as much of that as a screen
+ * the user scrolls is worth. */
+#define ITSO_MAX_HISTORIC_PRODUCTS 4
+/* What ItsoCard::products holds: every entry the directory can carry, plus the
+ * ones a saved file remembers from before. */
+#define ITSO_MAX_CARD_PRODUCTS (ITSO_MAX_PRODUCTS + ITSO_MAX_HISTORIC_PRODUCTS)
 /* Four 48-byte records fit the DESFire cyclic log, and a saved card adds the
  * records earlier reads of it saw: the log on the card is a rolling window, so
  * a journey history is only as long as something off the card remembers. Twelve
@@ -207,12 +216,30 @@ typedef struct {
     uint16_t ts; /**< TS#: which write to the group this was. */
     uint8_t txn; /**< EventTypeCode: what the transaction was. */
     bool has_count;
+    /* False for a record that came out of a saved file rather than out of the
+     * group the card just offered. The card keeps two; everything before them
+     * survives only because a file remembered it, and a screen that showed the
+     * two kinds alike would claim the card still holds all of it. */
+    bool on_card;
 } ItsoValueRecord;
 
 /** One entry of the Directory Data Group, plus whatever its IPE dataset yielded. */
 typedef struct {
     bool present;
     uint8_t dir_index; /**< 1-based position E(i) in the directory. */
+
+    /**
+     * The card's directory listed this product on the read that is on screen.
+     *
+     * False for a product a saved file carries from an earlier read and the
+     * card has since dropped - an expired ticket whose entry has been freed.
+     * Such a product is as real as any other and decodes the same way; what it
+     * is not is a statement about the card as it is now.
+     */
+    bool on_card;
+    /** Unix time of the last read that found it on the card; 0 while it is. */
+    uint32_t last_seen;
+
     uint16_t oid; /**< Operator that owns the product, after any EF extension. */
     bool oid_extended; /**< EF was set: the operator is in the extended IPE-owner range. */
     uint8_t typ;
@@ -436,7 +463,10 @@ typedef struct {
     uint8_t log_record_offset; /**< RO: next record to be written. */
     uint8_t log_passback; /**< PTLBM, minutes. */
 
-    ItsoProduct products[ITSO_MAX_PRODUCTS];
+    /* The directory's products first, in entry order, then any the card has
+     * dropped since a file was written - so a screen that walks the array in
+     * order shows the card before it shows the card's past. */
+    ItsoProduct products[ITSO_MAX_CARD_PRODUCTS];
     uint8_t product_count;
 
     ItsoTap taps[ITSO_MAX_TAPS];
@@ -546,6 +576,36 @@ uint8_t itso_value_records(const uint8_t* group, size_t len, uint8_t sector_size
  * and this is only what it held before.
  */
 void itso_parse_value_history(ItsoProduct* product, const uint8_t* data, size_t len);
+
+/**
+ * Append a product the directory does not list, from the entry bytes that did.
+ *
+ * Only a saved card has these: the file kept the directory entry and the IPE
+ * group of a product from a read that still found it, and the entry it sat in
+ * has since been freed or taken by something else. The entry is decoded exactly
+ * as itso_parse_directory() decodes a live one - it is the same five bytes - so
+ * what follows can parse the group into it in the usual way.
+ *
+ * @param entry ITSO_DIR_ENTRY_LEN bytes of IPE Directory Entry.
+ * @param index the 1-based directory position it occupied, for display.
+ * @return the product, or NULL when there is no room for another. Status is
+ *         left unknown: the chain terminator that says used or blocked lives in
+ *         a Sector Chain Table that describes the card as it is now.
+ */
+ItsoProduct* itso_card_add_product(ItsoCard* card, const uint8_t* entry, uint8_t index);
+
+/**
+ * Mark a product, and everything it has decoded so far, as no longer on the
+ * card.
+ *
+ * Called after itso_parse_ipe() rather than before it, because the value
+ * records inside the group are read as live ones - they were, on the read that
+ * captured them - and it is only knowing where the group came from that says
+ * otherwise.
+ *
+ * @param last_seen Unix time of that read.
+ */
+void itso_product_off_card(ItsoProduct* product, uint32_t last_seen);
 
 /** Decode the cyclic log into card->taps. */
 void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len);

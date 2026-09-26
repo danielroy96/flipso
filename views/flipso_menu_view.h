@@ -19,8 +19,9 @@
 extern "C" {
 #endif
 
-/** Enough for every directory entry an ITSO shell can hold. */
-#define FLIPSO_MENU_MAX_ITEMS 16
+/** Enough for every directory entry an ITSO shell can hold, plus the products a
+ * saved card remembers from before the card dropped them. */
+#define FLIPSO_MENU_MAX_ITEMS 20
 #define FLIPSO_MENU_LABEL_LEN 32
 
 typedef struct FlipsoMenuView FlipsoMenuView;

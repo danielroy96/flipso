@@ -486,6 +486,12 @@ static void merge_history(void) {
           purse->value_history[0].amount.value == 900 &&
               purse->value_history[1].amount.value == 1234 &&
               purse->value_history[2].amount.value == 1560);
+    /* Which of them the card still holds is not a detail: the two records in
+     * its group are a different claim from the one the file is the only copy
+     * of, and the product screen shows them apart. */
+    check("the records still on the card say so",
+          purse->value_history[0].on_card && purse->value_history[1].on_card);
+    check("and the one only the file has does not", !purse->value_history[2].on_card);
     check("and the live balance is the newest of them",
           purse->balance.value == 900 && purse->value_ts == 102);
 
@@ -560,6 +566,12 @@ static void merge_replaced_product(void) {
     ItsoCard merged;
     flipso_capture_decode(now, &merged);
     check("a replaced product keeps no history", diff.kept_values == 0);
+    /* Its records are not the new product's, but the product itself is still
+     * one the card used to carry, so it is kept beside the one in its slot. */
+    check("but the product itself is kept", diff.kept_products == 1);
+    check("as a sixth product the card does not list",
+          merged.product_count == 6 && !merged.products[5].on_card &&
+              merged.products[5].dir_index == 1);
     check("so its records are only its own",
           merged.products[0].value_history_count == 2 &&
               merged.products[0].value_history[0].ts == 2 &&
@@ -582,6 +594,7 @@ static void merge_replaced_product(void) {
     flipso_capture_decode(same, &kept);
     check("an unchanged entry keeps its history", unchanged.kept_values == 2);
     check("and shows all four records", kept.products[0].value_history_count == 4);
+    check("and nothing has left the card", unchanged.kept_products == 0);
 
     flipso_capture_free(same);
     flipso_capture_free(now);
@@ -655,6 +668,166 @@ static void merge_cap(void) {
     flipso_capture_free(previous);
 }
 
+/*
+ * A product that has left the card altogether.
+ *
+ * A directory entry is freed when a ticket expires and is removed, so the
+ * card's account of what it carries is only ever the present tense: read it
+ * again and the ticket is not there, and the file written while it was is the
+ * only place it still exists.
+ */
+static void merge_gone_product(void) {
+    ItsoCard reference;
+    reference_decode(&reference);
+
+    FlipsoCapture* previous = flipso_capture_alloc();
+    fill(previous, &reference);
+
+    /* The same card with entry 1 freed: nothing in the directory, and no group
+     * for the read to have found. */
+    static uint8_t dir_now[sizeof(card_dir)];
+    memcpy(dir_now, card_dir, sizeof(card_dir));
+    memset(dir_now + 2, 0, ITSO_DIR_ENTRY_LEN);
+
+    FlipsoCapture* now = flipso_capture_alloc();
+    flipso_capture_add(now, FlipsoBlockShell, 0, card_shell, sizeof(card_shell));
+    flipso_capture_add(now, FlipsoBlockDirectory, 0, dir_now, sizeof(dir_now));
+    for(uint8_t i = 1; i < reference.product_count && i < 5; i++) {
+        flipso_capture_add(
+            now, FlipsoBlockProduct, reference.products[i].dir_index, groups[i].data,
+            groups[i].len);
+    }
+    flipso_capture_add(now, FlipsoBlockLog, 0, card_log, sizeof(card_log));
+    flipso_capture_set_time(now, 1758500000u);
+
+    ItsoCard live;
+    flipso_capture_decode(now, &live);
+    check("the card itself no longer lists the product", live.product_count == 4);
+
+    FlipsoCaptureDiff diff;
+    flipso_capture_merge_history(now, previous, &diff);
+    check("so it is carried out of the record", diff.kept_products == 1);
+
+    ItsoCard merged;
+    check("the merged capture decodes", flipso_capture_decode(now, &merged));
+    check("and shows it again", merged.product_count == 5);
+
+    const ItsoProduct* gone = &merged.products[4];
+    const ItsoProduct* was = &reference.products[0];
+    check("after the ones the card still has", merged.products[0].on_card && !gone->on_card);
+    check("in the entry it held then", gone->dir_index == 1);
+    check("as the product it was", gone->typ == was->typ && gone->oid == was->oid);
+    check(
+        "decoded from its own group",
+        gone->body_parsed && gone->balance.value == was->balance.value);
+    check(
+        "dated by the read that last saw it",
+        gone->last_seen == flipso_capture_time(previous));
+
+    check("keeping its transactions", gone->value_history_count == was->value_history_count);
+    bool claimed_live = false;
+    for(uint8_t i = 0; i < gone->value_history_count; i++) {
+        if(gone->value_history[i].on_card) claimed_live = true;
+    }
+    check("none of them claimed to be on the card", !claimed_live);
+
+    /* Through the file, under a key of its own that an older build would skip
+     * the way it skips the record histories. */
+    size_t count = 0;
+    char** lines = to_lines(now, &count);
+    bool keyed = false;
+    for(size_t i = 0; i < count; i++) {
+        if(strncmp(lines[i], "Product history 100:", 20) == 0) keyed = true;
+    }
+    check("written under a key of its own", keyed);
+
+    FlipsoCapture* loaded = flipso_capture_alloc();
+    for(size_t i = 0; i < count; i++) {
+        flipso_capture_parse_line(loaded, lines[i]);
+    }
+    ItsoCard reloaded;
+    check("a file holding one loads", flipso_capture_decode(loaded, &reloaded));
+    check("and decodes to the same card", memcmp(&reloaded, &merged, sizeof(ItsoCard)) == 0);
+    free_lines(lines, count);
+
+    /* Saving the same read again must not stack copies of it up. */
+    FlipsoCaptureDiff again;
+    flipso_capture_merge_history(now, previous, &again);
+    ItsoCard twice;
+    flipso_capture_decode(now, &twice);
+    check(
+        "merging the same record twice changes nothing",
+        memcmp(&twice, &merged, sizeof(ItsoCard)) == 0);
+
+    flipso_capture_free(loaded);
+    flipso_capture_free(now);
+    flipso_capture_free(previous);
+}
+
+/*
+ * The cap on those, which is what the product list has room to show: a card
+ * wiped clean has more past than the screen does.
+ */
+static void gone_product_cap(void) {
+    ItsoCard reference;
+    reference_decode(&reference);
+
+    FlipsoCapture* previous = flipso_capture_alloc();
+    fill(previous, &reference);
+
+    /* Every entry freed at once - a shell reissued, which is the most a single
+     * read can find missing. */
+    static uint8_t dir_empty[sizeof(card_dir)];
+    memcpy(dir_empty, card_dir, sizeof(card_dir));
+    memset(dir_empty + 2, 0, (size_t)reference.product_count * ITSO_DIR_ENTRY_LEN);
+
+    FlipsoCapture* now = flipso_capture_alloc();
+    flipso_capture_add(now, FlipsoBlockShell, 0, card_shell, sizeof(card_shell));
+    flipso_capture_add(now, FlipsoBlockDirectory, 0, dir_empty, sizeof(dir_empty));
+    flipso_capture_add(now, FlipsoBlockLog, 0, card_log, sizeof(card_log));
+
+    FlipsoCaptureDiff diff;
+    flipso_capture_merge_history(now, previous, &diff);
+    check("five products gone, four kept", diff.kept_products == ITSO_MAX_HISTORIC_PRODUCTS);
+
+    ItsoCard merged;
+    flipso_capture_decode(now, &merged);
+    check(
+        "and the card shows exactly those",
+        merged.product_count == ITSO_MAX_HISTORIC_PRODUCTS);
+    bool any_on_card = false;
+    for(uint8_t i = 0; i < merged.product_count; i++) {
+        if(merged.products[i].on_card) any_on_card = true;
+    }
+    check("none of them as a product it holds", !any_on_card);
+
+    flipso_capture_free(now);
+    flipso_capture_free(previous);
+}
+
+/*
+ * A read that lost the directory is not a card that has shed its products. The
+ * distinction is worth a test because the two look alike from here: in both
+ * cases this read has no entry to compare the old one against.
+ */
+static void gone_needs_a_directory(void) {
+    ItsoCard reference;
+    reference_decode(&reference);
+
+    FlipsoCapture* previous = flipso_capture_alloc();
+    fill(previous, &reference);
+
+    FlipsoCapture* now = flipso_capture_alloc();
+    flipso_capture_add(now, FlipsoBlockShell, 0, card_shell, sizeof(card_shell));
+
+    FlipsoCaptureDiff diff;
+    flipso_capture_merge_history(now, previous, &diff);
+    check("a read with no directory carries nothing forward", diff.kept_products == 0);
+
+    flipso_capture_free(now);
+    flipso_capture_free(previous);
+}
+
 int main(void) {
     build_groups();
     groups[0] = (Group){group1, sizeof(group1)};
@@ -676,6 +849,10 @@ int main(void) {
     merge_history();
     merge_replaced_product();
     merge_cap();
+    printf("\nProducts the card has dropped\n");
+    merge_gone_product();
+    gone_product_cap();
+    gone_needs_a_directory();
 
     printf("\n%s\n", failures ? "FAILURES" : "All capture tests passed");
     return failures ? 1 : 0;

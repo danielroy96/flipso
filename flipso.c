@@ -164,6 +164,12 @@ void flipso_cat_location(
 
 const ItsoProduct* flipso_find_product(const Flipso* app, uint8_t typ) {
     for(uint8_t i = 0; i < app->card.product_count; i++) {
+        /* On the card only. The screens this drives - the purse, the ID - are
+         * about the card as it is, and a purse the card threw away last year
+         * shown under "Pay as you go" would read as the balance it holds now.
+         * The product list is where those are reachable, labelled as what they
+         * are. */
+        if(!app->card.products[i].on_card) continue;
         if(app->card.products[i].typ == typ) return &app->card.products[i];
     }
     return NULL;
@@ -342,6 +348,33 @@ void flipso_cat_product(FuriString* out, Flipso* app, const ItsoProduct* product
     }
 }
 
+/** One transaction, as three short lines. */
+static void flipso_cat_value_record(
+    FuriString* out,
+    const ItsoProduct* product,
+    const ItsoValueRecord* record) {
+    /* Three short lines rather than one wide one: a date and time is sixteen
+     * characters, which leaves nothing for what happened or for what the
+     * balance became. */
+    furi_string_cat_printf(out, "%s\n", itso_transaction_name(record->txn));
+    furi_string_cat(out, "  ");
+    flipso_cat_datetime(out, record->dts);
+    furi_string_push_back(out, '\n');
+
+    if(record->amount.valid) {
+        char money[24];
+        itso_format_money(&record->amount, money, sizeof(money));
+        furi_string_cat_printf(out, "  %s\n", money);
+    } else if(record->has_count) {
+        /* The counter means whatever the product's type says it means, and it
+         * means the same thing in every record. */
+        const char* label = itso_count_name(product->count_kind);
+        if(label) {
+            furi_string_cat_printf(out, "  %s: %lu\n", label, (unsigned long)record->count);
+        }
+    }
+}
+
 void flipso_cat_value_history(FuriString* out, const ItsoProduct* product) {
     /* Index 0 is the live record, which the screen has already shown as the
      * balance or the counter, so a product whose group holds one written record
@@ -353,29 +386,30 @@ void flipso_cat_value_history(FuriString* out, const ItsoProduct* product) {
     uint8_t first = product->value_parsed ? 1 : 0;
     if(product->value_history_count <= first) return;
 
-    furi_string_cat(out, "\n\e#Earlier\n");
-    for(uint8_t i = first; i < product->value_history_count; i++) {
-        const ItsoValueRecord* record = &product->value_history[i];
+    /* Two sections rather than one. A card keeps two value records and writes
+     * each new one over the oldest, so anything before them survives only
+     * because a file remembered it - and running the two together would present
+     * what the file knows as what the card says.
+     *
+     * A product the card has dropped has already said so for the whole screen,
+     * and every record it has is from a file by definition, so it keeps one
+     * list rather than being told the same thing twice. */
+    const bool split = product->on_card;
 
-        /* Three short lines rather than one wide one: a date and time is
-         * sixteen characters, which leaves nothing for what happened or for
-         * what the balance became. */
-        furi_string_cat_printf(out, "%s\n", itso_transaction_name(record->txn));
-        furi_string_cat(out, "  ");
-        flipso_cat_datetime(out, record->dts);
-        furi_string_push_back(out, '\n');
+    for(uint8_t section = 0; section < (split ? 2 : 1); section++) {
+        const bool on_card = (section == 0);
+        bool headed = false;
 
-        if(record->amount.valid) {
-            char money[24];
-            itso_format_money(&record->amount, money, sizeof(money));
-            furi_string_cat_printf(out, "  %s\n", money);
-        } else if(record->has_count) {
-            /* The counter means whatever the product's type says it means, and
-             * it means the same thing in every record. */
-            const char* label = itso_count_name(product->count_kind);
-            if(label) {
-                furi_string_cat_printf(out, "  %s: %lu\n", label, (unsigned long)record->count);
+        for(uint8_t i = first; i < product->value_history_count; i++) {
+            const ItsoValueRecord* record = &product->value_history[i];
+            if(split && record->on_card != on_card) continue;
+
+            if(!headed) {
+                furi_string_cat(
+                    out, on_card ? "\n\e#Earlier on card\n" : "\n\e#From past reads\n");
+                headed = true;
             }
+            flipso_cat_value_record(out, product, record);
         }
     }
 }

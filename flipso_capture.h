@@ -32,9 +32,40 @@ extern "C" {
 
 /**
  * A shell, a directory, a cyclic log and its history, one group per directory
- * entry, and one value history per entry.
+ * entry, one value history per entry, and the same pair again for each product
+ * the card has dropped since a file was written.
  */
-#define FLIPSO_CAPTURE_MAX_BLOCKS (ITSO_MAX_PRODUCTS * 2 + 4)
+#define FLIPSO_CAPTURE_MAX_BLOCKS \
+    (ITSO_MAX_PRODUCTS * 2 + ITSO_MAX_HISTORIC_PRODUCTS * 2 + 4)
+
+/**
+ * Block index the products that have left the card are keyed from.
+ *
+ * They cannot be keyed by directory entry the way a live product is: the entry
+ * they sat in is the one thing about them that is no longer theirs, and a
+ * ticket that expired and was replaced shares its number with the product that
+ * took the slot. So each gets a slot of its own, well clear of any entry
+ * number a shell can carry, and says inside the block which entry it held.
+ */
+#define FLIPSO_CAPTURE_HISTORY_BASE 100
+_Static_assert(
+    FLIPSO_CAPTURE_HISTORY_BASE > ITSO_MAX_PRODUCTS,
+    "history slots must not collide with directory entry numbers");
+
+/**
+ * Header on a FlipsoBlockProductHistory block, before the IPE group itself:
+ *
+ *   0..3  Unix time of the last read that found the product on the card
+ *   4     the 1-based directory entry E(i) it occupied then
+ *   5..9  that IPE Directory Entry, the five bytes the directory held
+ *
+ * The rest of the file is card bytes and nothing else, and this block is nearly
+ * that: the entry is exactly what the Directory Data Group said. What it has to
+ * add is the date, because a product the card has forgotten has no other way of
+ * saying when it was last true - and the entry number, because the directory
+ * that numbered it is not the one in the file any more.
+ */
+#define FLIPSO_PRODUCT_HISTORY_HEADER (4 + 1 + ITSO_DIR_ENTRY_LEN)
 
 /**
  * Tap records kept from earlier reads of the same card.
@@ -58,7 +89,7 @@ extern "C" {
  */
 #define FLIPSO_CAPTURE_MAX_BYTES (FLIPSO_CAPTURE_MAX_BLOCKS * ITSO_MAX_GROUP_LEN)
 
-/** Longest key the file uses, terminator included: "Value history 16". */
+/** Longest key the file uses, terminator included: "Product history 103". */
 #define FLIPSO_CAPTURE_KEY_MAX 24
 
 /**
@@ -76,13 +107,17 @@ typedef enum {
     FlipsoBlockProduct, /**< One product's IPE and Value Record groups, chained. */
     FlipsoBlockLog, /**< The cyclic log of Transient Ticket Records. */
 
-    /* The two blocks that are not what the card said this time. Both hold raw
-     * records exactly as some earlier read of the same card found them, which
-     * is what keeps a saved card a record of bytes rather than of decisions:
-     * they go through the same decoder, and the build that is running decides
-     * what they mean. */
+    /* The blocks that are not what the card said this time. They hold raw
+     * bytes exactly as some earlier read of the same card found them, which is
+     * what keeps a saved card a record of bytes rather than of decisions: they
+     * go through the same decoder, and the build that is running decides what
+     * they mean. */
     FlipsoBlockLogHistory, /**< Tap records earlier reads saw, newest first. */
     FlipsoBlockValueHistory, /**< Value records earlier reads saw, per entry. */
+    /* A whole product an earlier read saw and the card no longer lists, as its
+     * IPE group behind the header described above. Keyed by history slot, and
+     * its own value history is keyed by the same slot. */
+    FlipsoBlockProductHistory,
 } FlipsoBlockKind;
 
 /**
@@ -97,6 +132,7 @@ typedef struct {
     uint8_t kept_taps; /**< Older journeys carried forward out of the file. */
     uint8_t new_values; /**< Transactions on products since that record. */
     uint8_t kept_values; /**< Older transactions carried forward. */
+    uint8_t kept_products; /**< Products carried forward that the card has dropped. */
 } FlipsoCaptureDiff;
 
 typedef struct FlipsoCapture FlipsoCapture;
@@ -123,8 +159,10 @@ void flipso_capture_set_time(FlipsoCapture* capture, uint32_t timestamp);
 /**
  * Keep one block of card bytes.
  *
- * @param index directory entry the block belongs to, for FlipsoBlockProduct.
- *              Ignored for the other kinds, which occur once per card.
+ * @param index directory entry the block belongs to, for FlipsoBlockProduct
+ *              and FlipsoBlockValueHistory, or the history slot, for
+ *              FlipsoBlockProductHistory. Ignored for the kinds that occur
+ *              once per card.
  * @return false when the block did not fit, or was empty, or repeats one
  *         already held. A capture that has dropped a block still decodes; it
  *         decodes to fewer products, exactly as a read that lost one would.
@@ -176,6 +214,10 @@ bool flipso_capture_decode(const FlipsoCapture* capture, ItsoCard* card);
  * bytes are unchanged - same owner, type, subtype and expiry. A product that
  * has been removed and replaced leaves its slot to something else, and its
  * transactions would otherwise be shown as that new product's own.
+ *
+ * That product itself is kept, though, rather than dropped with its slot: the
+ * whole group goes into a history slot of its own, so the card still shows the
+ * season ticket that ran out last month - marked as one it no longer carries.
  *
  * @param[out] diff what was found, for telling the user. May be NULL.
  */

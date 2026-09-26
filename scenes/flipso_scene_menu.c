@@ -66,8 +66,22 @@ void flipso_scene_menu_on_enter(void* context) {
     }
 
     if(app->card.product_count) {
+        /* Counted apart, because the two numbers answer different questions:
+         * how many products are on the card, and how many rows the list has. A
+         * saved card can remember products the card has since dropped, and
+         * folding those into one figure would overstate the card. */
+        uint8_t on_card = 0;
+        for(uint8_t i = 0; i < app->card.product_count; i++) {
+            if(app->card.products[i].on_card) on_card++;
+        }
+        uint8_t past = (uint8_t)(app->card.product_count - on_card);
+
         char label[FLIPSO_MENU_LABEL_LEN];
-        snprintf(label, sizeof(label), "Products (%u)", app->card.product_count);
+        if(past) {
+            snprintf(label, sizeof(label), "Products (%u, %u past)", on_card, past);
+        } else {
+            snprintf(label, sizeof(label), "Products (%u)", on_card);
+        }
         flipso_menu_view_add_item(menu, label, &I_products_10px, FlipsoMenuItemProducts);
     }
 

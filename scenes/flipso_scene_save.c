@@ -82,6 +82,15 @@ static void flipso_scene_save_ask_update(Flipso* app, uint32_t read_at) {
             text, "\nKeeping %u older record%s", kept, kept == 1 ? "" : "s");
     }
 
+    /* Said separately from the records, because it is a bigger thing to have
+     * happened: a whole product has left the card since, and the record is the
+     * only place it still exists. */
+    if(diff->kept_products) {
+        furi_string_cat_printf(
+            text, "\n%s %u product%s the card\nno longer carries", kept ? "and" : "Keeping",
+            diff->kept_products, diff->kept_products == 1 ? "" : "s");
+    }
+
     widget_reset(app->widget);
     widget_add_icon_element(app->widget, 2, 1, &I_save_10px);
     widget_add_string_element(
@@ -158,7 +167,8 @@ static void flipso_scene_save_commit(Flipso* app) {
          * without waiting for the card to be opened afresh. Only when there was
          * something to merge, so a first save leaves the card exactly as the
          * read left it. */
-        if(app->save_diff.kept_taps || app->save_diff.kept_values) {
+        if(app->save_diff.kept_taps || app->save_diff.kept_values ||
+           app->save_diff.kept_products) {
             flipso_capture_decode(app->capture, &app->card);
         }
         notification_message(app->notifications, &flipso_sequence_saved);

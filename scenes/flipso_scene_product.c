@@ -19,6 +19,19 @@ void flipso_scene_product_on_enter(void* context) {
     flipso_product_title(product, title, sizeof(title));
     furi_string_cat_printf(text, "\e#%s\n", title);
 
+    /* Before anything the product says about itself, because everything below
+     * is written in the present tense and for this one it is not true any more:
+     * the card listed it when the record was saved and does not list it now. */
+    if(!product->on_card) {
+        furi_string_cat(text, "Not on the card now.\n");
+        if(product->last_seen) {
+            furi_string_cat(text, "Last read with it on\n  ");
+            flipso_cat_time(text, product->last_seen);
+            furi_string_push_back(text, '\n');
+        }
+        furi_string_push_back(text, '\n');
+    }
+
     flipso_cat_product(text, app, product, flipso_now());
 
     flipso_cat_last_transaction(text, product);
@@ -39,7 +52,10 @@ void flipso_scene_product_on_enter(void* context) {
         furi_string_cat_printf(
             text, "  (extended, raw %u)\n", (unsigned)(product->oid & 0x1FFF));
     }
-    furi_string_cat_printf(text, "Directory entry: %u\n", product->dir_index);
+    furi_string_cat_printf(
+        text, "Directory entry: %u%s\n", product->dir_index,
+        /* Which may belong to something else by now: entries are reused. */
+        product->on_card ? "" : " (then)");
     if(product->body_parsed) {
         furi_string_cat_printf(text, "Format revision: %u\n", product->format_rev);
         /* The bitmap says which optional elements the dataset carries, which is

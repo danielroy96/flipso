@@ -1,17 +1,24 @@
 /**
  * @file flipso_scene_products.c
- * @brief List of every product held in the shell's directory.
+ * @brief List of every product on the card, and of any the card has dropped.
+ *
+ * A saved card can know about products the card itself has forgotten - an
+ * expired ticket whose directory entry has since been freed - so the list has
+ * two kinds of row in it, and the distinction is the first thing it has to
+ * make: everything else on these screens is about a card the user is holding.
  */
 #include "../flipso.h"
+#include "flipso_icons.h"
 
-/* Every directory entry can be a product, so the list has to be able to show
- * as many rows as the decoder will keep. */
+/* Every directory entry can be a product, and a saved card adds the ones the
+ * card has dropped since, so the list has to show as many rows as the decoder
+ * will keep. */
 _Static_assert(
-    FLIPSO_MENU_MAX_ITEMS >= ITSO_MAX_PRODUCTS,
+    FLIPSO_MENU_MAX_ITEMS >= ITSO_MAX_CARD_PRODUCTS,
     "the product list must hold every product the decoder can keep");
 
-/* Longest of the status suffixes below, " [expired]", plus its terminator. */
-#define FLIPSO_PRODUCT_SUFFIX_MAX 11
+/* Longest of the status suffixes below, " [off card]", plus its terminator. */
+#define FLIPSO_PRODUCT_SUFFIX_MAX 12
 
 static void flipso_scene_products_callback(void* context, uint32_t index) {
     Flipso* app = context;
@@ -39,7 +46,14 @@ void flipso_scene_products_on_enter(void* context) {
         flipso_product_title(product, name, sizeof(name));
 
         const char* suffix = "";
-        if(product->status == ItsoProductStatusBlocked) {
+        if(!product->on_card) {
+            /* Said before anything else about it, because it is the one thing
+             * that is not true of the card in front of you: this product was on
+             * it when the record was written and is not on it now. Whether it
+             * was blocked or expired when it left is the detail screen's to
+             * tell - it is history either way. */
+            suffix = " [off card]";
+        } else if(product->status == ItsoProductStatusBlocked) {
             suffix = " [blocked]";
         } else if(itso_date_expired(product->expiry, now)) {
             suffix = " [expired]";
@@ -48,7 +62,11 @@ void flipso_scene_products_on_enter(void* context) {
         }
 
         snprintf(title, sizeof(title), "%s%s", name, suffix);
-        flipso_menu_view_add_item(menu, title, flipso_product_icon(product), i);
+        /* A clock rather than the product's own icon: the label already names
+         * the type, so the icon is what makes the two groups tell apart at a
+         * glance down the list. */
+        const Icon* icon = product->on_card ? flipso_product_icon(product) : &I_past_10px;
+        flipso_menu_view_add_item(menu, title, icon, i);
     }
 
     flipso_menu_view_set_selected(

@@ -235,7 +235,7 @@ int main(void) {
         flipso_menu_view_add_item(menu, label, &icon_a, 100 + i);
     }
     render(menu);
-    show("sixteen items, top of list");
+    show("a full list, top");
     check("first rows shown", on_screen("Item 0") && on_screen("Item 2"));
     check("later rows not shown yet", !on_screen("Item 5"));
     check("scrollbar present", scrollbar_drawn());
@@ -243,8 +243,10 @@ int main(void) {
     /* Walk to the bottom: the window has to follow the highlight. */
     for(int i = 0; i < FLIPSO_MENU_MAX_ITEMS - 1; i++) press(menu, InputKeyDown, InputTypeShort);
     render(menu);
-    show("sixteen items, bottom of list");
-    check("last row shown", on_screen("Item 15"));
+    show("a full list, bottom");
+    char last[40];
+    snprintf(last, sizeof(last), "Item %d", FLIPSO_MENU_MAX_ITEMS - 1);
+    check("last row shown", on_screen(last));
     check("first row scrolled away", !on_screen("Item 0"));
     press(menu, InputKeyOk, InputTypeShort);
     check("OK at the bottom reports the last id", last_id == 100 + FLIPSO_MENU_MAX_ITEMS - 1);

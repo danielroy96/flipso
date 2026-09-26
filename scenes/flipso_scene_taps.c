@@ -12,6 +12,9 @@
 static void flipso_cat_product_ref(FuriString* out, const Flipso* app, uint8_t dir_index) {
     if(dir_index == 0) return;
 
+    /* The card's own products come first in the array, so an entry that has
+     * been freed and reused names the product in it now rather than the one a
+     * saved card remembers holding it. */
     for(uint8_t i = 0; i < app->card.product_count; i++) {
         const ItsoProduct* product = &app->card.products[i];
         if(product->dir_index != dir_index) continue;

@@ -14,6 +14,9 @@ void flipso_scene_payg_on_enter(void* context) {
 
     for(uint8_t i = 0; i < card->product_count; i++) {
         const ItsoProduct* product = &card->products[i];
+        /* What the card holds now, which is what this screen is about; a
+         * product it has dropped is the product list's to show. */
+        if(!product->on_card) continue;
         if(product->typ != ItsoTypStoredTravelRights) continue;
 
         if(found) furi_string_cat(text, "\n");

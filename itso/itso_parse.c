@@ -177,6 +177,7 @@ uint8_t itso_sct_entry(const ItsoCard* card, const uint8_t* dir, size_t dir_len,
 static void itso_parse_dir_entry(ItsoProduct* product, const uint8_t* entry, uint8_t index) {
     product->present = true;
     product->dir_index = index;
+    product->on_card = true;
 
     /* OID is 13 bits spanning bytes 0 and 1, below the extension flag.
      *
@@ -461,6 +462,7 @@ static void itso_parse_value_records(
 
         ItsoValueRecord decoded;
         itso_decode_value_record(&decoded, record, product->typ);
+        decoded.on_card = true;
         itso_add_value_record(product, &decoded);
 
         if(newest == NULL || itso_ts_newer(decoded.ts, newest_ts)) {
@@ -1207,12 +1209,32 @@ void itso_parse_log_history(ItsoCard* card, const uint8_t* data, size_t len) {
     itso_sort_taps(card);
 }
 
+ItsoProduct* itso_card_add_product(ItsoCard* card, const uint8_t* entry, uint8_t index) {
+    if(card->product_count >= ITSO_MAX_CARD_PRODUCTS) return NULL;
+
+    ItsoProduct* product = &card->products[card->product_count];
+    memset(product, 0, sizeof(*product));
+    itso_parse_dir_entry(product, entry, index);
+    card->product_count++;
+    return product;
+}
+
+void itso_product_off_card(ItsoProduct* product, uint32_t last_seen) {
+    product->on_card = false;
+    product->last_seen = last_seen;
+    for(uint8_t i = 0; i < product->value_history_count; i++) {
+        product->value_history[i].on_card = false;
+    }
+}
+
 void itso_parse_value_history(ItsoProduct* product, const uint8_t* data, size_t len) {
     for(size_t offset = 0; offset + ITSO_VALUE_RECORD_LEN <= len;
         offset += ITSO_VALUE_RECORD_LEN) {
         const uint8_t* record = data + offset;
         if(itso_is_blank(record, ITSO_VALUE_RECORD_LEN)) continue;
 
+        /* on_card stays false: these are the records that have rolled off the
+         * group since, and only the file has them. */
         ItsoValueRecord decoded;
         itso_decode_value_record(&decoded, record, product->typ);
         itso_add_value_record(product, &decoded);
