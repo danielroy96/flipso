@@ -194,6 +194,23 @@ ICONS["delete_10px"] = """
 ..######..
 """
 
+# A clock, hands at ten past eight. The product list draws this instead of the
+# product's own icon for anything the card no longer carries: the row label is
+# already the product type, so the icon is free to say which of the two lists a
+# row is in - and that is the distinction the list exists to make.
+ICONS["past_10px"] = """
+..######..
+.#......#.
+#...#....#
+#...#....#
+#...####.#
+#...#....#
+#........#
+#........#
+.#......#.
+..######..
+"""
+
 # --- 10x10: the menu header --------------------------------------------------
 
 # A warning triangle, shown beside the header when the shell is blocked. Drawn
@@ -288,6 +305,29 @@ ICONS["read_failed_14px"] = """
 """
 
 
+# --- 10x10: the app icon -----------------------------------------------------
+
+# application.fam's fap_icon, shown in the Flipper's app browser. It is not an
+# I_ symbol, so it sits beside application.fam rather than in images/. A card,
+# chip and all, laid at a tilt over the corner of a reader's ring. Its edges
+# step two across for one down, the only slope that stays a solid line at this
+# size, and the ring breaks a pixel short of the card so the two outlines do
+# not run together.
+APP_ICON_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "flipso.png")
+APP_ICON = """
+..####....
+.#....#...
+#......#..
+#.........
+#.....###.
+#...##...#
+.#.#.....#
+..#.#..##.
+..#..##...
+...##.....
+"""
+
+
 def png(path, rows):
     height = len(rows)
     width = len(rows[0])
@@ -312,7 +352,9 @@ def png(path, rows):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    for name, art in sorted(ICONS.items()):
+    targets = [(name, os.path.join(OUT, name + ".png"), art) for name, art in sorted(ICONS.items())]
+    targets.append(("flipso", APP_ICON_PATH, APP_ICON))
+    for name, path, art in targets:
         rows = [line for line in art.strip("\n").split("\n") if line]
         widths = {len(row) for row in rows}
         if len(widths) != 1:
@@ -320,7 +362,7 @@ def main():
         bad = set("".join(rows)) - set(".#")
         if bad:
             raise SystemExit(f"{name}: unexpected characters {sorted(bad)}")
-        png(os.path.join(OUT, name + ".png"), rows)
+        png(path, rows)
         print(f"{name}: {widths.pop()}x{len(rows)}")
 
 
