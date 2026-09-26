@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch supersedes the run still going for the old one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Host tests (ASan + UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # clang rather than the runner's default gcc, to match the Apple clang the
+      # suite is written against on macOS.
+      - name: tools/test/run.sh
+        run: tools/test/run.sh
+        env:
+          CC: clang
+
+  build:
+    name: Build .fap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The release channel is the SDK the app is developed and deployed against
+      # (ufbt's default state on the dev machine).
+      - name: ufbt build
+        id: build
+        uses: flipperdevices/flipperzero-ufbt-action@v0.1.4
+        with:
+          sdk-channel: release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flipso-${{ steps.build.outputs.suffix }}
+          path: ${{ steps.build.outputs.fap-artifacts }}
+          if-no-files-found: error
