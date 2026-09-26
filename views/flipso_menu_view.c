@@ -8,23 +8,23 @@
 #include <furi.h>
 #include <gui/elements.h>
 
-#define FLIPSO_MENU_HEADER_LEN 32
-#define FLIPSO_MENU_ROW_HEIGHT 16
+#define FLIPSO_MENU_HEADER_LEN      32
+#define FLIPSO_MENU_ROW_HEIGHT      16
 /* Cleared by the header rule when there is one, and the whole screen when not. */
-#define FLIPSO_MENU_HEADER_BOTTOM 13
-#define FLIPSO_MENU_SCREEN_W 128
-#define FLIPSO_MENU_SCREEN_H 64
+#define FLIPSO_MENU_HEADER_BOTTOM   13
+#define FLIPSO_MENU_SCREEN_W        128
+#define FLIPSO_MENU_SCREEN_H        64
 /* The header is centred, so an over-wide one runs off both edges at once. Keep
  * it a couple of pixels clear of each. */
-#define FLIPSO_MENU_HEADER_MARGIN 2
+#define FLIPSO_MENU_HEADER_MARGIN   2
 /* Between a header icon and the text it belongs to. */
 #define FLIPSO_MENU_HEADER_ICON_GAP 3
 /* Icon column, then text, then the gutter the scrollbar lives in. */
-#define FLIPSO_MENU_ICON_X 4
-#define FLIPSO_MENU_TEXT_X 18
-#define FLIPSO_MENU_TEXT_RIGHT 120
+#define FLIPSO_MENU_ICON_X          4
+#define FLIPSO_MENU_TEXT_X          18
+#define FLIPSO_MENU_TEXT_RIGHT      120
 /* Between a label and the tag at the end of its row. */
-#define FLIPSO_MENU_TAG_GAP 4
+#define FLIPSO_MENU_TAG_GAP         4
 
 typedef struct {
     char label[FLIPSO_MENU_LABEL_LEN];
@@ -82,12 +82,8 @@ static void flipso_menu_reveal(FlipsoMenuModel* model) {
  * @param out_len must leave room for the ellipsis as well as the label, so at
  *                least FLIPSO_MENU_LABEL_LEN + 4.
  */
-static void flipso_menu_fit(
-    Canvas* canvas,
-    const char* label,
-    uint16_t width,
-    char* out,
-    size_t out_len) {
+static void
+    flipso_menu_fit(Canvas* canvas, const char* label, uint16_t width, char* out, size_t out_len) {
     furi_assert(out_len >= FLIPSO_MENU_LABEL_LEN + 4);
 
     /* Capped four short of the buffer, not one: the ellipsis below is written
@@ -108,7 +104,8 @@ static void flipso_menu_fit(
      * sequence, so it never leaves half a currency symbol. */
     while(len > 0) {
         len--;
-        while(len && flipso_glyphs_is_continuation(out[len])) len--;
+        while(len && flipso_glyphs_is_continuation(out[len]))
+            len--;
         memcpy(out + len, "...", 4);
         if(flipso_glyphs_width(canvas, out) <= width) return;
         out[len] = '\0';
@@ -128,10 +125,9 @@ static void flipso_menu_view_draw(Canvas* canvas, void* model) {
          * from a table the user can edit and is longer than "ITSO Card" ever
          * was. */
         char fitted[FLIPSO_MENU_LABEL_LEN + 4];
-        uint16_t icon_w =
-            m->header_icon ? (uint16_t)(icon_get_width(m->header_icon) +
-                                        FLIPSO_MENU_HEADER_ICON_GAP) :
-                             0;
+        uint16_t icon_w = m->header_icon ? (uint16_t)(icon_get_width(m->header_icon) +
+                                                      FLIPSO_MENU_HEADER_ICON_GAP) :
+                                           0;
         flipso_menu_fit(
             canvas,
             m->header,
@@ -158,7 +154,8 @@ static void flipso_menu_view_draw(Canvas* canvas, void* model) {
         }
         canvas_draw_str_aligned(
             canvas, (uint8_t)(group_x + icon_w), 1, AlignLeft, AlignTop, fitted);
-        canvas_draw_line(canvas, 0, FLIPSO_MENU_HEADER_BOTTOM - 1, 127, FLIPSO_MENU_HEADER_BOTTOM - 1);
+        canvas_draw_line(
+            canvas, 0, FLIPSO_MENU_HEADER_BOTTOM - 1, 127, FLIPSO_MENU_HEADER_BOTTOM - 1);
         top = FLIPSO_MENU_HEADER_BOTTOM;
     }
 
@@ -183,10 +180,9 @@ static void flipso_menu_view_draw(Canvas* canvas, void* model) {
              * anything taller than a row sits at the top of it rather than
              * being offset upwards into the row above. */
             uint16_t icon_h = icon_get_height(item->icon);
-            uint8_t offset =
-                icon_h < FLIPSO_MENU_ROW_HEIGHT ?
-                    (uint8_t)((FLIPSO_MENU_ROW_HEIGHT - icon_h) / 2) :
-                    0;
+            uint8_t offset = icon_h < FLIPSO_MENU_ROW_HEIGHT ?
+                                 (uint8_t)((FLIPSO_MENU_ROW_HEIGHT - icon_h) / 2) :
+                                 0;
             canvas_draw_icon(canvas, FLIPSO_MENU_ICON_X, (uint8_t)(y + offset), item->icon);
         }
 
@@ -332,8 +328,7 @@ void flipso_menu_view_set_header(FlipsoMenuView* instance, const char* header) {
 
 void flipso_menu_view_set_header_icon(FlipsoMenuView* instance, const Icon* icon) {
     furi_assert(instance);
-    with_view_model(
-        instance->view, FlipsoMenuModel * model, { model->header_icon = icon; }, true);
+    with_view_model(instance->view, FlipsoMenuModel * model, { model->header_icon = icon; }, true);
 }
 
 void flipso_menu_view_add_item(

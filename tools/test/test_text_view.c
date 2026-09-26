@@ -35,15 +35,18 @@ static void render(FlipsoTextView* text) {
 
 static void show(const char* title) {
     printf("\n  %s\n  +", title);
-    for(int x = 0; x < STUB_W; x++) putchar('-');
+    for(int x = 0; x < STUB_W; x++)
+        putchar('-');
     printf("+\n");
     for(int y = 0; y < STUB_H; y++) {
         printf("  |");
-        for(int x = 0; x < STUB_W; x++) putchar(canvas.pixels[y][x]);
+        for(int x = 0; x < STUB_W; x++)
+            putchar(canvas.pixels[y][x]);
         printf("|\n");
     }
     printf("  +");
-    for(int x = 0; x < STUB_W; x++) putchar('-');
+    for(int x = 0; x < STUB_W; x++)
+        putchar('-');
     printf("+\n");
 }
 
@@ -108,7 +111,8 @@ int main(void) {
     /* Wrapping drops the space it breaks at, so the invariant is that every
      * non-space character is still on screen, in order. */
     char drawn[256] = "";
-    for(int i = 0; i < canvas.text_count; i++) strcat(drawn, canvas.texts[i]);
+    for(int i = 0; i < canvas.text_count; i++)
+        strcat(drawn, canvas.texts[i]);
     char squashed[256];
     size_t n = 0;
     for(const char* c = drawn; *c; c++) {
@@ -121,7 +125,8 @@ int main(void) {
 
     /* --- Scrolling. --- */
     FuriString* many = furi_string_alloc();
-    for(int i = 0; i < 20; i++) furi_string_cat_printf(many, "Line %d\n", i);
+    for(int i = 0; i < 20; i++)
+        furi_string_cat_printf(many, "Line %d\n", i);
     flipso_text_view_set_text(text, furi_string_get_cstr(many));
     furi_string_free(many);
 
@@ -143,7 +148,8 @@ int main(void) {
 
     /* Held keys repeat, and the scroll stops at the last line rather than
      * running off the end of the text. */
-    for(int i = 0; i < 50; i++) press(text, InputKeyDown, InputTypeRepeat);
+    for(int i = 0; i < 50; i++)
+        press(text, InputKeyDown, InputTypeRepeat);
     render(text);
     show("scrolled to the end");
     check("the last line is shown", line_drawn("Line 19"));
@@ -153,7 +159,8 @@ int main(void) {
     press(text, InputKeyLeft, InputTypeShort);
     render(text);
     check("left pages back", line_drawn("Line 11") && !line_drawn("Line 19"));
-    for(int i = 0; i < 10; i++) press(text, InputKeyLeft, InputTypeShort);
+    for(int i = 0; i < 10; i++)
+        press(text, InputKeyLeft, InputTypeShort);
     render(text);
     check("left stops at the top", line_drawn("Line 0"));
     press(text, InputKeyRight, InputTypeShort);
@@ -193,27 +200,35 @@ int main(void) {
     /* --- No blank row after the last line. --- */
     flipso_text_view_set_text(text, "One\nTwo\nThree\nFour\nFive\nSix\n");
     render(text);
-    for(int i = 0; i < 10; i++) press(text, InputKeyDown, InputTypeShort);
+    for(int i = 0; i < 10; i++)
+        press(text, InputKeyDown, InputTypeShort);
     render(text);
     show("scrolled to the end of six lines");
     check("a trailing newline adds no blank row", line_drawn("Two") && line_drawn("Six"));
 
     /* --- A word longer than the line buffer is still all shown. --- */
     FuriString* huge = furi_string_alloc();
-    for(int i = 0; i < 150; i++) furi_string_push_back(huge, (char)('A' + i % 26));
+    for(int i = 0; i < 150; i++)
+        furi_string_push_back(huge, (char)('A' + i % 26));
     flipso_text_view_set_text(text, furi_string_get_cstr(huge));
     render(text);
     size_t shown = 0;
-    for(int i = 0; i < canvas.text_count; i++) shown += strlen(canvas.texts[i]);
+    for(int i = 0; i < canvas.text_count; i++)
+        shown += strlen(canvas.texts[i]);
     /* Five rows of 24 are on screen; the rest is below, and counted. */
     check("a 150 character word fills the screen", shown == 5 * 24);
-    for(int i = 0; i < 10; i++) press(text, InputKeyDown, InputTypeShort);
+    for(int i = 0; i < 10; i++)
+        press(text, InputKeyDown, InputTypeShort);
     render(text);
     check("and its tail is reachable", on_screen("QRST"));
     furi_string_free(huge);
 
     /* --- The currency symbols, which the fonts do not have. --- */
-    flipso_text_view_set_text(text, "Balance: \xC2\xA3" "24.15\nFare: \xE2\x82\xAC" "1.00\n");
+    flipso_text_view_set_text(
+        text,
+        "Balance: \xC2\xA3"
+        "24.15\nFare: \xE2\x82\xAC"
+        "1.00\n");
     render(text);
     show("pounds and euros");
     int glyph_rows = 0;
@@ -233,7 +248,11 @@ int main(void) {
     /* A symbol after the font's own ink keeps a pixel clear of it: a minus
      * sign sits on the pound's crossbar row, and the font measures a run
      * without the gap after its last glyph. After a space it needs none. */
-    flipso_text_view_set_text(text, "Balance: -\xC2\xA3" "1.50\nFare: \xC2\xA3" "1.00\n");
+    flipso_text_view_set_text(
+        text,
+        "Balance: -\xC2\xA3"
+        "1.50\nFare: \xC2\xA3"
+        "1.00\n");
     render(text);
     show("a negative balance");
     int after_minus = -1, after_space = -1;

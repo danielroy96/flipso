@@ -15,10 +15,10 @@
 
 #define TAG "Flipso"
 
-#define FLIPSO_OPERATORS_PATH    APP_DATA_PATH("operators.txt")
+#define FLIPSO_OPERATORS_PATH     APP_DATA_PATH("operators.txt")
 /* Bounded so a malformed or hostile file cannot exhaust the heap. */
-#define FLIPSO_OPERATORS_MAX     48
-#define FLIPSO_OPERATOR_NAME_LEN 28
+#define FLIPSO_OPERATORS_MAX      48
+#define FLIPSO_OPERATOR_NAME_LEN  28
 /* Same length as a name: how much of a brand actually fits is a question about
  * pixels in the bold header font, and the menu view already answers that by
  * eliding what will not fit. */
@@ -115,8 +115,8 @@ FlipsoOperators* flipso_operators_alloc(void) {
         }
         furi_string_free(line);
 
-        FURI_LOG_I(TAG, "Loaded %u operator entry(s) from %s", instance->count,
-                   FLIPSO_OPERATORS_PATH);
+        FURI_LOG_I(
+            TAG, "Loaded %u operator entry(s) from %s", instance->count, FLIPSO_OPERATORS_PATH);
 
         if(instance->count == 0) {
             free(instance->entries);

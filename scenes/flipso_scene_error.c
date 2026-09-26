@@ -17,7 +17,8 @@
 #define FlipsoErrorEventRetry   200
 #define FlipsoErrorEventDetails 201
 
-static void flipso_scene_error_button_callback(GuiButtonType result, InputType type, void* context) {
+static void
+    flipso_scene_error_button_callback(GuiButtonType result, InputType type, void* context) {
     Flipso* app = context;
     if(type != InputTypeShort || result != GuiButtonTypeCenter) return;
     /* Which action the centre button carries is decided in on_enter and stored
@@ -91,10 +92,9 @@ void flipso_scene_error_on_enter(void* context) {
          * tapping again is worth doing, while bytes that verify mean the card
          * is laid out in a way Flipso does not understand and tapping again
          * will say exactly the same thing. */
-        built = furi_string_alloc_set(
-            "This is an ITSO card, but\n"
-            "its main record could not\n"
-            "be decoded.\n\n");
+        built = furi_string_alloc_set("This is an ITSO card, but\n"
+                                      "its main record could not\n"
+                                      "be decoded.\n\n");
         if(app->card.secrc_checked && !app->card.secrc_valid) {
             furi_string_cat(
                 built,

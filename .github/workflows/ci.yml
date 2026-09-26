@@ -26,6 +26,17 @@ jobs:
         env:
           CC: clang
 
+  # The firmware's clang-format style, via .clang-format. `ufbt format` fixes it.
+  lint:
+    name: ufbt lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flipperdevices/flipperzero-ufbt-action@v0.1.4
+        with:
+          task: lint
+          sdk-channel: release
+
   build:
     name: Build .fap
     runs-on: ubuntu-latest

@@ -3,17 +3,31 @@
 #include <furi.h>
 #include <gui/canvas.h>
 
-typedef enum { InputTypePress, InputTypeRelease, InputTypeShort, InputTypeLong, InputTypeRepeat }
-    InputType;
-typedef enum { InputKeyUp, InputKeyDown, InputKeyRight, InputKeyLeft, InputKeyOk, InputKeyBack }
-    InputKey;
+typedef enum {
+    InputTypePress,
+    InputTypeRelease,
+    InputTypeShort,
+    InputTypeLong,
+    InputTypeRepeat
+} InputType;
+typedef enum {
+    InputKeyUp,
+    InputKeyDown,
+    InputKeyRight,
+    InputKeyLeft,
+    InputKeyOk,
+    InputKeyBack
+} InputKey;
 
 typedef struct {
     InputKey key;
     InputType type;
 } InputEvent;
 
-typedef enum { ViewModelTypeLocking, ViewModelTypeLockFree } ViewModelType;
+typedef enum {
+    ViewModelTypeLocking,
+    ViewModelTypeLockFree
+} ViewModelType;
 
 typedef void (*ViewDrawCallback)(Canvas* canvas, void* model);
 typedef bool (*ViewInputCallback)(InputEvent* event, void* context);
@@ -41,13 +55,20 @@ static inline void view_allocate_model(View* v, ViewModelType type, size_t size)
     v->model = malloc(size);
     memset(v->model, 0, size);
 }
-static inline void view_set_context(View* v, void* context) { v->context = context; }
-static inline void view_set_draw_callback(View* v, ViewDrawCallback cb) { v->draw = cb; }
-static inline void view_set_input_callback(View* v, ViewInputCallback cb) { v->input = cb; }
+static inline void view_set_context(View* v, void* context) {
+    v->context = context;
+}
+static inline void view_set_draw_callback(View* v, ViewDrawCallback cb) {
+    v->draw = cb;
+}
+static inline void view_set_input_callback(View* v, ViewInputCallback cb) {
+    v->input = cb;
+}
 
-#define with_view_model(view_ptr, model_decl, code, update)   \
-    do {                                                      \
-        View* _v = (view_ptr);                                \
-        model_decl = _v->model;                               \
-        {code} if(update) _v->commits++;                      \
+#define with_view_model(view_ptr, model_decl, code, update) \
+    do {                                                    \
+        View* _v = (view_ptr);                              \
+        model_decl = _v->model;                             \
+        { code }                                            \
+        if(update) _v->commits++;                           \
     } while(0)

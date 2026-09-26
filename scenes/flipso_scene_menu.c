@@ -94,7 +94,10 @@ void flipso_scene_menu_on_enter(void* context) {
         char count[FLIPSO_MENU_TAG_LEN];
         if(past && on_card) {
             snprintf(
-                count, sizeof(count), "%u + %u off card", (unsigned)(on_card % 100),
+                count,
+                sizeof(count),
+                "%u + %u off card",
+                (unsigned)(on_card % 100),
                 (unsigned)(past % 100));
         } else if(past) {
             snprintf(count, sizeof(count), "%u off card", (unsigned)(past % 100));

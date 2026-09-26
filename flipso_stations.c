@@ -50,8 +50,11 @@ static uint32_t flipso_stations_le(const uint8_t* bytes, size_t n) {
     return value;
 }
 
-static bool flipso_stations_read_at(FlipsoStations* instance, uint32_t offset, void* into,
-                                    uint16_t length) {
+static bool flipso_stations_read_at(
+    FlipsoStations* instance,
+    uint32_t offset,
+    void* into,
+    uint16_t length) {
     if(!storage_file_seek(instance->file, offset, true)) return false;
     return storage_file_read(instance->file, into, length) == length;
 }

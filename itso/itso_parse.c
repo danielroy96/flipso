@@ -314,11 +314,7 @@ static bool itso_ts_newer(uint16_t a, uint16_t b) {
     return delta != 0 && delta < 0x800;
 }
 
-uint8_t itso_value_records(
-    const uint8_t* group,
-    size_t len,
-    uint8_t sector_size,
-    size_t* offset) {
+uint8_t itso_value_records(const uint8_t* group, size_t len, uint8_t sector_size, size_t* offset) {
     /* The value group starts at a sector boundary, so its offset cannot be found
      * without a sector size. A shell that reached the transports has one, but the
      * decoder is also driven directly by the host tests. */
@@ -343,8 +339,7 @@ uint8_t itso_value_records(
     }
     /* Keep the count to what is actually there, so a caller may slice records
      * out without re-checking the length of each. */
-    while(records &&
-          vg_offset + 2 + (size_t)records * ITSO_VALUE_RECORD_LEN > len) {
+    while(records && vg_offset + 2 + (size_t)records * ITSO_VALUE_RECORD_LEN > len) {
         records--;
     }
     if(records == 0) return 0;
@@ -530,7 +525,8 @@ static void itso_parse_value_records(
         product->balance = live->amount;
         product->journey_legs = newest[12] & 0x0F;
         itso_decode_money(
-            (int32_t)itso_bits(newest, 104, 13), (newest[12] >> 4) & 0x0F,
+            (int32_t)itso_bits(newest, 104, 13),
+            (newest[12] >> 4) & 0x0F,
             &product->cumulative_fare);
         product->has_journey = true;
         {
@@ -555,7 +551,8 @@ static void itso_parse_value_records(
         product->balance_is_spend = true;
         product->journey_legs = newest[12] & 0x0F;
         itso_decode_money(
-            (int32_t)itso_bits(newest, 104, 12), (newest[12] >> 4) & 0x0F,
+            (int32_t)itso_bits(newest, 104, 12),
+            (newest[12] >> 4) & 0x0F,
             &product->cumulative_fare);
         product->has_journey = true;
         product->priority_override = (itso_bits(newest, 116, 4) & 0x02) != 0;
@@ -674,7 +671,11 @@ static void itso_parse_ipe_common(
  * season ticket except the ISAM that created it and that ISAM's sequence
  * number.
  */
-static void itso_parse_instance_id(ItsoProduct* product, const uint8_t* group, size_t len, size_t dataset_len) {
+static void itso_parse_instance_id(
+    ItsoProduct* product,
+    const uint8_t* group,
+    size_t len,
+    size_t dataset_len) {
     if(dataset_len + ITSO_INSTANCE_ID_LEN > len) return;
 
     const uint8_t* id = group + dataset_len;
@@ -925,8 +926,7 @@ static void itso_parse_id_ipe(
         product->has_shell_deposit = product->shell_deposit.value != 0;
     }
 
-    itso_parse_id_optionals(
-        product, data, len, optionals, bitmap, product->typ == ItsoTypId);
+    itso_parse_id_optionals(product, data, len, optionals, bitmap, product->typ == ItsoTypId);
 }
 
 /**
@@ -1007,8 +1007,7 @@ static void itso_parse_period_ipe(
          * after them, so it cannot be found without walking both. */
         if(bitmap & (1 << 1)) {
             if(pos >= len) return;
-            pos += itso_parse_location(
-                data + pos, len - pos, ItsoLocStructLoc1, &product->from);
+            pos += itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->from);
         }
         if(bitmap & (1 << 2)) {
             if(pos >= len) return;
@@ -1150,8 +1149,7 @@ static void itso_parse_journey_ipe(
 
         if(bitmap & (1 << 2)) {
             if(pos >= len) return;
-            pos += itso_parse_location(
-                data + pos, len - pos, ItsoLocStructLoc1, &product->from);
+            pos += itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->from);
         }
         if(bitmap & (1 << 1)) {
             if(pos >= len) return;
@@ -1424,8 +1422,7 @@ void itso_parse_log_history(ItsoCard* card, const uint8_t* data, size_t len) {
      * newest is in the live log, which has already been parsed. And on_card
      * stays false, because only the file has them - a record still on the card
      * was added from the live log first, and the duplicate is dropped. */
-    for(size_t offset = 0; offset + ITSO_TAP_RECORD_LEN <= len;
-        offset += ITSO_TAP_RECORD_LEN) {
+    for(size_t offset = 0; offset + ITSO_TAP_RECORD_LEN <= len; offset += ITSO_TAP_RECORD_LEN) {
         ItsoTap tap;
         memset(&tap, 0, sizeof(tap));
         if(!itso_parse_tap(&tap, data + offset, ITSO_TAP_RECORD_LEN)) continue;
@@ -1558,8 +1555,8 @@ bool itso_parse_capping(
 
     size_t pos = locations;
     for(uint8_t a = 0; a < (ref == 1 ? 1 : ITSO_CAP_ACCUMULATORS) && pos < vgx_len; a++) {
-        size_t used = itso_parse_location(
-            v + pos, vgx_len - pos, ItsoLocStructLoc1, &out->acc[a].location);
+        size_t used =
+            itso_parse_location(v + pos, vgx_len - pos, ItsoLocStructLoc1, &out->acc[a].location);
         if(used == 0) break;
         pos += used;
         if(ref == 2) {

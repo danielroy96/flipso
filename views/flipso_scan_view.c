@@ -13,7 +13,7 @@
 /* The animation's own clock. It only runs while scanning, so an app left on the
  * idle screen is not woken ten times a second to draw a frame that never
  * changes. */
-#define FLIPSO_FRAME_MS 100
+#define FLIPSO_FRAME_MS    100
 /** Frames per wave step: a wave every ~300 ms. */
 #define FLIPSO_WAVE_PERIOD 3
 #define FLIPSO_WAVE_COUNT  3
@@ -21,10 +21,23 @@
 /* Unit circle from 140 to 220 degrees, scaled by 64. Drawing an arc from a table
  * avoids linking libm for three decorative curves. */
 static const int8_t flipso_arc[][2] = {
-    {-49, 41},  {-52, 37},  {-55, 32},  {-58, 27},  {-60, 22},
-    {-62, 17},  {-63, 11},  {-64, 6},   {-64, 0},   {-64, -6},
-    {-63, -11}, {-62, -17}, {-60, -22}, {-58, -27}, {-55, -32},
-    {-52, -37}, {-49, -41},
+    {-49, 41},
+    {-52, 37},
+    {-55, 32},
+    {-58, 27},
+    {-60, 22},
+    {-62, 17},
+    {-63, 11},
+    {-64, 6},
+    {-64, 0},
+    {-64, -6},
+    {-63, -11},
+    {-62, -17},
+    {-60, -22},
+    {-58, -27},
+    {-55, -32},
+    {-52, -37},
+    {-49, -41},
 };
 
 typedef struct {
@@ -135,8 +148,7 @@ static bool flipso_scan_view_input(InputEvent* event, void* context) {
 /* Runs on the timer thread; the model lock is what makes that safe. */
 static void flipso_scan_view_timer(void* context) {
     FlipsoScanView* instance = context;
-    with_view_model(
-        instance->view, FlipsoScanModel * model, { model->frame++; }, true);
+    with_view_model(instance->view, FlipsoScanModel * model, { model->frame++; }, true);
 }
 
 FlipsoScanView* flipso_scan_view_alloc(void) {
@@ -148,8 +160,7 @@ FlipsoScanView* flipso_scan_view_alloc(void) {
     view_set_context(instance->view, instance);
     view_set_draw_callback(instance->view, flipso_scan_view_draw);
     view_set_input_callback(instance->view, flipso_scan_view_input);
-    instance->timer =
-        furi_timer_alloc(flipso_scan_view_timer, FuriTimerTypePeriodic, instance);
+    instance->timer = furi_timer_alloc(flipso_scan_view_timer, FuriTimerTypePeriodic, instance);
     return instance;
 }
 

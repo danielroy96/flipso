@@ -34,14 +34,14 @@ static const uint8_t flipso_cmd2_aid[] =
     {0xA0, 0x00, 0x00, 0x02, 0x16, 0x49, 0x54, 0x53, 0x4F, 0x2D, 0x31};
 
 /* Storage Sector DFs are numbered sequentially from 0100 (TS 1000-10 3.7.3.1). */
-#define FLIPSO_CMD2_DF_BASE      0x0100
-#define FLIPSO_CMD2_SFI_DEFAULT  0x01 /* Storage EF short id, parameter tag C3. */
-#define FLIPSO_CMD2_PARAM_SFI    0x0F /* Parameter EF, fixed by clause 3.7.2.1. */
+#define FLIPSO_CMD2_DF_BASE     0x0100
+#define FLIPSO_CMD2_SFI_DEFAULT 0x01 /* Storage EF short id, parameter tag C3. */
+#define FLIPSO_CMD2_PARAM_SFI   0x0F /* Parameter EF, fixed by clause 3.7.2.1. */
 
-#define FLIPSO_CMD2_APDU_MAX     32
-#define FLIPSO_CMD2_RESP_MAX     264 /* Largest sector or directory, plus slack. */
-#define FLIPSO_CMD2_PATH_MAX     8
-#define FLIPSO_CMD2_DIR_MAX      256
+#define FLIPSO_CMD2_APDU_MAX       32
+#define FLIPSO_CMD2_RESP_MAX       264 /* Largest sector or directory, plus slack. */
+#define FLIPSO_CMD2_PATH_MAX       8
+#define FLIPSO_CMD2_DIR_MAX        256
 #define FLIPSO_CMD2_MAX_CHAIN_HOPS 6
 
 struct FlipsoCmd2 {
@@ -88,11 +88,8 @@ void flipso_cmd2_free(FlipsoCmd2* cmd2) {
 /* ------------------------------------------------------------------ */
 
 /** Send one APDU, splitting the response into data and status word. */
-static bool flipso_cmd2_send(
-    FlipsoCmd2* cmd2,
-    Iso14443_4aPoller* poller,
-    const uint8_t* apdu,
-    size_t len) {
+static bool
+    flipso_cmd2_send(FlipsoCmd2* cmd2, Iso14443_4aPoller* poller, const uint8_t* apdu, size_t len) {
     bit_buffer_reset(cmd2->tx);
     bit_buffer_append_bytes(cmd2->tx, apdu, len);
 
@@ -268,15 +265,13 @@ static bool
 
     if(cmd2->df_fid_known) {
         const uint8_t to_root[] = {
-            0x00, 0xA4, 0x00, 0x00, 0x02, (uint8_t)(cmd2->df_fid >> 8),
-            (uint8_t)cmd2->df_fid, 0x00};
+            0x00, 0xA4, 0x00, 0x00, 0x02, (uint8_t)(cmd2->df_fid >> 8), (uint8_t)cmd2->df_fid, 0x00};
         if(!flipso_cmd2_transceive(cmd2, poller, to_root, sizeof(to_root))) return false;
     } else if(!flipso_cmd2_select_application(cmd2, poller)) {
         return false;
     }
 
-    const uint8_t apdu[] = {
-        0x00, 0xA4, 0x00, 0x00, 0x02, FLIPSO_CMD2_DF_BASE >> 8, sector, 0x00};
+    const uint8_t apdu[] = {0x00, 0xA4, 0x00, 0x00, 0x02, FLIPSO_CMD2_DF_BASE >> 8, sector, 0x00};
     return flipso_cmd2_transceive(cmd2, poller, apdu, sizeof(apdu));
 }
 
@@ -325,15 +320,13 @@ static bool
     const uint8_t copy_b = (uint8_t)(card->sector_count - 1);
     const size_t sequence_offset = flipso_cmd2_dir_sequence_offset(card);
 
-    size_t len_a =
-        flipso_cmd2_read_sector(cmd2, poller, copy_a, cmd2->dir, sizeof(cmd2->dir));
+    size_t len_a = flipso_cmd2_read_sector(cmd2, poller, copy_a, cmd2->dir, sizeof(cmd2->dir));
     bool a_usable = len_a > sequence_offset;
     uint8_t sequence_a = a_usable ? cmd2->dir[sequence_offset] : 0;
 
     /* Try copy B second so that the common case - B newer, as anti-tear leaves
      * it after an odd number of updates - needs no third read. */
-    size_t len_b =
-        flipso_cmd2_read_sector(cmd2, poller, copy_b, cmd2->dir, sizeof(cmd2->dir));
+    size_t len_b = flipso_cmd2_read_sector(cmd2, poller, copy_b, cmd2->dir, sizeof(cmd2->dir));
     bool b_usable = len_b > sequence_offset;
     uint8_t sequence_b = b_usable ? cmd2->dir[sequence_offset] : 0;
 
@@ -342,7 +335,8 @@ static bool
     if(use_b) {
         cmd2->dir_len = len_b;
     } else if(a_usable) {
-        cmd2->dir_len = flipso_cmd2_read_sector(cmd2, poller, copy_a, cmd2->dir, sizeof(cmd2->dir));
+        cmd2->dir_len =
+            flipso_cmd2_read_sector(cmd2, poller, copy_a, cmd2->dir, sizeof(cmd2->dir));
     } else {
         cmd2->dir_len = len_b; /* Neither looked complete; use whatever we have. */
     }
@@ -455,8 +449,7 @@ FlipsoReaderStatus flipso_cmd2_read(
      * the whole Shell Environment, inline (TS 1000-10 3.8.3.4.2). When it does,
      * the card is readable without a single extra command. */
     size_t fci_len = 0;
-    const uint8_t* parameters =
-        flipso_cmd2_fci_find(cmd2->resp, cmd2->resp_len, 0xE0, &fci_len);
+    const uint8_t* parameters = flipso_cmd2_fci_find(cmd2->resp, cmd2->resp_len, 0xE0, &fci_len);
     if(parameters) flipso_cmd2_parse_parameters(cmd2, parameters, fci_len);
 
     size_t shell_len = 0;
@@ -477,7 +470,8 @@ FlipsoReaderStatus flipso_cmd2_read(
         /* The Shell Environment is the first storage sector. */
         uint8_t buffer[64];
         size_t len = flipso_cmd2_read_sector(cmd2, poller, 0, buffer, sizeof(buffer));
-        shell_ok = len && itso_looks_like_shell(buffer, len) && itso_parse_shell(card, buffer, len);
+        shell_ok = len && itso_looks_like_shell(buffer, len) &&
+                   itso_parse_shell(card, buffer, len);
         if(shell_ok) flipso_capture_add(capture, FlipsoBlockShell, 0, buffer, len);
     }
 

@@ -10,7 +10,6 @@
  */
 #include "../flipso.h"
 
-
 /* Distinct from the app-wide events so a stray one cannot be mistaken for it. */
 #define FlipsoRenameEventCommit 320
 
@@ -34,14 +33,19 @@ void flipso_scene_rename_on_enter(void* context) {
      * first key, which is the opposite of the save screen: there the text is a
      * suggestion to type over, here it is the answer to adjust. */
     text_input_set_result_callback(
-        app->text_input, flipso_scene_rename_input_callback, app, app->save_name,
-        sizeof(app->save_name), false);
+        app->text_input,
+        flipso_scene_rename_input_callback,
+        app,
+        app->save_name,
+        sizeof(app->save_name),
+        false);
     text_input_set_minimum_length(app->text_input, 1);
 
     /* Its own name is passed as the current one, so keeping it - or changing
      * only its case - is allowed while another card's name is still refused. */
     text_input_set_validator(
-        app->text_input, flipso_name_validator,
+        app->text_input,
+        flipso_name_validator,
         flipso_name_validator_alloc(furi_string_get_cstr(name)));
 
     furi_string_free(name);

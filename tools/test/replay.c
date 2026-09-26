@@ -40,19 +40,29 @@ static void show_money(const char* label, const ItsoMoney* money) {
  * so a real card can be checked against the spec without a device. */
 static void show_extras(const ItsoProduct* p, const uint8_t* group, size_t len, uint8_t sector) {
     if(p->instance_valid)
-        printf("      %-12s ISAM %08lX (operator %u) #%lu\n", "created by",
-               (unsigned long)p->isam_id, itso_isam_oid(p->isam_id), (unsigned long)p->isam_seq);
+        printf(
+            "      %-12s ISAM %08lX (operator %u) #%lu\n",
+            "created by",
+            (unsigned long)p->isam_id,
+            itso_isam_oid(p->isam_id),
+            (unsigned long)p->isam_seq);
     if(p->value_parsed)
-        printf("      %-12s ISAM %08lX (operator %u)\n", "last POST",
-               (unsigned long)p->value_isam, itso_isam_oid(p->value_isam));
+        printf(
+            "      %-12s ISAM %08lX (operator %u)\n",
+            "last POST",
+            (unsigned long)p->value_isam,
+            itso_isam_oid(p->value_isam));
     if(p->has_cpicc) printf("      %-12s %u (0x%04X)\n", "CPICC", p->cpicc, p->cpicc);
     if(p->has_holder_id) printf("      %-12s %lu\n", "holder ID", (unsigned long)p->holder_id);
     if(p->has_secondary_holder)
         printf("      %-12s %lu\n", "2nd holder", (unsigned long)p->secondary_holder_id);
     if(p->language) {
         char code[3];
-        printf("      %-12s %u = %s\n", "language", p->language,
-               itso_language_code(p->language, code) ? code : "?");
+        printf(
+            "      %-12s %u = %s\n",
+            "language",
+            p->language,
+            itso_language_code(p->language, code) ? code : "?");
     }
     if(p->rounding) printf("      %-12s 0x%X\n", "rounding", p->rounding);
     if(p->has_half_days) printf("      %-12s 0x%04X\n", "half days", p->half_days);
@@ -62,21 +72,34 @@ static void show_extras(const ItsoProduct* p, const uint8_t* group, size_t len, 
 
     const ItsoTicketTerms* t = &p->ticket;
     if(t->valid) {
-        printf("      %-12s flags 0x%04X, days 0x%02X, class %u, validity %u, promo %u\n",
-               "terms", t->flags, t->valid_days, t->travel_class, t->validity_code,
-               t->promotion_code);
-        printf("      %-12s issued %u, ends %u min, from DTS %s", "", t->issue_date,
-               t->expiry_time, t->valid_from_dts ? fmt_dts(t->valid_from_dts) : "-");
+        printf(
+            "      %-12s flags 0x%04X, days 0x%02X, class %u, validity %u, promo %u\n",
+            "terms",
+            t->flags,
+            t->valid_days,
+            t->travel_class,
+            t->validity_code,
+            t->promotion_code);
+        printf(
+            "      %-12s issued %u, ends %u min, from DTS %s",
+            "",
+            t->issue_date,
+            t->expiry_time,
+            t->valid_from_dts ? fmt_dts(t->valid_from_dts) : "-");
         printf(", party %u/%u/%u\n", t->adults, t->children, t->concessions);
         if(t->amount_paid.valid) show_money("paid", &t->amount_paid);
-        if(t->paid_mop || t->vat)
-            printf("      %-12s MOP %u, VAT %u\n", "", t->paid_mop, t->vat);
+        if(t->paid_mop || t->vat) printf("      %-12s MOP %u, VAT %u\n", "", t->paid_mop, t->vat);
         if(t->has_pass_duration)
-            printf("      %-12s %u (unit %u)\n", "pass length", t->pass_duration, t->duration_unit);
+            printf(
+                "      %-12s %u (unit %u)\n", "pass length", t->pass_duration, t->duration_unit);
         if(t->photocard) printf("      %-12s %lu\n", "photocard", (unsigned long)t->photocard);
         if(t->has_mode_group)
-            printf("      %-12s mode %u, transfers %u, limit %u\n", "mode", t->mode,
-                   t->max_transfers, t->time_limit);
+            printf(
+                "      %-12s mode %u, transfers %u, limit %u\n",
+                "mode",
+                t->mode,
+                t->max_transfers,
+                t->time_limit);
     }
 
     if(p->vgx_ref) {
@@ -86,10 +109,16 @@ static void show_extras(const ItsoProduct* p, const uint8_t* group, size_t len, 
             printf("      %-12s strategy %u\n", "capping", cap.strategy);
             for(int a = 0; a < ITSO_CAP_ACCUMULATORS; a++) {
                 const ItsoCapAccumulator* c = &cap.acc[a];
-                printf("        set %d: rule %u, day %ld, multi %ld, uncapped %ld, days %u%s%s\n",
-                       a + 1, c->rule, (long)c->day.value, (long)c->multiday.value,
-                       (long)c->uncapped.value, c->day_count, c->location.valid ? ", at " : "",
-                       c->location.valid ? c->location.text : "");
+                printf(
+                    "        set %d: rule %u, day %ld, multi %ld, uncapped %ld, days %u%s%s\n",
+                    a + 1,
+                    c->rule,
+                    (long)c->day.value,
+                    (long)c->multiday.value,
+                    (long)c->uncapped.value,
+                    c->day_count,
+                    c->location.valid ? ", at " : "",
+                    c->location.valid ? c->location.text : "");
             }
         }
     }
@@ -106,35 +135,48 @@ int main(void) {
     }
     if(!itso_parse_shell(&card, replay_shell, replay_shell_len)) {
         printf("  REJECTED by itso_parse_shell\n");
-        printf("  looks_like_shell: %s\n",
-               itso_looks_like_shell(replay_shell, replay_shell_len) ? "yes" : "no");
+        printf(
+            "  looks_like_shell: %s\n",
+            itso_looks_like_shell(replay_shell, replay_shell_len) ? "yes" : "no");
         return 1;
     }
-    printf("  card number   %s (check digit %s)\n", card.isrn,
-           card.isrn_check_ok ? "ok" : "BAD");
-    printf("  IIN %u, OID %u, FVC %u, format rev %u\n", card.iin, card.oid, card.fvc,
-           card.format_rev);
-    printf("  geometry      %u sectors of %u bytes, %u directory entries, SCTL %u\n",
-           card.sector_count, card.sector_size, card.dir_entries, card.sct_len);
-    printf("  checksum      %s\n",
-           !card.secrc_checked ? "not checked (shell shorter than it claims)" :
-           card.secrc_valid    ? "verified" :
-                                 "MISMATCH - these bytes are not what the card wrote");
+    printf("  card number   %s (check digit %s)\n", card.isrn, card.isrn_check_ok ? "ok" : "BAD");
+    printf(
+        "  IIN %u, OID %u, FVC %u, format rev %u\n", card.iin, card.oid, card.fvc, card.format_rev);
+    printf(
+        "  geometry      %u sectors of %u bytes, %u directory entries, SCTL %u\n",
+        card.sector_count,
+        card.sector_size,
+        card.dir_entries,
+        card.sct_len);
+    printf(
+        "  checksum      %s\n",
+        !card.secrc_checked ? "not checked (shell shorter than it claims)" :
+        card.secrc_valid    ? "verified" :
+                              "MISMATCH - these bytes are not what the card wrote");
 
     printf("\nDirectory (%zu bytes)\n", replay_dir_len);
     if(replay_dir_len && !itso_parse_directory(&card, replay_dir, replay_dir_len)) {
         printf("  REJECTED by itso_parse_directory\n");
         return 1;
     }
-    printf("  %u product(s), shell %s\n", card.product_count,
-           card.shell_blocked ? "BLOCKED" : "not blocked");
+    printf(
+        "  %u product(s), shell %s\n",
+        card.product_count,
+        card.shell_blocked ? "BLOCKED" : "not blocked");
     if(card.log_entry_valid)
-        printf("  log entry at E%u, product E%u, %s\n", card.log_dir_index, card.log_ptr,
-               card.log_eei ? "inside a closed system" : "outside a closed system");
+        printf(
+            "  log entry at E%u, product E%u, %s\n",
+            card.log_dir_index,
+            card.log_ptr,
+            card.log_eei ? "inside a closed system" : "outside a closed system");
     if(card.dir_instance_valid)
-        printf("  last written  ISAM %08lX (operator %u), KID %u, shell iteration %u\n",
-               (unsigned long)card.dir_isam, itso_isam_oid(card.dir_isam), card.dir_kid,
-               card.shell_iteration);
+        printf(
+            "  last written  ISAM %08lX (operator %u), KID %u, shell iteration %u\n",
+            (unsigned long)card.dir_isam,
+            itso_isam_oid(card.dir_isam),
+            card.dir_kid,
+            card.shell_iteration);
 
     /* The dump writes one GROUP block per directory entry, in directory order,
      * which is the order the reader itself walks them in. */
@@ -149,18 +191,29 @@ int main(void) {
             }
         }
         if(!product) {
-            printf("  E%u: %zu bytes, but the directory has no such entry\n", block->index,
-                   block->len);
+            printf(
+                "  E%u: %zu bytes, but the directory has no such entry\n",
+                block->index,
+                block->len);
             continue;
         }
 
         itso_parse_ipe(product, block->data, block->len, card.sector_size);
-        printf("  E%u  %s (TYP %u.%u), %zu bytes, rev %u, bitmap 0x%02X, %s\n",
-               product->dir_index, itso_typ_name(product->typ), product->typ, product->ptyp,
-               block->len, product->format_rev, product->bitmap,
-               product->body_parsed ? "parsed" : "NOT PARSED");
-        printf("      %-12s %u%s\n", "owner OID", product->oid,
-               product->oid_extended ? " (extended)" : "");
+        printf(
+            "  E%u  %s (TYP %u.%u), %zu bytes, rev %u, bitmap 0x%02X, %s\n",
+            product->dir_index,
+            itso_typ_name(product->typ),
+            product->typ,
+            product->ptyp,
+            block->len,
+            product->format_rev,
+            product->bitmap,
+            product->body_parsed ? "parsed" : "NOT PARSED");
+        printf(
+            "      %-12s %u%s\n",
+            "owner OID",
+            product->oid,
+            product->oid_extended ? " (extended)" : "");
         printf("      %-12s %s\n", "status", itso_status_name(product->status));
         show_money("balance", &product->balance);
         show_location("from", &product->from);
@@ -170,15 +223,21 @@ int main(void) {
          * card they reach further back than the card itself keeps. */
         for(uint8_t v = 0; v < product->value_history_count; v++) {
             const ItsoValueRecord* record = &product->value_history[v];
-            printf("      %-12s TS#%-4u %-16s %s", v ? "" : "records", record->ts,
-                   itso_transaction_name(record->txn), fmt_dts(record->dts));
+            printf(
+                "      %-12s TS#%-4u %-16s %s",
+                v ? "" : "records",
+                record->ts,
+                itso_transaction_name(record->txn),
+                fmt_dts(record->dts));
             if(record->amount.valid) {
                 char money[24];
                 itso_format_money(&record->amount, money, sizeof(money));
                 printf("  %s", money);
             } else if(record->has_count) {
-                printf("  %s %lu", itso_count_name(product->count_kind) ?: "count",
-                       (unsigned long)record->count);
+                printf(
+                    "  %s %lu",
+                    itso_count_name(product->count_kind) ?: "count",
+                    (unsigned long)record->count);
             }
             printf("%s\n", v ? "" : "  <- live");
         }
@@ -193,18 +252,28 @@ int main(void) {
         printf("  %u tap(s)\n", card.tap_count);
         for(uint8_t i = 0; i < card.tap_count; i++) {
             const ItsoTap* tap = &card.taps[i];
-            printf("  tap %u%s: %s, DTS %u\n", i, tap->latest ? " (latest)" : "",
-                   itso_transaction_name(tap->transaction_type), tap->dts);
+            printf(
+                "  tap %u%s: %s, DTS %u\n",
+                i,
+                tap->latest ? " (latest)" : "",
+                itso_transaction_name(tap->transaction_type),
+                tap->dts);
             show_money("fare", &tap->amount);
             show_location("origin", &tap->origin);
             show_location("destination", &tap->destination);
             show_location("route", &tap->route);
             if(tap->has_writer)
-                printf("      %-12s ISAM %08lX (operator %u)\n", "written by",
-                       (unsigned long)tap->writer_isam, itso_isam_oid(tap->writer_isam));
+                printf(
+                    "      %-12s ISAM %08lX (operator %u)\n",
+                    "written by",
+                    (unsigned long)tap->writer_isam,
+                    itso_isam_oid(tap->writer_isam));
             if(tap->has_entry_oid)
-                printf("      %-12s operator %u, IIN index %u\n", "entered at", tap->entry_oid,
-                       tap->entry_iin_index);
+                printf(
+                    "      %-12s operator %u, IIN index %u\n",
+                    "entered at",
+                    tap->entry_oid,
+                    tap->entry_iin_index);
         }
     }
 

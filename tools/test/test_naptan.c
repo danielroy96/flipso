@@ -245,10 +245,12 @@ int main(void) {
     check("null refused", atco(NULL) == NULL);
 
     printf("The two indexes share one blob of names\n");
-    check("both codes for the first stop agree",
-          is(stop("00062624"), NAME_A) && is(atco("1800ALTRNHM0"), NAME_A));
-    check("both codes for the second stop agree",
-          is(stop("62697956"), NAME_B) && is(atco("1800EB00131"), NAME_B));
+    check(
+        "both codes for the first stop agree",
+        is(stop("00062624"), NAME_A) && is(atco("1800ALTRNHM0"), NAME_A));
+    check(
+        "both codes for the second stop agree",
+        is(stop("62697956"), NAME_B) && is(atco("1800EB00131"), NAME_B));
 
     printf("One index only\n");
     size = make_table(table, 2, 0);
@@ -365,14 +367,15 @@ int main(void) {
         /* "bstgwpa" folded onto the keypad of TS 1000-1 table 28, as a card
          * would carry it, and the AtcoCode for the same stop: the two indexes
          * have to arrive at one name. */
-        check("a NaptanCode resolves",
-              is(stop("02784972"), "Temple Gate (T3), Temple Meads"));
-        check("the same stop by its AtcoCode",
-              is(atco("0100BRP90310"), "Temple Gate (T3), Temple Meads"));
+        check("a NaptanCode resolves", is(stop("02784972"), "Temple Gate (T3), Temple Meads"));
+        check(
+            "the same stop by its AtcoCode",
+            is(atco("0100BRP90310"), "Temple Gate (T3), Temple Meads"));
         /* Around 26,000 stops have no NaptanCode at all, so the AtcoCode index
          * is the only way to reach them. */
-        check("an AtcoCode-only stop resolves",
-              is(atco("1800ALTRNHM0"), "Altrincham Rail Station (NE Entrance)"));
+        check(
+            "an AtcoCode-only stop resolves",
+            is(atco("1800ALTRNHM0"), "Altrincham Rail Station (NE Entrance)"));
         check("an absent NaptanCode", stop("00000001") == NULL);
         check("an absent AtcoCode", atco("9999ZZZZZZZZ") == NULL);
 
@@ -411,8 +414,10 @@ int main(void) {
             if(!got || strlen(got) != length || memcmp(got, real + names + at, length) != 0)
                 resolved++;
         }
-        printf("      %lu NaptanCodes, %lu looked up\n",
-               (unsigned long)stops, (unsigned long)visited);
+        printf(
+            "      %lu NaptanCodes, %lu looked up\n",
+            (unsigned long)stops,
+            (unsigned long)visited);
         check("NaptanCode index is sorted", sorted == 0);
         check("every NaptanCode visited resolves to its own name", resolved == 0);
 
@@ -437,8 +442,8 @@ int main(void) {
             if(!got || strlen(got) != length || memcmp(got, real + names + at, length) != 0)
                 resolved++;
         }
-        printf("      %lu AtcoCodes, %lu looked up\n",
-               (unsigned long)atcos, (unsigned long)visited);
+        printf(
+            "      %lu AtcoCodes, %lu looked up\n", (unsigned long)atcos, (unsigned long)visited);
         check("AtcoCode index is sorted", sorted == 0);
         check("every AtcoCode visited resolves to its own name", resolved == 0);
 

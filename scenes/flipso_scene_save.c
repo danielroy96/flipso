@@ -16,7 +16,6 @@
 #include "../flipso.h"
 #include "flipso_icons.h"
 
-
 /* Distinct from the app-wide events so a stray one cannot be mistaken for it.
  * Which of the two screens is up does not need recording anywhere: only that
  * screen's own buttons can post, so the event says which path this is. */
@@ -77,8 +76,7 @@ static void flipso_scene_save_ask_update(Flipso* app, uint32_t read_at) {
 
     uint16_t kept = (uint16_t)(diff->kept_taps + diff->kept_values);
     if(kept) {
-        furi_string_cat_printf(
-            text, "\nKeeping %u older record%s", kept, kept == 1 ? "" : "s");
+        furi_string_cat_printf(text, "\nKeeping %u older record%s", kept, kept == 1 ? "" : "s");
     }
 
     /* Said separately from the records, because it is a bigger thing to have
@@ -86,8 +84,11 @@ static void flipso_scene_save_ask_update(Flipso* app, uint32_t read_at) {
      * only place it still exists. */
     if(diff->kept_products) {
         furi_string_cat_printf(
-            text, "\n%s %u product%s now\noff the card", kept ? "and" : "Keeping",
-            diff->kept_products, diff->kept_products == 1 ? "" : "s");
+            text,
+            "\n%s %u product%s now\noff the card",
+            kept ? "and" : "Keeping",
+            diff->kept_products,
+            diff->kept_products == 1 ? "" : "s");
     }
 
     widget_reset(app->widget);
@@ -110,14 +111,20 @@ static void flipso_scene_save_ask_update(Flipso* app, uint32_t read_at) {
 /** The name screen, for a card with no record yet. */
 static void flipso_scene_save_ask_name(Flipso* app) {
     flipso_saved_suggest_name(
-        app->save_name, sizeof(app->save_name), &app->card,
+        app->save_name,
+        sizeof(app->save_name),
+        &app->card,
         flipso_operators_brand(app->operators, app->card.oid));
 
     text_input_reset(app->text_input);
     text_input_set_header_text(app->text_input, "Name this card");
     text_input_set_result_callback(
-        app->text_input, flipso_scene_save_input_callback, app, app->save_name,
-        sizeof(app->save_name), true);
+        app->text_input,
+        flipso_scene_save_input_callback,
+        app,
+        app->save_name,
+        sizeof(app->save_name),
+        true);
     text_input_set_minimum_length(app->text_input, 1);
 
     /* Warns before overwriting a card already saved under this name, which by

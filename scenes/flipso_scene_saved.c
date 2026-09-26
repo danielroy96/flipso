@@ -46,8 +46,7 @@ void flipso_scene_saved_on_enter(void* context) {
             itso_card_reset(&app->card);
             flipso_capture_reset(app->capture);
             flipso_saved_alert(
-                "Cannot open card",
-                "The file is damaged, or was\nsaved by a newer Flipso.");
+                "Cannot open card", "The file is damaged, or was\nsaved by a newer Flipso.");
             furi_string_set(select, path);
         }
     }

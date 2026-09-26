@@ -247,6 +247,19 @@ the house style (capitalised values, labelled detail lines, amounts in pounds),
 and the icon list and scrolling text views against an ASCII framebuffer — which
 is how their layout, wrapping and scrolling are checked without a device.
 
+### Formatting
+
+```bash
+ufbt format
+```
+
+C follows the Flipper firmware's clang-format style. `ufbt lint` checks it.
+
+### CI
+
+GitHub Actions runs the tests, `ufbt lint` and a release-SDK build on every
+push. Each run keeps the built `.fap` as a downloadable artifact.
+
 ## Contributing
 
 Contributions are welcome — particularly **other media types**, **operator names

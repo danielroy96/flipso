@@ -312,14 +312,13 @@ const char* itso_class_name(uint8_t code) {
  * Ido and Igbo. Igbo is taken as 71, the only number the sequence leaves free.
  * Two letters a language rather than a name keeps the table to 374 bytes of
  * .rodata, which the Flipper loads into RAM. */
-static const char itso_languages[] =
-    "abomaaafaksqamarhyasavaeayazbmbaeubebndzbhbibsbrbgmykmescach"
-    "cenyzhzacucvkwcocrhrcsdanieneoeteefofjfifrfyffgdgilgkadekikl"
-    "gnguhahehzhihohuisigigidiegaitjajvknkrkskkkirwrnswkvkgkokukj"
-    "kylolalvlnltiaiuiklulglbmkmgmsmldvmtgvmimrmhelmomnnanvngnend"
-    "senonbnnocojorospipsfaplptpaqurmrorurwsmsgsascsrshsttnsnsdsi"
-    "skslsonressuswsssvtltytgtatttethbotitotstrtktwugukuruzvevivo"
-    "wacywoxhyiyozu";
+static const char itso_languages[] = "abomaaafaksqamarhyasavaeayazbmbaeubebndzbhbibsbrbgmykmescach"
+                                     "cenyzhzacucvkwcocrhrcsdanieneoeteefofjfifrfyffgdgilgkadekikl"
+                                     "gnguhahehzhihohuisigigidiegaitjajvknkrkskkkirwrnswkvkgkokukj"
+                                     "kylolalvlnltiaiuiklulglbmkmgmsmldvmtgvmimrmhelmomnnanvngnend"
+                                     "senonbnnocojorospipsfaplptpaqurmrorurwsmsgsascsrshsttnsnsdsi"
+                                     "skslsonressuswsssvtltytgtatttethbotitotstrtktwugukuruzvevivo"
+                                     "wacywoxhyiyozu";
 
 bool itso_language_code(uint8_t code, char out[3]) {
     size_t count = (sizeof(itso_languages) - 1) / 2;

@@ -171,7 +171,7 @@ bool flipso_media_file_free_read(const FlipsoMediaFile* file);
  * UID, batch number and production week and year. */
 #define FLIPSO_MEDIA_VERSION_LEN 28
 /** That, then GetFreeMemory's three bytes: the block a saved card keeps. */
-#define FLIPSO_MEDIA_CHIP_LEN (FLIPSO_MEDIA_VERSION_LEN + 3)
+#define FLIPSO_MEDIA_CHIP_LEN    (FLIPSO_MEDIA_VERSION_LEN + 3)
 
 /**
  * Fill in the chip half of @p media from the bytes the card answered with.

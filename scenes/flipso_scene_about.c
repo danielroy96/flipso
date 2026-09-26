@@ -61,7 +61,8 @@ void flipso_scene_about_on_enter(void* context) {
     flipso_cat_heading(text, FlipsoIconSave, "Saved cards");
     furi_string_cat(text, "Folder: apps_data/flipso/cards\n");
     furi_string_cat(
-        text, "Saved cards hold the card number and any name on the card. Take care sharing them.\n");
+        text,
+        "Saved cards hold the card number and any name on the card. Take care sharing them.\n");
 
     flipso_show_text(app, text);
     furi_string_free(text);

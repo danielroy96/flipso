@@ -51,8 +51,7 @@ static void flipso_scene_scan_about_callback(void* context) {
 /* Begin a read with whichever transport the reader is currently on. */
 static void flipso_scene_scan_start_reader(Flipso* app) {
     flipso_reader_start(
-        app->reader, &app->card, &app->media, app->capture, flipso_scene_scan_reader_callback,
-        app);
+        app->reader, &app->card, &app->media, app->capture, flipso_scene_scan_reader_callback, app);
 }
 
 static void flipso_scene_scan_stop(Flipso* app) {
@@ -83,8 +82,11 @@ void flipso_scene_scan_on_enter(void* context) {
      * last saved card, or saved the first one, and come straight back here. */
     flipso_scan_view_set_has_saved(app->scan_view, flipso_saved_any());
     flipso_scan_view_set_callback(
-        app->scan_view, flipso_scene_scan_ok_callback, flipso_scene_scan_saved_callback,
-        flipso_scene_scan_about_callback, app);
+        app->scan_view,
+        flipso_scene_scan_ok_callback,
+        flipso_scene_scan_saved_callback,
+        flipso_scene_scan_about_callback,
+        app);
 
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipsoViewScan);
 }
@@ -208,8 +210,7 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
              * whole result for anyone not looking at the screen, and a chirp
              * saying "fine" over a dead card is worse than no sound. */
             notification_message(
-                app->notifications,
-                app->card.shell_blocked ? &sequence_error : &sequence_success);
+                app->notifications, app->card.shell_blocked ? &sequence_error : &sequence_success);
             /* Stamped here rather than on the worker thread: it is the time the
              * card was read, and the RTC is the UI thread's to ask. */
             flipso_capture_set_time(app->capture, flipso_now());

@@ -35,8 +35,7 @@ extern "C" {
  * one group per directory entry, one value history per entry, and the same pair
  * again for each product the card has dropped since a file was written.
  */
-#define FLIPSO_CAPTURE_MAX_BLOCKS \
-    (ITSO_MAX_PRODUCTS * 2 + ITSO_MAX_HISTORIC_PRODUCTS * 2 + 5)
+#define FLIPSO_CAPTURE_MAX_BLOCKS (ITSO_MAX_PRODUCTS * 2 + ITSO_MAX_HISTORIC_PRODUCTS * 2 + 5)
 
 /**
  * Block index the products that have left the card are keyed from.

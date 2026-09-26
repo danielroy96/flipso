@@ -14,24 +14,24 @@
 #include <furi.h>
 #include <gui/elements.h>
 
-#define FLIPSO_TEXT_SCREEN_W 128
-#define FLIPSO_TEXT_SCREEN_H 64
+#define FLIPSO_TEXT_SCREEN_W    128
+#define FLIPSO_TEXT_SCREEN_H    64
 /* Baseline pitch. FontSecondary is 8px tall; 11 leaves it legible without
  * wasting a row of the six that fit. */
-#define FLIPSO_TEXT_LINE_H 11
-#define FLIPSO_TEXT_X      2
+#define FLIPSO_TEXT_LINE_H      11
+#define FLIPSO_TEXT_X           2
 /* Text stops short of the right edge so a scrollbar never overlaps a glyph. */
-#define FLIPSO_TEXT_RIGHT (FLIPSO_TEXT_SCREEN_W - 5)
+#define FLIPSO_TEXT_RIGHT       (FLIPSO_TEXT_SCREEN_W - 5)
 /* Pixels per leading space. A fixed step rather than the font's own space,
  * which is narrow enough that a two-space indent barely shows. */
 #define FLIPSO_TEXT_INDENT_STEP 3
 /* How far the continuation of a wrapped "Label: value" line hangs in. */
-#define FLIPSO_TEXT_HANG 6
+#define FLIPSO_TEXT_HANG        6
 /* Between a heading's icon and its text. */
-#define FLIPSO_TEXT_ICON_GAP 3
+#define FLIPSO_TEXT_ICON_GAP    3
 /* Longest wrapped line we will assemble. No line of a 128px screen comes near
  * this; a word longer than it is broken like any word too wide to fit. */
-#define FLIPSO_TEXT_LINE_MAX 96
+#define FLIPSO_TEXT_LINE_MAX    96
 
 typedef struct {
     FuriString* text;
@@ -117,7 +117,8 @@ static void flipso_text_wrap(
 
     int32_t first_x = FLIPSO_TEXT_X + (int32_t)spaces * FLIPSO_TEXT_INDENT_STEP;
     if(icon) first_x += icon_get_width(icon) + FLIPSO_TEXT_ICON_GAP;
-    const int32_t next_x = first_x + (!bold && flipso_text_is_labelled(src, len) ? FLIPSO_TEXT_HANG : 0);
+    const int32_t next_x =
+        first_x + (!bold && flipso_text_is_labelled(src, len) ? FLIPSO_TEXT_HANG : 0);
 
     /* Measuring is done against the font the line will actually be drawn in,
      * so a bold header wraps where a bold header breaks. */
@@ -128,24 +129,26 @@ static void flipso_text_wrap(
     int32_t x = first_x;
     bool emitted = false;
 
-#define FLIPSO_TEXT_FLUSH()                                 \
-    do {                                                    \
-        buf[fill] = '\0';                                   \
-        flipso_text_emit(pass, buf, x, bold, icon);         \
+#define FLIPSO_TEXT_FLUSH()                                          \
+    do {                                                             \
+        buf[fill] = '\0';                                            \
+        flipso_text_emit(pass, buf, x, bold, icon);                  \
         canvas_set_font(canvas, bold ? FontPrimary : FontSecondary); \
-        icon = NULL;                                        \
-        x = next_x;                                         \
-        fill = 0;                                           \
-        emitted = true;                                     \
+        icon = NULL;                                                 \
+        x = next_x;                                                  \
+        fill = 0;                                                    \
+        emitted = true;                                              \
     } while(0)
 
     size_t i = 0;
     while(i < len) {
         /* Take the next word and the run of spaces after it. */
         const char* word = src + i;
-        while(i < len && src[i] != ' ') i++;
+        while(i < len && src[i] != ' ')
+            i++;
         size_t word_len = (size_t)(src + i - word);
-        while(i < len && src[i] == ' ') i++;
+        while(i < len && src[i] == ' ')
+            i++;
         if(word_len == 0) continue;
 
         /* Alongside what the row already holds, if it fits. */
@@ -173,7 +176,8 @@ static void flipso_text_wrap(
             buf[take] = '\0';
             while(take > 1 && flipso_glyphs_width(canvas, buf) > FLIPSO_TEXT_RIGHT - x) {
                 take--;
-                while(take > 1 && flipso_glyphs_is_continuation(word[take])) take--;
+                while(take > 1 && flipso_glyphs_is_continuation(word[take]))
+                    take--;
                 buf[take] = '\0';
             }
 
@@ -240,7 +244,11 @@ static void flipso_text_view_draw(Canvas* canvas, void* model) {
 
     if(pass.produced > pass.rows) {
         elements_scrollbar_pos(
-            canvas, FLIPSO_TEXT_SCREEN_W, 0, FLIPSO_TEXT_SCREEN_H, m->scroll,
+            canvas,
+            FLIPSO_TEXT_SCREEN_W,
+            0,
+            FLIPSO_TEXT_SCREEN_H,
+            m->scroll,
             (uint16_t)(pass.produced - pass.rows + 1));
     }
 }

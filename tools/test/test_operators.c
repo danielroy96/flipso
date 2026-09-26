@@ -113,16 +113,18 @@ int main(void) {
     check("every built-in entry is reachable (the table is sorted)", unreachable == 0);
 
     same("a known operator is named", itso_operator_name(78), "Transport for London");
-    same("a council that issues concessionary passes is named", itso_operator_name(165),
-         "Reading Borough Council");
+    same(
+        "a council that issues concessionary passes is named",
+        itso_operator_name(165),
+        "Reading Borough Council");
     /* The pass carries the national scheme's artwork, but the menu is titled
      * with the council that issued it rather than a generic "ITSO Card". */
     same("and titles the pass it issues", itso_operator_brand(165), "Reading Borough Council");
     same("an unknown operator is not", itso_operator_name(4242), NULL);
     /* Shared central-product OIDs are named but brand nothing: they own
      * products on other issuers' cards and issue none of their own. */
-    same("a shared central-product OID is named", itso_operator_name(246),
-         "SEFT Central Products");
+    same(
+        "a shared central-product OID is named", itso_operator_name(246), "SEFT Central Products");
     same("but it brands no card", itso_operator_brand(246), NULL);
 
     same("a shell owner that brands a card reports it", itso_operator_brand(226), "Freedom Pass");
@@ -136,53 +138,74 @@ int main(void) {
     same("an unknown operator has no brand", itso_operator_brand(4242), NULL);
 
     FlipsoOperators* operators = flipso_operators_alloc();
-    same("with no file, the built-in name is used", flipso_operators_name(operators, 78),
-         "Transport for London");
-    same("with no file, the built-in brand is used", flipso_operators_brand(operators, 226),
-         "Freedom Pass");
+    same(
+        "with no file, the built-in name is used",
+        flipso_operators_name(operators, 78),
+        "Transport for London");
+    same(
+        "with no file, the built-in brand is used",
+        flipso_operators_brand(operators, 226),
+        "Freedom Pass");
     flipso_operators_free(operators);
 
     /* --- The user's file layered over it. --- */
-    write_operators(
-        "# a comment, and the blank line below it\n"
-        "\n"
-        "246,South Western Railway,South West Trains Smart\n"
-        "226,Greater London\n"
-        "999,Local Bus Co\n"
-        "  1000 ,  Padded Name  ,  Padded Brand  \n"
-        "1001,Name,This brand is far too long to fit in the buffer\n"
-        "1002,,No name at all\n"
-        "not a number,Ignored\n"
-        "1003 no comma at all\n");
+    write_operators("# a comment, and the blank line below it\n"
+                    "\n"
+                    "246,South Western Railway,South West Trains Smart\n"
+                    "226,Greater London\n"
+                    "999,Local Bus Co\n"
+                    "  1000 ,  Padded Name  ,  Padded Brand  \n"
+                    "1001,Name,This brand is far too long to fit in the buffer\n"
+                    "1002,,No name at all\n"
+                    "not a number,Ignored\n"
+                    "1003 no comma at all\n");
 
     operators = flipso_operators_alloc();
 
-    same("the file names an operator the built-in table does not",
-         flipso_operators_name(operators, 999), "Local Bus Co");
-    same("the file brands a card the built-in table does not",
-         flipso_operators_brand(operators, 246), "South West Trains Smart");
-    same("an operator named without a brand still has no brand",
-         flipso_operators_brand(operators, 999), NULL);
+    same(
+        "the file names an operator the built-in table does not",
+        flipso_operators_name(operators, 999),
+        "Local Bus Co");
+    same(
+        "the file brands a card the built-in table does not",
+        flipso_operators_brand(operators, 246),
+        "South West Trains Smart");
+    same(
+        "an operator named without a brand still has no brand",
+        flipso_operators_brand(operators, 999),
+        NULL);
 
     /* A user correcting the name column should not silently lose the brand. */
-    same("a name-only line overrides the name", flipso_operators_name(operators, 226),
-         "Greater London");
-    same("a name-only line keeps the built-in brand", flipso_operators_brand(operators, 226),
-         "Freedom Pass");
+    same(
+        "a name-only line overrides the name",
+        flipso_operators_name(operators, 226),
+        "Greater London");
+    same(
+        "a name-only line keeps the built-in brand",
+        flipso_operators_brand(operators, 226),
+        "Freedom Pass");
 
-    same("padding around a field is trimmed", flipso_operators_name(operators, 1000),
-         "Padded Name");
-    same("padding around a brand is trimmed too", flipso_operators_brand(operators, 1000),
-         "Padded Brand");
+    same(
+        "padding around a field is trimmed",
+        flipso_operators_name(operators, 1000),
+        "Padded Name");
+    same(
+        "padding around a brand is trimmed too",
+        flipso_operators_brand(operators, 1000),
+        "Padded Brand");
 
     /* Truncated rather than refused: the user gets most of what they typed. */
-    same("an over-long brand is truncated to fit", flipso_operators_brand(operators, 1001),
-         "This brand is far too long");
+    same(
+        "an over-long brand is truncated to fit",
+        flipso_operators_brand(operators, 1001),
+        "This brand is far too long");
 
     same("a line with no name is rejected", flipso_operators_name(operators, 1002), NULL);
     same("a line with no comma is rejected", flipso_operators_name(operators, 1003), NULL);
-    same("an operator the file does not mention falls through",
-         flipso_operators_name(operators, 78), "Transport for London");
+    same(
+        "an operator the file does not mention falls through",
+        flipso_operators_name(operators, 78),
+        "Transport for London");
 
     flipso_operators_free(operators);
     remove(OPERATORS_PATH);

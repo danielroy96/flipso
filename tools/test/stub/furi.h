@@ -15,17 +15,12 @@
 #include <string.h>
 #include <stdarg.h>
 
-#define furi_assert(x)                                    \
-    do {                                                  \
-        if(!(x)) {                                        \
-            fprintf(                                      \
-                stderr,                                   \
-                "furi_assert failed: %s at %s:%d\n",      \
-                #x,                                       \
-                __FILE__,                                 \
-                __LINE__);                                \
-            abort();                                      \
-        }                                                 \
+#define furi_assert(x)                                                                    \
+    do {                                                                                  \
+        if(!(x)) {                                                                        \
+            fprintf(stderr, "furi_assert failed: %s at %s:%d\n", #x, __FILE__, __LINE__); \
+            abort();                                                                      \
+        }                                                                                 \
     } while(0)
 #define furi_check(x) furi_assert(x)
 
@@ -73,7 +68,8 @@ static inline void furi_string_free(FuriString* s) {
 
 static inline void furi_string_grow(FuriString* s, size_t extra) {
     if(s->len + extra + 1 <= s->cap) return;
-    while(s->len + extra + 1 > s->cap) s->cap *= 2;
+    while(s->len + extra + 1 > s->cap)
+        s->cap *= 2;
     s->data = realloc(s->data, s->cap);
 }
 
@@ -136,12 +132,8 @@ static inline FuriString* furi_string_alloc_set_string(const FuriString* src) {
  * strings would reject code the device compiles, which is a test failure that
  * says nothing about the code under test.
  */
-#define FURI_STRING_SELECT(string_fn, str_fn, arg)     \
-    _Generic(                                          \
-        (arg),                                         \
-        FuriString *: string_fn,                       \
-        const FuriString *: string_fn,                 \
-        default: str_fn)
+#define FURI_STRING_SELECT(string_fn, str_fn, arg) \
+    _Generic((arg), FuriString *: string_fn, const FuriString*: string_fn, default: str_fn)
 
 #define furi_string_cat(s, str) \
     FURI_STRING_SELECT(furi_string_cat_string, furi_string_cat_str, str)((s), (str))

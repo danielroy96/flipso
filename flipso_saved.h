@@ -57,11 +57,7 @@ void flipso_saved_name(FuriString* name, const char* path);
  * file name cannot carry are dropped rather than substituted, so the suggestion
  * is always usable as it stands.
  */
-void flipso_saved_suggest_name(
-    char* out,
-    size_t out_len,
-    const ItsoCard* card,
-    const char* brand);
+void flipso_saved_suggest_name(char* out, size_t out_len, const ItsoCard* card, const char* brand);
 
 /**
  * Write a capture to @p path, creating the folder if need be.

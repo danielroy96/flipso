@@ -48,8 +48,8 @@ uint16_t itso_crc_b(const uint8_t* data, size_t len) {
     for(size_t i = 0; i < len; i++) {
         uint8_t ch = (uint8_t)(data[i] ^ (crc & 0x00FF));
         ch = (uint8_t)(ch ^ (ch << 4));
-        crc = (uint16_t)(
-            (crc >> 8) ^ ((uint16_t)ch << 8) ^ ((uint16_t)ch << 3) ^ ((uint16_t)ch >> 4));
+        crc = (uint16_t)((crc >> 8) ^ ((uint16_t)ch << 8) ^ ((uint16_t)ch << 3) ^
+                         ((uint16_t)ch >> 4));
     }
     return (uint16_t)~crc;
 }
@@ -184,7 +184,11 @@ void itso_format_part_days(uint8_t days, uint16_t flags, char* out, size_t len) 
         bool pm = (flags & groups[i].pm) != 0;
         if(am == pm) continue;
         int n = snprintf(
-            out + pos, len - pos, "%s%s %s only", pos ? ", " : "", groups[i].name,
+            out + pos,
+            len - pos,
+            "%s%s %s only",
+            pos ? ", " : "",
+            groups[i].name,
             am ? "AM" : "PM");
         if(n < 0 || (size_t)n >= len - pos) break;
         pos += (size_t)n;
@@ -233,8 +237,8 @@ static void itso_decode_zones(const uint8_t* data, uint8_t bytes, char* out, siz
         for(uint8_t bit = 0; bit < 8; bit++) {
             if(!(data[byte] & (1 << bit))) continue;
             uint8_t zone = byte * 8 + bit + 1;
-            int written = snprintf(
-                out + pos, len - pos, "%s%u", printed ? "," : "", (unsigned)zone);
+            int written =
+                snprintf(out + pos, len - pos, "%s%u", printed ? "," : "", (unsigned)zone);
             if(written <= 0 || (size_t)written >= len - pos) {
                 /* Ran out of room: leave what fits. */
                 return;
@@ -394,8 +398,7 @@ static void itso_render_location(
             if(others > 0) {
                 /* Bounded for the compiler as the data bounds it: eight digits,
                  * and at most 62 others in a 255-byte body. */
-                snprintf(
-                    out, len, "Stop %.8s and %u more", scratch, (unsigned)(others % 100));
+                snprintf(out, len, "Stop %.8s and %u more", scratch, (unsigned)(others % 100));
             } else {
                 snprintf(out, len, "Stop %s", scratch);
             }

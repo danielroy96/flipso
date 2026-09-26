@@ -46,15 +46,18 @@ static void render(FlipsoMenuView* menu) {
 
 static void show(const char* title) {
     printf("\n  %s\n  +", title);
-    for(int x = 0; x < STUB_W; x++) putchar('-');
+    for(int x = 0; x < STUB_W; x++)
+        putchar('-');
     printf("+\n");
     for(int y = 0; y < STUB_H; y++) {
         printf("  |");
-        for(int x = 0; x < STUB_W; x++) putchar(canvas.pixels[y][x]);
+        for(int x = 0; x < STUB_W; x++)
+            putchar(canvas.pixels[y][x]);
         printf("|\n");
     }
     printf("  +");
-    for(int x = 0; x < STUB_W; x++) putchar('-');
+    for(int x = 0; x < STUB_W; x++)
+        putchar('-');
     printf("+\n");
 }
 
@@ -146,8 +149,9 @@ int main(void) {
     render(menu);
     show("three items, header");
     check("header drawn", on_screen("ITSO Card"));
-    check("every item drawn", on_screen("Card") && on_screen("Pay as you go") &&
-                                  on_screen("Products (5)"));
+    check(
+        "every item drawn",
+        on_screen("Card") && on_screen("Pay as you go") && on_screen("Products (5)"));
     check("no scrollbar when everything fits", !scrollbar_drawn());
 
     /* OK reports the item's id, not its position. */
@@ -268,7 +272,8 @@ int main(void) {
     check("scrollbar present", scrollbar_drawn());
 
     /* Walk to the bottom: the window has to follow the highlight. */
-    for(int i = 0; i < FLIPSO_MENU_MAX_ITEMS - 1; i++) press(menu, InputKeyDown, InputTypeShort);
+    for(int i = 0; i < FLIPSO_MENU_MAX_ITEMS - 1; i++)
+        press(menu, InputKeyDown, InputTypeShort);
     render(menu);
     show("a full list, bottom");
     char last[40];
@@ -300,7 +305,9 @@ int main(void) {
     flipso_menu_view_reset(menu);
     flipso_menu_view_set_header(menu, NULL);
     render(menu);
-    check("an empty list draws nothing and does not crash", !scrollbar_drawn() && canvas.text_count == 0);
+    check(
+        "an empty list draws nothing and does not crash",
+        !scrollbar_drawn() && canvas.text_count == 0);
     calls = 0;
     press(menu, InputKeyOk, InputTypeShort);
     press(menu, InputKeyDown, InputTypeShort);
@@ -318,8 +325,9 @@ int main(void) {
     check("an item with no icon still draws", on_screen("Tall icon"));
     /* An icon taller than its row is clipped by the canvas, never drawn above
      * the row it belongs to. */
-    check("a tall icon starts at its own row", canvas.pixels[32][4] == 't' &&
-                                                   canvas.pixels[31][4] != 't');
+    check(
+        "a tall icon starts at its own row",
+        canvas.pixels[32][4] == 't' && canvas.pixels[31][4] != 't');
 
     /* More items than the list holds: the extra ones are dropped, not written
      * past the end of the array. */
@@ -328,7 +336,8 @@ int main(void) {
         snprintf(label, sizeof(label), "Over %lu", (unsigned long)i);
         flipso_menu_view_add_item(menu, label, &icon_a, i);
     }
-    for(int i = 0; i < 200; i++) press(menu, InputKeyDown, InputTypeShort);
+    for(int i = 0; i < 200; i++)
+        press(menu, InputKeyDown, InputTypeShort);
     render(menu);
     press(menu, InputKeyOk, InputTypeShort);
     check("overflowing the list is capped, not written past", last_id < FLIPSO_MENU_MAX_ITEMS);

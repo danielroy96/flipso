@@ -56,14 +56,17 @@ static void shows(const FuriString* text, const char* needle) {
 }
 
 static void hides(const FuriString* text, const char* needle) {
-    printf("  [%s] no \"%s\"\n",
-           strstr(furi_string_get_cstr(text), needle) ? "FAIL" : "PASS", needle);
+    printf(
+        "  [%s] no \"%s\"\n",
+        strstr(furi_string_get_cstr(text), needle) ? "FAIL" : "PASS",
+        needle);
     if(strstr(furi_string_get_cstr(text), needle)) failures++;
 }
 
 static int occurrences(const FuriString* text, const char* needle) {
     int count = 0;
-    for(const char* p = furi_string_get_cstr(text); (p = strstr(p, needle)); p++) count++;
+    for(const char* p = furi_string_get_cstr(text); (p = strstr(p, needle)); p++)
+        count++;
     return count;
 }
 
@@ -244,7 +247,8 @@ int main(void) {
     check("and is found", flipso_media_has_app(&media, FLIPSO_AID_OYSTER));
     check("others are not", !flipso_media_has_app(&media, FLIPSO_AID_ITSO));
 
-    for(uint32_t i = 0; i < FLIPSO_MEDIA_MAX_APPS * 2; i++) flipso_media_add_app(&media, i + 1);
+    for(uint32_t i = 0; i < FLIPSO_MEDIA_MAX_APPS * 2; i++)
+        flipso_media_add_app(&media, i + 1);
     check("the list stops at its capacity", media.app_count == FLIPSO_MEDIA_MAX_APPS);
     check("and says it was cut short", media.apps_truncated);
 
@@ -268,8 +272,9 @@ int main(void) {
     check("and its free space", media.free_memory_valid && media.free_memory == 1248);
 
     flipso_media_reset(&media);
-    check("one with no free memory still parses",
-          flipso_media_parse_chip(&media, chip, FLIPSO_MEDIA_VERSION_LEN));
+    check(
+        "one with no free memory still parses",
+        flipso_media_parse_chip(&media, chip, FLIPSO_MEDIA_VERSION_LEN));
     check("and claims none", !media.free_memory_valid);
 
     flipso_media_reset(&media);

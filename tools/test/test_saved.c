@@ -371,9 +371,7 @@ static void round_trip(void) {
     ItsoCard from_file, from_memory;
     check("and decodes", flipso_capture_decode(loaded, &from_file));
     flipso_capture_decode(capture, &from_memory);
-    check(
-        "to the card that was saved",
-        memcmp(&from_file, &from_memory, sizeof(ItsoCard)) == 0);
+    check("to the card that was saved", memcmp(&from_file, &from_memory, sizeof(ItsoCard)) == 0);
 
     check("deleting it works", flipso_saved_delete(furi_string_get_cstr(path)));
     check("and it is gone", !flipso_saved_any());
@@ -401,14 +399,14 @@ static void bad_files(void) {
     check("and leaves nothing behind", !flipso_capture_valid(capture));
 
     write_text(
-        FLIPSO_SAVED_FOLDER "/future.flipso", "Filetype: Flipso card\nVersion: 99\nShell: 18 11\n");
+        FLIPSO_SAVED_FOLDER "/future.flipso",
+        "Filetype: Flipso card\nVersion: 99\nShell: 18 11\n");
     check(
         "a card from a later Flipso is refused",
         !flipso_saved_read(capture, FLIPSO_SAVED_FOLDER "/future.flipso"));
 
     write_text(
-        FLIPSO_SAVED_FOLDER "/empty.flipso",
-        "Filetype: Flipso card\nVersion: 1\nRead at: 1\n");
+        FLIPSO_SAVED_FOLDER "/empty.flipso", "Filetype: Flipso card\nVersion: 1\nRead at: 1\n");
     check(
         "a card with no shell in it is refused",
         !flipso_saved_read(capture, FLIPSO_SAVED_FOLDER "/empty.flipso"));
@@ -434,12 +432,8 @@ static void bad_files(void) {
 }
 
 /** A capture holding one card's shell and directory, stamped with a time. */
-static FlipsoCapture* make(
-    const uint8_t* shell,
-    size_t shell_len,
-    const uint8_t* dir,
-    size_t dir_len,
-    uint32_t when) {
+static FlipsoCapture*
+    make(const uint8_t* shell, size_t shell_len, const uint8_t* dir, size_t dir_len, uint32_t when) {
     FlipsoCapture* capture = flipso_capture_alloc();
     flipso_capture_add(capture, FlipsoBlockShell, 0, shell, shell_len);
     flipso_capture_add(capture, FlipsoBlockDirectory, 0, dir, dir_len);
@@ -469,8 +463,7 @@ static void finding(void) {
     flipso_saved_mkdir();
 
     FlipsoCapture* mine = make(card_shell, sizeof(card_shell), card_dir, sizeof(card_dir), 1000);
-    FlipsoCapture* other =
-        make(cmd2_shell, sizeof(cmd2_shell), cmd2_dir, sizeof(cmd2_dir), 2000);
+    FlipsoCapture* other = make(cmd2_shell, sizeof(cmd2_shell), cmd2_dir, sizeof(cmd2_dir), 2000);
 
     char a[ITSO_ISRN_DIGITS + 1], b[ITSO_ISRN_DIGITS + 1];
     flipso_capture_card_number(mine, a);
@@ -522,8 +515,9 @@ static void finding(void) {
      * card since, and losing it to a full SD card loses it for good. */
     flipso_capture_set_time(mine, 4000);
     stub_write_budget = 100;
-    check("an update that runs out of room fails",
-          !flipso_saved_write(mine, furi_string_get_cstr(found)));
+    check(
+        "an update that runs out of room fails",
+        !flipso_saved_write(mine, furi_string_get_cstr(found)));
     stub_write_budget = -1;
     flipso_saved_find(mine, found, &read_at);
     check("and the record it was replacing is untouched", read_at == 3000);
@@ -542,8 +536,9 @@ static void finding(void) {
      * the rename is the step that replaces the record, and when it fails the
      * record must still be there - not removed to make way for a second try. */
     stub_rename_fails = true;
-    check("an update whose rename fails fails",
-          !flipso_saved_write(mine, furi_string_get_cstr(found)));
+    check(
+        "an update whose rename fails fails",
+        !flipso_saved_write(mine, furi_string_get_cstr(found)));
     stub_rename_fails = false;
     flipso_saved_find(mine, found, &read_at);
     check("and the record it was replacing survives it", read_at == 3000);
@@ -594,8 +589,7 @@ static void renaming(void) {
     check("and leaves it there", access(furi_string_get_cstr(to), F_OK) == 0);
 
     /* Onto a name another card holds: refused, and neither file is touched. */
-    FlipsoCapture* other =
-        make(cmd2_shell, sizeof(cmd2_shell), cmd2_dir, sizeof(cmd2_dir), 2000);
+    FlipsoCapture* other = make(cmd2_shell, sizeof(cmd2_shell), cmd2_dir, sizeof(cmd2_dir), 2000);
     flipso_saved_path(from, "Occupied");
     flipso_saved_write(other, furi_string_get_cstr(from));
     check(

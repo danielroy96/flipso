@@ -16,6 +16,7 @@ loop, the hardware, and the things that have wasted time before.
 | --- | --- |
 | Decoder tests on this machine | `tools/test/run.sh` |
 | Compile only | `tools/flipper/flipctl deploy --build-only` |
+| Check / fix formatting | `ufbt lint` / `ufbt format` |
 | Build, install and launch on the Flipper | `tools/flipper/flipctl deploy` |
 | Check the environment and the device | `tools/flipper/flipctl doctor` |
 | Prove a card can be tapped right now | `tools/flipper/flipctl arm` |
@@ -112,6 +113,9 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
 
 ## Conventions
 
+- C is formatted by the firmware's clang-format style (`.clang-format`, which
+  ufbt installs). CI runs `ufbt lint` on every push; `ufbt format` fixes it.
+  Generated headers opt out with `/* clang-format off */`.
 - Comments explain *why*, and cite the spec clause when a constant comes from
   one (`TS 1000-2 table 11`). Do not narrate what the code already says.
 - New sources must be listed explicitly in `application.fam`. A bare `*.c` is

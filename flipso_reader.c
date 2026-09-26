@@ -71,7 +71,6 @@ static const SimpleArrayConfig flipso_app_id_array_config = {
  * chain cannot spin or blow the buffer. */
 #define FLIPSO_MAX_CHAIN_HOPS    6
 
-
 /** The command sets the reader knows, tried in this order. */
 typedef enum {
     /**
@@ -301,8 +300,7 @@ static bool flipso_read_shell(FlipsoReader* reader, MfDesfirePoller* poller) {
     /* Unknown media definition: sweep the application for a shell-shaped file. */
     for(uint8_t fid = 0; fid <= FLIPSO_MAX_FID; fid++) {
         if(fid == FLIPSO_SHELL_FID_DEFAULT || fid == 0x00) continue;
-        size_t len =
-            flipso_reader_read_file(reader, poller, fid, reader->shell, FLIPSO_SHELL_BUF);
+        size_t len = flipso_reader_read_file(reader, poller, fid, reader->shell, FLIPSO_SHELL_BUF);
         if(reader->lost_card) return false;
         if(len && itso_looks_like_shell(reader->shell, len)) {
             if(!itso_parse_shell(reader->card, reader->shell, len)) {
@@ -321,10 +319,8 @@ static bool flipso_read_shell(FlipsoReader* reader, MfDesfirePoller* poller) {
 }
 
 /** Follow one product's sector chain, concatenating the sectors it occupies. */
-static size_t flipso_read_product_group(
-    FlipsoReader* reader,
-    MfDesfirePoller* poller,
-    uint8_t start_sector) {
+static size_t
+    flipso_read_product_group(FlipsoReader* reader, MfDesfirePoller* poller, uint8_t start_sector) {
     const ItsoCard* card = reader->card;
     size_t total = 0;
     uint8_t sector = start_sector;
@@ -388,10 +384,20 @@ static void flipso_read_media_picc(FlipsoReader* reader, MfDesfirePoller* poller
      * chip here and what a saved card keeps: one layout, read one way. */
     uint8_t chip[FLIPSO_MEDIA_CHIP_LEN];
     const uint8_t fields[] = {
-        version.hw_vendor, version.hw_type,    version.hw_subtype, version.hw_major,
-        version.hw_minor,  version.hw_storage, version.hw_proto,   version.sw_vendor,
-        version.sw_type,   version.sw_subtype, version.sw_major,   version.sw_minor,
-        version.sw_storage, version.sw_proto,
+        version.hw_vendor,
+        version.hw_type,
+        version.hw_subtype,
+        version.hw_major,
+        version.hw_minor,
+        version.hw_storage,
+        version.hw_proto,
+        version.sw_vendor,
+        version.sw_type,
+        version.sw_subtype,
+        version.sw_major,
+        version.sw_minor,
+        version.sw_storage,
+        version.sw_proto,
     };
     _Static_assert(sizeof(fields) == 14, "GetVersion's first two frames are 7 bytes each");
     memcpy(chip, fields, sizeof(fields));
@@ -459,7 +465,8 @@ static void
         uint32_t records = out->record.cur;
         uint32_t fits = (uint32_t)(budget / out->record.size);
         if(records > fits) records = fits;
-        if(records) error = mf_desfire_poller_read_file_records(poller, out->id, 0, records, &data);
+        if(records)
+            error = mf_desfire_poller_read_file_records(poller, out->id, 0, records, &data);
         break;
     }
     default:
@@ -721,7 +728,8 @@ static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller
     reader->descending = (reader->shell_fid + 1) >= card->sector_count;
 
     uint8_t dir_fid = flipso_sector_to_fid(reader, card->sector_count - 1);
-    reader->dir_len = flipso_reader_read_file(reader, poller, dir_fid, reader->dir, FLIPSO_DIR_BUF);
+    reader->dir_len =
+        flipso_reader_read_file(reader, poller, dir_fid, reader->dir, FLIPSO_DIR_BUF);
     if(reader->lost_card) return FlipsoReaderStatusCardLost;
     /* Kept even when it will not parse: a saved card should hold what the card
      * said, so that a later build with a fix for it can be pointed at the file. */
@@ -769,7 +777,9 @@ static void flipso_reader_scanner_callback(NfcScannerEvent event, void* context)
         }
     }
     FURI_LOG_I(
-        TAG, "Card detected: %u protocol(s), %s ISO 14443-4", (unsigned)event.data.protocol_num,
+        TAG,
+        "Card detected: %u protocol(s), %s ISO 14443-4",
+        (unsigned)event.data.protocol_num,
         iso4 ? "speaks" : "does not speak");
 
     reader->status = iso4 ? FlipsoReaderStatusFound : FlipsoReaderStatusUnsupported;
@@ -809,8 +819,7 @@ static NfcCommand flipso_iso7816_callback(NfcGenericEvent event, void* context) 
     const Iso14443_4aPollerEvent* iso_event = event.event_data;
     if(iso_event->type != Iso14443_4aPollerEventTypeReady) return NfcCommandContinue;
 
-    reader->status =
-        flipso_cmd2_read(reader->cmd2, event.instance, reader->card, reader->capture);
+    reader->status = flipso_cmd2_read(reader->cmd2, event.instance, reader->card, reader->capture);
     reader->callback(reader->status, reader->context);
     return NfcCommandStop;
 }

@@ -10,14 +10,14 @@
 /* Seven rows, the height of a digit in the secondary font, so a symbol sits on
  * the same row as the digits' feet and stands as tall as the amount after it.
  * XBM order: the least significant bit is the leftmost pixel. */
-#define FLIPSO_GLYPH_W 5
-#define FLIPSO_GLYPH_H 7
+#define FLIPSO_GLYPH_W       5
+#define FLIPSO_GLYPH_H       7
 /* The space the font leaves after each of its own glyphs. */
 #define FLIPSO_GLYPH_ADVANCE (FLIPSO_GLYPH_W + 1)
 /* The same space in front of a symbol that follows the font's own ink. The font
  * measures a run without the gap after its last glyph, so without this a minus
  * sign runs straight into the pound's crossbar, which is on the same row. */
-#define FLIPSO_GLYPH_GAP 1
+#define FLIPSO_GLYPH_GAP     1
 
 /*  ..##.
  *  .#..#
@@ -26,7 +26,8 @@
  *  .#...
  *  .#...
  *  ##### */
-static const uint8_t flipso_glyph_pound[FLIPSO_GLYPH_H] = {0x0C, 0x12, 0x02, 0x07, 0x02, 0x02, 0x1F};
+static const uint8_t flipso_glyph_pound[FLIPSO_GLYPH_H] =
+    {0x0C, 0x12, 0x02, 0x07, 0x02, 0x02, 0x1F};
 
 /*  ..###
  *  .#...
@@ -77,7 +78,8 @@ size_t flipso_glyphs_char_len(const char* text) {
  * One walk for both jobs, so the width a line is wrapped to and the width it is
  * drawn at cannot disagree.
  */
-static uint16_t flipso_glyphs_walk(Canvas* canvas, int32_t x, int32_t y, const char* text, bool draw) {
+static uint16_t
+    flipso_glyphs_walk(Canvas* canvas, int32_t x, int32_t y, const char* text, bool draw) {
     /* Runs are copied out to be terminated. A run longer than this is split,
      * which costs nothing: the font draws the halves exactly as it would the
      * whole. */
@@ -88,7 +90,7 @@ static uint16_t flipso_glyphs_walk(Canvas* canvas, int32_t x, int32_t y, const c
      * a hand-drawn symbol, whose advance already carries its gap. */
     char last = 0;
 
-    for(const char* p = text;; ) {
+    for(const char* p = text;;) {
         const FlipsoGlyph* glyph = *p ? flipso_glyphs_at(p) : NULL;
         bool end = *p == '\0';
 
@@ -109,7 +111,11 @@ static uint16_t flipso_glyphs_walk(Canvas* canvas, int32_t x, int32_t y, const c
                 /* The font's glyphs stand on the row above the y it is given,
                  * so the symbol's foot goes there too. */
                 canvas_draw_xbm(
-                    canvas, x + width, y - FLIPSO_GLYPH_H, FLIPSO_GLYPH_W, FLIPSO_GLYPH_H,
+                    canvas,
+                    x + width,
+                    y - FLIPSO_GLYPH_H,
+                    FLIPSO_GLYPH_W,
+                    FLIPSO_GLYPH_H,
                     glyph->bits);
             }
             width = (uint16_t)(width + FLIPSO_GLYPH_ADVANCE);

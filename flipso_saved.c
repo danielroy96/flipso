@@ -56,11 +56,7 @@ void flipso_saved_name(FuriString* name, const char* path) {
     path_extract_filename_no_ext(path, name);
 }
 
-void flipso_saved_suggest_name(
-    char* out,
-    size_t out_len,
-    const ItsoCard* card,
-    const char* brand) {
+void flipso_saved_suggest_name(char* out, size_t out_len, const ItsoCard* card, const char* brand) {
     furi_assert(out);
     furi_assert(out_len);
 
@@ -99,7 +95,8 @@ void flipso_saved_suggest_name(
 }
 
 /** Write every line of @p capture to @p path, replacing anything there. */
-static bool flipso_saved_write_file(Storage* storage, const FlipsoCapture* capture, const char* path) {
+static bool
+    flipso_saved_write_file(Storage* storage, const FlipsoCapture* capture, const char* path) {
     File* file = storage_file_alloc(storage);
     char* line = malloc(FLIPSO_CAPTURE_LINE_MAX);
     bool ok = storage_file_open(file, path, FSAM_WRITE, FSOM_CREATE_ALWAYS);
@@ -299,7 +296,8 @@ bool flipso_saved_pick(FuriString* path, const FuriString* select) {
     /* The browser opens on the file its start path names, so coming back from
      * a card lands on that card rather than on the top of the list. */
     FuriString* start = furi_string_alloc_set(FLIPSO_SAVED_FOLDER);
-    if(select && !furi_string_empty(select)) furi_string_set_str(start, furi_string_get_cstr(select));
+    if(select && !furi_string_empty(select))
+        furi_string_set_str(start, furi_string_get_cstr(select));
     bool picked = dialog_file_browser_show(dialogs, path, start, &options);
     furi_string_free(start);
 

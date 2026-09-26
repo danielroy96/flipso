@@ -10,7 +10,8 @@ static inline void
     elements_scrollbar_pos(Canvas* c, int x, int y, size_t h, size_t pos, size_t total) {
     furi_assert(total > 0);
     furi_assert(pos < total);
-    for(size_t i = 0; i < h; i++) stub_put(c, x - 1, y + (int)i, ':');
+    for(size_t i = 0; i < h; i++)
+        stub_put(c, x - 1, y + (int)i, ':');
     /* Mark roughly where the handle would sit, so the render shows it moving. */
     size_t handle = h * pos / total;
     stub_put(c, x - 1, y + (int)handle, 'H');

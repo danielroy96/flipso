@@ -16,7 +16,10 @@ void flipso_scene_card_on_enter(void* context) {
         flipso_saved_name(name, furi_string_get_cstr(app->loaded_path));
     }
     flipso_format_card(
-        text, &f, &app->card, name ? furi_string_get_cstr(name) : NULL,
+        text,
+        &f,
+        &app->card,
+        name ? furi_string_get_cstr(name) : NULL,
         flipso_capture_time(app->capture));
     if(name) furi_string_free(name);
 

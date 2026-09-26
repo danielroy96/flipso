@@ -26,7 +26,7 @@ extern "C" {
  * but CMD2 cards are issued with 16, so 16 is the working maximum rather than a
  * generous one. The directory parser stops here, leaving an unusual geometry
  * short of a product or two rather than overflowing the array. */
-#define ITSO_MAX_PRODUCTS  16
+#define ITSO_MAX_PRODUCTS          16
 /* Products a saved card keeps after they have left the card, which a live read
  * never produces. A directory entry is freed when a ticket expires and is
  * removed, so a product the card no longer carries exists only in the file that
@@ -35,18 +35,18 @@ extern "C" {
 #define ITSO_MAX_HISTORIC_PRODUCTS 4
 /* What ItsoCard::products holds: every entry the directory can carry, plus the
  * ones a saved file remembers from before. */
-#define ITSO_MAX_CARD_PRODUCTS (ITSO_MAX_PRODUCTS + ITSO_MAX_HISTORIC_PRODUCTS)
+#define ITSO_MAX_CARD_PRODUCTS     (ITSO_MAX_PRODUCTS + ITSO_MAX_HISTORIC_PRODUCTS)
 /* Four 48-byte records fit the DESFire cyclic log, and a saved card adds the
  * records earlier reads of it saw: the log on the card is a rolling window, so
  * a journey history is only as long as something off the card remembers. Twelve
  * holds a full log plus the eight a saved card keeps. */
-#define ITSO_MAX_TAPS      12
-#define ITSO_NAME_LEN      40
-#define ITSO_LOC_LEN       28
+#define ITSO_MAX_TAPS              12
+#define ITSO_NAME_LEN              40
+#define ITSO_LOC_LEN               28
 /* Twelve-character AtcoCode plus terminator, the longest code a location can
  * carry (TS 1000-1 table 40). A NaptanCode needs nine of these bytes. */
-#define ITSO_LOC_CODE_LEN  13
-#define ITSO_ISRN_DIGITS   18
+#define ITSO_LOC_CODE_LEN          13
+#define ITSO_ISRN_DIGITS           18
 
 /* BL for the ITSO Shell Environment Data Group. ShellFormatRevision 1 is the
  * only revision TS 1000-2 table 2 defines a block size for, and it is 4. */
@@ -82,15 +82,15 @@ extern "C" {
 
 /* IPE types we decode beyond the directory entry (ITSO TS 1000-5 clause 2). */
 typedef enum {
-    ItsoTypStoredTravelRights = 2,  /**< Pay as you go purse. */
+    ItsoTypStoredTravelRights = 2, /**< Pay as you go purse. */
     ItsoTypLoyalty1 = 3,
     ItsoTypChargeToAccount1 = 4,
     ItsoTypChargeToAccount2 = 5,
     ItsoTypEntitlement = 14,
-    ItsoTypId = 16,                 /**< ITSO ID: holder name and entitlement. */
+    ItsoTypId = 16, /**< ITSO ID: holder name and entitlement. */
     ItsoTypLoyalty2 = 17,
-    ItsoTypPeriodTicket = 22,       /**< Pre-defined area-based ticket. */
-    ItsoTypJourneyTicket = 23,      /**< Pre-defined specific journey ticket. */
+    ItsoTypPeriodTicket = 22, /**< Pre-defined area-based ticket. */
+    ItsoTypJourneyTicket = 23, /**< Pre-defined specific journey ticket. */
     ItsoTypReservationTicket = 24,
     ItsoTypVoucher = 25,
     ItsoTypTolling = 26,
@@ -158,16 +158,16 @@ typedef enum {
 /* TYP22Flags, numbered from the least significant bit (TS 1000-5 table 30). The
  * AM/PM pairs are a second day-of-week filter on top of ValidOnDayCode: rule 7
  * of clause 2.9.1.4 makes a ticket valid only when both allow today. */
-#define ITSO_T22_TRANSFERABLE    (1u << 0)
-#define ITSO_T22_OFF_PEAK_ONLY   (1u << 8)
-#define ITSO_T22_WEEKDAY_AM      (1u << 9)
-#define ITSO_T22_WEEKDAY_PM      (1u << 10)
-#define ITSO_T22_SATURDAY_AM     (1u << 11)
-#define ITSO_T22_SATURDAY_PM     (1u << 12)
-#define ITSO_T22_SUNDAY_AM       (1u << 13)
-#define ITSO_T22_SUNDAY_PM       (1u << 14)
-#define ITSO_T22_PUBLIC_HOLIDAY  (1u << 15)
-#define ITSO_T22_DAY_MASK        0xFE00u
+#define ITSO_T22_TRANSFERABLE   (1u << 0)
+#define ITSO_T22_OFF_PEAK_ONLY  (1u << 8)
+#define ITSO_T22_WEEKDAY_AM     (1u << 9)
+#define ITSO_T22_WEEKDAY_PM     (1u << 10)
+#define ITSO_T22_SATURDAY_AM    (1u << 11)
+#define ITSO_T22_SATURDAY_PM    (1u << 12)
+#define ITSO_T22_SUNDAY_AM      (1u << 13)
+#define ITSO_T22_SUNDAY_PM      (1u << 14)
+#define ITSO_T22_PUBLIC_HOLIDAY (1u << 15)
+#define ITSO_T22_DAY_MASK       0xFE00u
 
 /* DAYOFWEEK, TS 1000-5 annex A.6: Monday is the most significant bit and the
  * least significant is "special days", which schemes use for public holidays. */
@@ -177,7 +177,6 @@ typedef enum {
 #define ITSO_DOW_SPECIAL  0x01u
 #define ITSO_DOW_WEEKDAYS 0xF8u
 #define ITSO_DOW_ALL_DAYS 0xFEu
-
 
 /**
  * Which national register @c ItsoLocation::code is a key into.

@@ -146,14 +146,28 @@ static void house_style(const char* where, const FuriString* text) {
     }
 
     char what[320];
-    snprintf(what, sizeof(what), "%s: values are capitalised%s%s", where, lower ? " - " : "", first_lower);
+    snprintf(
+        what,
+        sizeof(what),
+        "%s: values are capitalised%s%s",
+        where,
+        lower ? " - " : "",
+        first_lower);
     check(what, !lower);
     snprintf(
-        what, sizeof(what), "%s: indented lines are labelled%s%s", where, unlabelled ? " - " : "",
+        what,
+        sizeof(what),
+        "%s: indented lines are labelled%s%s",
+        where,
+        unlabelled ? " - " : "",
         first_unlabelled);
     check(what, !unlabelled);
     snprintf(
-        what, sizeof(what), "%s: no label twice on a line%s%s", where, doubled ? " - " : "",
+        what,
+        sizeof(what),
+        "%s: no label twice on a line%s%s",
+        where,
+        doubled ? " - " : "",
         first_doubled);
     check(what, !doubled);
     snprintf(what, sizeof(what), "%s: money is in pounds, not GBP", where);
@@ -192,7 +206,13 @@ static void every_screen(const char* name, const FlipsoFormat* f, const ItsoCard
     for(uint8_t i = 0; i < card->product_count; i++) {
         furi_string_reset(text);
         flipso_format_product(text, f, card, &card->products[i]);
-        snprintf(where, sizeof(where), "%s product %u (%s)", name, i, flipso_product_title(&card->products[i]));
+        snprintf(
+            where,
+            sizeof(where),
+            "%s product %u (%s)",
+            name,
+            i,
+            flipso_product_title(&card->products[i]));
         house_style(where, text);
     }
     furi_string_free(text);
@@ -231,7 +251,12 @@ int main(int argc, char** argv) {
 
     flipso_format_payg(text, &f, &card);
     printf("\n%s\n", furi_string_get_cstr(text));
-    check("the balance is in pounds", shows(text, "Balance: \xC2\xA3" "12.34"));
+    check(
+        "the balance is in pounds",
+        shows(
+            text,
+            "Balance: \xC2\xA3"
+            "12.34"));
     check("the purse terms are labelled", shows(text, "Auto top-up: "));
     check("a top-up's detail is indented and labelled", shows(text, "  When below: \xC2\xA3"));
     check("earlier transactions have a heading", shows(text, "Earlier on card"));
@@ -252,7 +277,9 @@ int main(int argc, char** argv) {
     flipso_format_id(text, &f, &card);
     printf("\n%s\n", furi_string_get_cstr(text));
     check("the ID has its holder", shows(text, "Name: "));
-    check("the photo flag is capitalised", shows(text, "Photo on card: Yes") || shows(text, "Photo on card: No"));
+    check(
+        "the photo flag is capitalised",
+        shows(text, "Photo on card: Yes") || shows(text, "Photo on card: No"));
     check("an entitlement's area is not a journey's end", !shows(text, "\nFrom: "));
 
     furi_string_reset(text);
@@ -267,7 +294,12 @@ int main(int argc, char** argv) {
     flipso_format_summary(text, &f, &card);
     printf("\n%s\n", furi_string_get_cstr(text));
     check("the summary leads with the card's state", shows(text, "Card: "));
-    check("the summary has the balance", shows(text, "Pay as you go: \xC2\xA3" "12.34"));
+    check(
+        "the summary has the balance",
+        shows(
+            text,
+            "Pay as you go: \xC2\xA3"
+            "12.34"));
     check("the summary has the last tap", shows(text, "Last tap: ") && shows(text, "  When: "));
 
     every_screen("synthetic", &f, &card);
@@ -286,7 +318,9 @@ int main(int argc, char** argv) {
     check("an in-date product has no tag", flipso_product_tag(&card.products[0], f.now) == NULL);
     ItsoProduct gone = card.products[0];
     gone.on_card = false;
-    check("a dropped product says so first", strcmp(flipso_product_tag(&gone, f.now), "Off card") == 0);
+    check(
+        "a dropped product says so first",
+        strcmp(flipso_product_tag(&gone, f.now), "Off card") == 0);
 
     /* Heading icons are one byte after the markup, above '\n'. */
     furi_string_reset(text);
@@ -298,21 +332,22 @@ int main(int argc, char** argv) {
     /* A location listing several stops, the first of which the stop table
      * names: the name replaces the code, and the others are still counted. */
     {
-        static const uint8_t stops[] = {212, 12, 0x00, 0x06, 0x26, 0x24, 0x12, 0x34,
-                                        0x56, 0x78, 0x87, 0x65, 0x43, 0x21};
+        static const uint8_t stops[] = {
+            212, 12, 0x00, 0x06, 0x26, 0x24, 0x12, 0x34, 0x56, 0x78, 0x87, 0x65, 0x43, 0x21};
         ItsoProduct ticket = card.products[0];
         itso_parse_location(stops, sizeof(stops), ItsoLocStructLoc1, &ticket.from);
         furi_string_reset(text);
         flipso_format_product(text, &f, &card, &ticket);
-        check("a named stop keeps the count of the others", shows(text, "High Street and 2 more\n"));
+        check(
+            "a named stop keeps the count of the others", shows(text, "High Street and 2 more\n"));
     }
 
     /* The card details screen for a DESFire Flipso cannot decode, which is
      * held to the same style as the ITSO screens. */
     static const uint8_t chip[FLIPSO_MEDIA_CHIP_LEN] = {
-        0x04, 0x01, 0x01, 0x01, 0x00, 0x16, 0x05, 0x04, 0x01, 0x01, 0x01, 0x03, 0x16, 0x05,
-        0x04, 0x8B, 0x1F, 0xF1, 0xAD, 0x26, 0x80, 0xBA, 0x34, 0xCD, 0x56, 0xEF, 0x42, 0x08,
-        0xE0, 0x04, 0x00,
+        0x04, 0x01, 0x01, 0x01, 0x00, 0x16, 0x05, 0x04, 0x01, 0x01, 0x01,
+        0x03, 0x16, 0x05, 0x04, 0x8B, 0x1F, 0xF1, 0xAD, 0x26, 0x80, 0xBA,
+        0x34, 0xCD, 0x56, 0xEF, 0x42, 0x08, 0xE0, 0x04, 0x00,
     };
     static FlipsoMedia media;
     flipso_media_reset(&media);
@@ -330,7 +365,8 @@ int main(int argc, char** argv) {
     media.files[0].data_len = 8;
     memcpy(media.data, "\xDE\xAD\xBE\xEF\x01\x02\x03\x04", 8);
     media.data_len = 8;
-    media.files[1] = (FlipsoMediaFile){.id = 1, .settings_valid = true, .type = FLIPSO_FILE_VALUE, .access = 0x1111};
+    media.files[1] = (FlipsoMediaFile){
+        .id = 1, .settings_valid = true, .type = FLIPSO_FILE_VALUE, .access = 0x1111};
     media.files[2] = (FlipsoMediaFile){.id = 2};
     furi_string_reset(text);
     flipso_format_media(text, &media);

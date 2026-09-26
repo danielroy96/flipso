@@ -32,11 +32,11 @@
 #define FLIPSO_NAPTAN_USER_PATH  APP_DATA_PATH("naptan.dat")
 #define FLIPSO_NAPTAN_ASSET_PATH APP_ASSETS_PATH("naptan.dat")
 
-#define FLIPSO_NAPTAN_MAGIC       "FNPT"
-#define FLIPSO_NAPTAN_VERSION     1
-#define FLIPSO_NAPTAN_HEADER      24
-#define FLIPSO_NAPTAN_STOP_ENTRY  8
-#define FLIPSO_NAPTAN_ATCO_ENTRY  16
+#define FLIPSO_NAPTAN_MAGIC      "FNPT"
+#define FLIPSO_NAPTAN_VERSION    1
+#define FLIPSO_NAPTAN_HEADER     24
+#define FLIPSO_NAPTAN_STOP_ENTRY 8
+#define FLIPSO_NAPTAN_ATCO_ENTRY 16
 
 struct FlipsoNaptan {
     Storage* storage;
@@ -60,8 +60,8 @@ static uint32_t flipso_naptan_le(const uint8_t* bytes, size_t n) {
     return value;
 }
 
-static bool flipso_naptan_read_at(FlipsoNaptan* instance, uint32_t offset, void* into,
-                                  uint16_t length) {
+static bool
+    flipso_naptan_read_at(FlipsoNaptan* instance, uint32_t offset, void* into, uint16_t length) {
     if(!storage_file_seek(instance->file, offset, true)) return false;
     return storage_file_read(instance->file, into, length) == length;
 }
@@ -112,8 +112,11 @@ static bool flipso_naptan_try(FlipsoNaptan* instance, const char* path) {
     instance->size = (uint32_t)storage_file_size(instance->file);
     if(flipso_naptan_read_header(instance)) {
         FURI_LOG_I(
-            TAG, "Stop table: %lu NaptanCodes, %lu AtcoCodes from %s",
-            instance->stops, instance->atcos, path);
+            TAG,
+            "Stop table: %lu NaptanCodes, %lu AtcoCodes from %s",
+            instance->stops,
+            instance->atcos,
+            path);
         return true;
     }
 

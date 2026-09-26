@@ -106,11 +106,8 @@ static void
 }
 
 /** "Label: dd/mm/yyyy hh:mm" for a DTS. */
-static void flipso_cat_datetime_line(
-    FuriString* out,
-    const char* indent,
-    const char* label,
-    uint32_t dts) {
+static void
+    flipso_cat_datetime_line(FuriString* out, const char* indent, const char* label, uint32_t dts) {
     furi_string_cat_printf(out, "%s%s: ", indent, label);
     flipso_cat_datetime(out, dts);
     furi_string_push_back(out, '\n');
@@ -399,7 +396,10 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
         bool next_day = minutes >= 1440;
         if(next_day) minutes -= 1440;
         furi_string_cat_printf(
-            out, "Ends at: %02u:%02u %s\n", minutes / 60, minutes % 60,
+            out,
+            "Ends at: %02u:%02u %s\n",
+            minutes / 60,
+            minutes % 60,
             next_day ? "the day after expiry" : "on the expiry date");
     }
 
@@ -407,7 +407,10 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
         static const char* const units[] = {"day", "month", "quarter", "year"};
         const char* unit = t->duration_unit < COUNT_OF(units) ? units[t->duration_unit] : "unit";
         furi_string_cat_printf(
-            out, "Pass length: %u %s%s\n", t->pass_duration, unit,
+            out,
+            "Pass length: %u %s%s\n",
+            t->pass_duration,
+            unit,
             t->pass_duration == 1 ? "" : "s");
     }
 
@@ -416,7 +419,9 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
     if(product->auto_renew && t->renew_quantity) {
         const bool one = t->renew_quantity == 1;
         furi_string_cat_printf(
-            out, "Renewal adds: %u %s\n", t->renew_quantity,
+            out,
+            "Renewal adds: %u %s\n",
+            t->renew_quantity,
             product->stored_passes ? (one ? "pass" : "passes") : (one ? "day" : "days"));
     }
     if(product->auto_renew && t->has_stock_duration && t->stock_duration) {
@@ -454,7 +459,8 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
     if(t->issue_date) flipso_cat_date_line(out, "", "Issued", t->issue_date);
     if(t->amount_paid.valid) {
         flipso_cat_money(out, "", "Price paid", &t->amount_paid);
-        if(t->paid_mop) furi_string_cat_printf(out, "  Paid by: %s\n", itso_payment_name(t->paid_mop));
+        if(t->paid_mop)
+            furi_string_cat_printf(out, "  Paid by: %s\n", itso_payment_name(t->paid_mop));
         flipso_cat_vat(out, "  ", t->vat);
     }
 }
@@ -508,7 +514,8 @@ static void flipso_cat_id_details(FuriString* out, const ItsoProduct* product) {
     /* How a machine rounds a half or proportional fare for this holder. */
     if(product->rounding & ITSO_ROUNDING_ENABLED) {
         furi_string_cat_printf(
-            out, "Fare rounding: %s to %s\n",
+            out,
+            "Fare rounding: %s to %s\n",
             (product->rounding & ITSO_ROUNDING_FLAG) ? "Up" : "Down",
             (product->rounding & ITSO_ROUNDING_VALUE) ? "5p" : "1p");
     }
@@ -519,13 +526,21 @@ static void flipso_cat_id_details(FuriString* out, const ItsoProduct* product) {
     }
     if(product->has_deposit) {
         flipso_cat_deposit(
-            out, "Deposit", &product->deposit, product->deposit_mop, product->deposit_vat,
+            out,
+            "Deposit",
+            &product->deposit,
+            product->deposit_mop,
+            product->deposit_vat,
             (product->id_flags & 0x40) != 0);
     }
     if(product->has_shell_deposit) {
         flipso_cat_deposit(
-            out, "Card deposit", &product->shell_deposit, product->shell_deposit_mop,
-            product->shell_deposit_vat, (product->id_flags & 0x80) != 0);
+            out,
+            "Card deposit",
+            &product->shell_deposit,
+            product->shell_deposit_mop,
+            product->shell_deposit_vat,
+            (product->id_flags & 0x80) != 0);
     }
 }
 
@@ -540,7 +555,9 @@ static void flipso_cat_purse_terms(FuriString* out, const ItsoProduct* product) 
 
     if(product->has_limits && product->max_value.valid && product->max_value.value) {
         flipso_cat_money(
-            out, "", product->typ == ItsoTypStoredTravelRights ? "Balance limit" : "Spending limit",
+            out,
+            "",
+            product->typ == ItsoTypStoredTravelRights ? "Balance limit" : "Spending limit",
             &product->max_value);
     }
     if(product->max_negative.valid && product->max_negative.value) {
@@ -563,7 +580,8 @@ static void flipso_cat_purse_terms(FuriString* out, const ItsoProduct* product) 
     if(product->has_deposit) {
         flipso_cat_money(out, "", "Deposit", &product->deposit);
         if(product->deposit_mop) {
-            furi_string_cat_printf(out, "  Paid by: %s\n", itso_payment_name(product->deposit_mop));
+            furi_string_cat_printf(
+                out, "  Paid by: %s\n", itso_payment_name(product->deposit_mop));
         }
         flipso_cat_vat(out, "  ", product->deposit_vat);
     }
@@ -575,8 +593,11 @@ static void flipso_cat_purse_terms(FuriString* out, const ItsoProduct* product) 
  * Decoded here rather than held in ItsoProduct: four locations make it the
  * largest thing a product could carry, and at most one product has one.
  */
-static void
-    flipso_cat_capping(FuriString* out, const FlipsoFormat* f, const ItsoCard* card, const ItsoProduct* product) {
+static void flipso_cat_capping(
+    FuriString* out,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    const ItsoProduct* product) {
     if(product->vgx_ref != 1 && product->vgx_ref != 2) return;
     if(!product->on_card || !f->capture) return;
     size_t len = 0;
@@ -595,7 +616,10 @@ static void
             if(acc->rule == ItsoCapRuleNone) continue;
             any = true;
             furi_string_cat_printf(
-                out, "Cap %u: %s\n", a + 1, acc->rule < COUNT_OF(rules) ? rules[acc->rule] : "Other");
+                out,
+                "Cap %u: %s\n",
+                a + 1,
+                acc->rule < COUNT_OF(rules) ? rules[acc->rule] : "Other");
             if(acc->rule == ItsoCapRuleDay) {
                 flipso_cat_money(out, "  ", "Spent today", &acc->day);
             } else {
@@ -684,8 +708,7 @@ static void flipso_cat_value_history(FuriString* out, const ItsoProduct* product
 
             if(!headed) {
                 furi_string_cat(out, "\n");
-                flipso_cat_heading(
-                    out, FlipsoIconPast, on_card ? "Earlier on card" : "Off card");
+                flipso_cat_heading(out, FlipsoIconPast, on_card ? "Earlier on card" : "Off card");
                 headed = true;
             }
             flipso_cat_value_record(out, product, record);
@@ -744,8 +767,11 @@ static void flipso_cat_product_details(
     }
     if(product->count_kind == ItsoCountTransactions && product->has_charge_period) {
         furi_string_cat_printf(
-            out, "  Allowance: %u every %u week%s\n", product->max_transactions,
-            product->weeks_per_period, product->weeks_per_period == 1 ? "" : "s");
+            out,
+            "  Allowance: %u every %u week%s\n",
+            product->max_transactions,
+            product->weeks_per_period,
+            product->weeks_per_period == 1 ? "" : "s");
     }
     if(product->has_last_reset && product->last_reset) {
         flipso_cat_date_line(out, "  ", "Count last reset", product->last_reset);
@@ -771,7 +797,9 @@ static void flipso_cat_product_details(
         flipso_cat_date(out, product->start);
         if(product->ticket.has_start_time && product->ticket.start_time) {
             furi_string_cat_printf(
-                out, " %02u:%02u", product->ticket.start_time / 60,
+                out,
+                " %02u:%02u",
+                product->ticket.start_time / 60,
                 product->ticket.start_time % 60);
         }
         furi_string_push_back(out, '\n');
@@ -795,8 +823,12 @@ static void flipso_cat_product_details(
     if(product->has_stored_expiry && product->stored_expiry != product->expiry) {
         const bool rides = product->typ == ItsoTypJourneyTicket;
         flipso_cat_expiry(
-            out, "", rides ? "Unused rides until" : "Unused passes until",
-            rides ? "Unused rides expired" : "Unused passes expired", product->stored_expiry, now);
+            out,
+            "",
+            rides ? "Unused rides until" : "Unused passes until",
+            rides ? "Unused rides expired" : "Unused passes expired",
+            product->stored_expiry,
+            now);
     }
 
     /* --- Where. An entitlement's two locations are areas it is good in, not
@@ -829,7 +861,8 @@ static void flipso_cat_product_details(
         if(itso_id_companion(product->id_flags)) {
             furi_string_cat(out, "Companion: Travels at the same rate\n");
         }
-        if(identity) flipso_cat_flag(out, "", "Photo on card", itso_id_personalised(product->id_flags));
+        if(identity)
+            flipso_cat_flag(out, "", "Photo on card", itso_id_personalised(product->id_flags));
     }
     /* PassbackTime: how long a gate refuses the same pass after it has been
      * used, so it cannot be handed back through for a second person. */
@@ -845,7 +878,9 @@ static void flipso_cat_product_details(
      * them, which is what a capped or multi-leg discount is computed from. */
     if(product->has_journey && (product->journey_legs || product->cumulative_fare.value)) {
         furi_string_cat_printf(
-            out, "Current journey: %u leg%s\n", product->journey_legs,
+            out,
+            "Current journey: %u leg%s\n",
+            product->journey_legs,
             product->journey_legs == 1 ? "" : "s");
         flipso_cat_money(out, "  ", "Fare so far", &product->cumulative_fare);
     }
@@ -980,14 +1015,19 @@ static void
     case FLIPSO_FILE_LINEAR_RECORD:
     case FLIPSO_FILE_CYCLIC_RECORD:
         furi_string_cat_printf(
-            out, "  Records: %lu of %lu, %lu bytes each\n", (unsigned long)file->record.cur,
-            (unsigned long)file->record.max, (unsigned long)file->record.size);
+            out,
+            "  Records: %lu of %lu, %lu bytes each\n",
+            (unsigned long)file->record.cur,
+            (unsigned long)file->record.max,
+            (unsigned long)file->record.size);
         break;
     case FLIPSO_FILE_VALUE:
         /* A value file has no length: it holds one counter, and what the card
          * will say about it without a key is the range it is kept within. */
         furi_string_cat_printf(
-            out, "  Range: %ld to %ld\n", (long)(int32_t)file->value.lo_limit,
+            out,
+            "  Range: %ld to %ld\n",
+            (long)(int32_t)file->value.lo_limit,
             (long)(int32_t)file->value.hi_limit);
         break;
     case FLIPSO_FILE_TRANSACTION:
@@ -1039,8 +1079,13 @@ void flipso_format_media(FuriString* out, const FlipsoMedia* media) {
      * EV3's hardware major version is 0x33, and printing that as 51 invites the
      * reader to make something of a number that does not mean anything. */
     furi_string_cat_printf(
-        out, "Hardware: %02X.%02X\nSoftware: %02X.%02X\nVendor code: %02X\nProtocol: %02X\n",
-        media->hw_major, media->hw_minor, media->sw_major, media->sw_minor, media->hw_vendor,
+        out,
+        "Hardware: %02X.%02X\nSoftware: %02X.%02X\nVendor code: %02X\nProtocol: %02X\n",
+        media->hw_major,
+        media->hw_minor,
+        media->sw_major,
+        media->sw_minor,
+        media->hw_vendor,
         media->hw_proto);
 
     furi_string_cat(out, "\n");
@@ -1258,7 +1303,8 @@ void flipso_format_card(
     }
     /* Every ITSO shell carries ITSO's own issuer number, so this only earns a
      * line when it is something else. */
-    if(!itso_iin_name(card->iin)) furi_string_cat_printf(out, "Network: %06lu\n", (unsigned long)card->iin);
+    if(!itso_iin_name(card->iin))
+        furi_string_cat_printf(out, "Network: %06lu\n", (unsigned long)card->iin);
     if(card->mcrn_present && card->mcrn[0]) {
         furi_string_cat_printf(out, "Card reference: %s\n", card->mcrn);
     }
@@ -1302,7 +1348,9 @@ void flipso_format_card(
             furi_string_cat(out, "Checksum: Correct\n");
         } else {
             furi_string_cat_printf(
-                out, "Checksum: Wrong\n  Stored: %04X\n  Worked out: %04X\n", card->secrc_stored,
+                out,
+                "Checksum: Wrong\n  Stored: %04X\n  Worked out: %04X\n",
+                card->secrc_stored,
                 card->secrc_computed);
         }
     }
@@ -1375,7 +1423,9 @@ static void flipso_cat_tap(
     const ItsoCard* card,
     const ItsoTap* tap) {
     furi_string_cat_printf(
-        out, "%s%s\n", itso_transaction_name(tap->transaction_type),
+        out,
+        "%s%s\n",
+        itso_transaction_name(tap->transaction_type),
         tap->latest ? " (latest)" : "");
     /* A tap-out record carries the tap-in it closes, copied forward so the
      * record stands on its own - so a tap out has two times, and says which is
@@ -1391,7 +1441,9 @@ static void flipso_cat_tap(
             uint32_t minutes = (at - in) / 60;
             if(minutes >= 60) {
                 furi_string_cat_printf(
-                    out, "  Journey time: %lu hr %lu min\n", (unsigned long)(minutes / 60),
+                    out,
+                    "  Journey time: %lu hr %lu min\n",
+                    (unsigned long)(minutes / 60),
                     (unsigned long)(minutes % 60));
             } else {
                 furi_string_cat_printf(out, "  Journey time: %lu min\n", (unsigned long)minutes);
@@ -1410,7 +1462,8 @@ static void flipso_cat_tap(
 
     if(tap->amount.valid && tap->amount.value) {
         flipso_cat_money(out, "  ", "Fare", &tap->amount);
-        if(tap->has_mop) furi_string_cat_printf(out, "  Paid by: %s\n", itso_payment_name(tap->mop));
+        if(tap->has_mop)
+            furi_string_cat_printf(out, "  Paid by: %s\n", itso_payment_name(tap->mop));
     }
     if(tap->no_fare_charged) flipso_cat_flag(out, "  ", "Fare collected", false);
     if(tap->return_ticket) flipso_cat_flag(out, "  ", "Return fare", true);
@@ -1503,7 +1556,8 @@ void flipso_format_product(
     const ItsoCard* card,
     const ItsoProduct* product) {
     flipso_cat_heading(
-        out, product->on_card ? flipso_product_icon(product) : FlipsoIconPast,
+        out,
+        product->on_card ? flipso_product_icon(product) : FlipsoIconPast,
         flipso_product_title(product));
 
     /* Before anything the product says about itself, because everything below
@@ -1548,8 +1602,7 @@ void flipso_format_product(
         if(product->remove_date == 255) {
             furi_string_cat(out, "Removable: By the owner only\n");
         } else {
-            furi_string_cat_printf(
-                out, "Removable: %u days after expiry\n", product->remove_date);
+            furi_string_cat_printf(out, "Removable: %u days after expiry\n", product->remove_date);
         }
     }
     /* Owner-defined codes: meaningless without the scheme's own tables, but they
@@ -1579,7 +1632,8 @@ void flipso_format_product(
     if(product->instance_valid) {
         flipso_cat_machine(out, f, "", "Created by", product->isam_id);
         furi_string_cat_printf(out, "  Sequence: %lu\n", (unsigned long)product->isam_seq);
-        if(product->iteration) furi_string_cat_printf(out, "Times reinstated: %u\n", product->iteration);
+        if(product->iteration)
+            furi_string_cat_printf(out, "Times reinstated: %u\n", product->iteration);
         furi_string_cat_printf(out, "Seal key version: %u\n", product->key_id);
     }
 

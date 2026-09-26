@@ -3,8 +3,15 @@
 #include <furi.h>
 #include <datetime/datetime.h>
 
-typedef enum { LocaleTimeFormat24h, LocaleTimeFormat12h } LocaleTimeFormat;
-typedef enum { LocaleDateFormatDMY, LocaleDateFormatMDY, LocaleDateFormatYMD } LocaleDateFormat;
+typedef enum {
+    LocaleTimeFormat24h,
+    LocaleTimeFormat12h
+} LocaleTimeFormat;
+typedef enum {
+    LocaleDateFormatDMY,
+    LocaleDateFormatMDY,
+    LocaleDateFormatYMD
+} LocaleDateFormat;
 
 static inline LocaleDateFormat locale_get_date_format(void) {
     return LocaleDateFormatDMY;

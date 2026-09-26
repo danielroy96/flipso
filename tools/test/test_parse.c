@@ -147,7 +147,6 @@ static void robustness(void) {
     check("all location types survive short buffers", 1);
 }
 
-
 /*
  * ITSO's generic micro-processor media (CMD2) differs from DESFire in how the
  * card is addressed rather than in how it is encoded, so the decoder should need
@@ -175,13 +174,13 @@ static void cmd2_card(void) {
     ItsoProduct* purse = &card.products[0];
     check("CMD2 E1 is stored travel rights", purse->typ == 2 && purse->value_group);
     check("CMD2 E1 active", purse->status == ItsoProductStatusActive);
-    check("CMD2 E1 chains to sector 18", itso_sct_entry(&card, cmd2_dir, sizeof(cmd2_dir), 1) == 18);
+    check(
+        "CMD2 E1 chains to sector 18", itso_sct_entry(&card, cmd2_dir, sizeof(cmd2_dir), 1) == 18);
 
     uint8_t group[ITSO_MAX_GROUP_LEN];
     memcpy(group, cmd2_sector1, sizeof(cmd2_sector1));
     memcpy(group + sizeof(cmd2_sector1), cmd2_sector18, sizeof(cmd2_sector18));
-    itso_parse_ipe(
-        purse, group, sizeof(cmd2_sector1) + sizeof(cmd2_sector18), card.sector_size);
+    itso_parse_ipe(purse, group, sizeof(cmd2_sector1) + sizeof(cmd2_sector18), card.sector_size);
 
     /* The second value record has never been written. Its DTS of zero decodes to
      * 2028, so taking it as the newest would both hide the balance and date it
@@ -203,8 +202,8 @@ static void cmd2_card(void) {
     /* HalfDayOfWeek (annex A.10) sits after the names, then ValidAtOrFrom. */
     check("CMD2 E2 half days read", id->has_half_days && id->half_days == 0xFFE0);
     check("CMD2 E2 half days are Monday to Saturday", itso_half_days_mask(id->half_days) == 0xFC);
-    check("CMD2 E2 valid at NLC 5685",
-          id->from.valid && strcmp(id->from.text, "Station 5685") == 0);
+    check(
+        "CMD2 E2 valid at NLC 5685", id->from.valid && strcmp(id->from.text, "Station 5685") == 0);
 }
 
 /*
@@ -221,8 +220,8 @@ static void cmd2_card(void) {
  * that renders correctly while reporting the wrong kind would look right on
  * screen and never resolve.
  */
-static size_t parse_exact(const uint8_t* record, size_t n, ItsoLocStruct variant,
-                          ItsoLocation* out) {
+static size_t
+    parse_exact(const uint8_t* record, size_t n, ItsoLocStruct variant, ItsoLocation* out) {
     /* An exact-length heap copy: a record read off the end of an oversized
      * static buffer lands inside it and the sanitiser sees nothing. */
     uint8_t* exact = malloc(n);
@@ -246,8 +245,13 @@ static void check_location(
     bool ok = used == n && loc.valid && strcmp(loc.text, text) == 0 &&
               strcmp(loc.code, code) == 0 && itso_location_code_kind(&loc) == kind;
     if(!ok) {
-        printf("      got \"%s\" code \"%s\" kind %u, %zu of %zu bytes\n",
-               loc.text, loc.code, itso_location_code_kind(&loc), used, n);
+        printf(
+            "      got \"%s\" code \"%s\" kind %u, %zu of %zu bytes\n",
+            loc.text,
+            loc.code,
+            itso_location_code_kind(&loc),
+            used,
+            n);
     }
     check(what, ok);
 }
@@ -255,26 +259,49 @@ static void check_location(
 static void bus_stop_locations(void) {
     /* "MANAG" folded onto the keypad is 62624, right justified in eight digits. */
     static const uint8_t naptan_loc1[] = {206, 4, 0x00, 0x06, 0x26, 0x24};
-    check_location("206 NaptanCode in LOC1", naptan_loc1, sizeof(naptan_loc1),
-                   ItsoLocStructLoc1, "Stop 00062624", "00062624", ItsoLocCodeNaptan);
+    check_location(
+        "206 NaptanCode in LOC1",
+        naptan_loc1,
+        sizeof(naptan_loc1),
+        ItsoLocStructLoc1,
+        "Stop 00062624",
+        "00062624",
+        ItsoLocCodeNaptan);
 
     /* LOC2 is a fixed seven bytes: the tag, the four of code, then padding. */
     static const uint8_t naptan_loc2[] = {206, 0x00, 0x06, 0x26, 0x24, 0x00, 0x00};
-    check_location("206 NaptanCode in LOC2", naptan_loc2, sizeof(naptan_loc2),
-                   ItsoLocStructLoc2, "Stop 00062624", "00062624", ItsoLocCodeNaptan);
+    check_location(
+        "206 NaptanCode in LOC2",
+        naptan_loc2,
+        sizeof(naptan_loc2),
+        ItsoLocStructLoc2,
+        "Stop 00062624",
+        "00062624",
+        ItsoLocCodeNaptan);
 
     /* A nibble above nine is not a digit any register holds, so it is shown but
      * never offered for lookup. */
     static const uint8_t naptan_bad[] = {206, 4, 0x00, 0x06, 0x2A, 0x24};
-    check_location("206 with a non-decimal nibble offers no code", naptan_bad,
-                   sizeof(naptan_bad), ItsoLocStructLoc1, "Stop 00062F24", "",
-                   ItsoLocCodeNone);
+    check_location(
+        "206 with a non-decimal nibble offers no code",
+        naptan_bad,
+        sizeof(naptan_bad),
+        ItsoLocStructLoc1,
+        "Stop 00062F24",
+        "",
+        ItsoLocCodeNone);
 
     /* Three stops, so the first is named and the other two are counted. */
-    static const uint8_t naptan_many[] = {212, 12, 0x00, 0x06, 0x26, 0x24, 0x12, 0x34,
-                                          0x56, 0x78, 0x87, 0x65, 0x43, 0x21};
-    check_location("212 multiple NaptanCodes", naptan_many, sizeof(naptan_many),
-                   ItsoLocStructLoc1, "Stop 00062624 and 2 more", "00062624", ItsoLocCodeNaptan);
+    static const uint8_t naptan_many[] = {
+        212, 12, 0x00, 0x06, 0x26, 0x24, 0x12, 0x34, 0x56, 0x78, 0x87, 0x65, 0x43, 0x21};
+    check_location(
+        "212 multiple NaptanCodes",
+        naptan_many,
+        sizeof(naptan_many),
+        ItsoLocStructLoc1,
+        "Stop 00062624 and 2 more",
+        "00062624",
+        ItsoLocCodeNaptan);
 
     {
         /* The count is kept apart too, for a screen that names the first stop
@@ -285,8 +312,14 @@ static void bus_stop_locations(void) {
     }
 
     static const uint8_t naptan_one[] = {212, 4, 0x00, 0x06, 0x26, 0x24};
-    check_location("212 holding a single NaptanCode", naptan_one, sizeof(naptan_one),
-                   ItsoLocStructLoc1, "Stop 00062624", "00062624", ItsoLocCodeNaptan);
+    check_location(
+        "212 holding a single NaptanCode",
+        naptan_one,
+        sizeof(naptan_one),
+        ItsoLocStructLoc1,
+        "Stop 00062624",
+        "00062624",
+        ItsoLocCodeNaptan);
     {
         ItsoLocation one;
         itso_parse_location(naptan_one, sizeof(naptan_one), ItsoLocStructLoc1, &one);
@@ -294,39 +327,75 @@ static void bus_stop_locations(void) {
     }
 
     /* An AtcoCode is stored whole, so unlike a NaptanCode it needs no unfolding. */
-    static const uint8_t atco[] = {211, 12, '1', '8', '0', '0', 'A', 'L',
-                                   'T', 'R', 'N', 'H', 'M', '0'};
-    check_location("211 AtcoCode", atco, sizeof(atco), ItsoLocStructLoc1,
-                   "Stop 1800ALTRNHM0", "1800ALTRNHM0", ItsoLocCodeAtco);
+    static const uint8_t atco[] = {
+        211, 12, '1', '8', '0', '0', 'A', 'L', 'T', 'R', 'N', 'H', 'M', '0'};
+    check_location(
+        "211 AtcoCode",
+        atco,
+        sizeof(atco),
+        ItsoLocStructLoc1,
+        "Stop 1800ALTRNHM0",
+        "1800ALTRNHM0",
+        ItsoLocCodeAtco);
 
     static const uint8_t atco_short[] = {211, 8, '1', '8', '0', '0', 'E', 'B', '0', '1'};
-    check_location("211 AtcoCode shorter than the maximum", atco_short, sizeof(atco_short),
-                   ItsoLocStructLoc1, "Stop 1800EB01", "1800EB01", ItsoLocCodeAtco);
+    check_location(
+        "211 AtcoCode shorter than the maximum",
+        atco_short,
+        sizeof(atco_short),
+        ItsoLocStructLoc1,
+        "Stop 1800EB01",
+        "1800EB01",
+        ItsoLocCodeAtco);
 
     /* Thirteen characters is longer than TS 1000-1 table 40 allows and longer
      * than ItsoLocation::code; half a code would find the wrong stop, so none
      * is offered. */
-    static const uint8_t atco_long[] = {211, 13, '1', '8', '0', '0', 'A', 'L', 'T',
-                                        'R', 'N', 'H', 'M', '0', '0'};
-    check_location("211 over-long AtcoCode offers no code", atco_long, sizeof(atco_long),
-                   ItsoLocStructLoc1, "Stop 1800ALTRNHM00", "", ItsoLocCodeNone);
+    static const uint8_t atco_long[] = {
+        211, 13, '1', '8', '0', '0', 'A', 'L', 'T', 'R', 'N', 'H', 'M', '0', '0'};
+    check_location(
+        "211 over-long AtcoCode offers no code",
+        atco_long,
+        sizeof(atco_long),
+        ItsoLocStructLoc1,
+        "Stop 1800ALTRNHM00",
+        "",
+        ItsoLocCodeNone);
 
     /* OID, then service "42" as four 6-bit SNCODE2 characters padded with 0x3F,
      * then the stop: the code starts at bit 40 of the body. */
-    static const uint8_t service_stop[] = {216, 9,    0x00, 0x01, 0xFF, 0xF1,
-                                           0x02, 0x00, 0x06, 0x26, 0x24};
-    check_location("216 service number and NaptanCode", service_stop, sizeof(service_stop),
-                   ItsoLocStructLoc1, "Route 42@00062624", "00062624", ItsoLocCodeNaptan);
+    static const uint8_t service_stop[] = {
+        216, 9, 0x00, 0x01, 0xFF, 0xF1, 0x02, 0x00, 0x06, 0x26, 0x24};
+    check_location(
+        "216 service number and NaptanCode",
+        service_stop,
+        sizeof(service_stop),
+        ItsoLocStructLoc1,
+        "Route 42@00062624",
+        "00062624",
+        ItsoLocCodeNaptan);
 
     /* Rail codes keep working, and now say which register they belong to. */
     static const uint8_t nlc[] = {203, 4, '1', '4', '4', '4'};
-    check_location("203 rail NLC", nlc, sizeof(nlc), ItsoLocStructLoc1, "Station 1444",
-                   "1444", ItsoLocCodeNlc);
+    check_location(
+        "203 rail NLC",
+        nlc,
+        sizeof(nlc),
+        ItsoLocStructLoc1,
+        "Station 1444",
+        "1444",
+        ItsoLocCodeNlc);
 
     /* Types that name no code at all must offer none, whatever they render. */
     static const uint8_t zones[] = {204, 3, 0x15, 0x00, 0x00};
-    check_location("204 zone bit map offers no code", zones, sizeof(zones),
-                   ItsoLocStructLoc1, "Zones 1,3,5", "", ItsoLocCodeNone);
+    check_location(
+        "204 zone bit map offers no code",
+        zones,
+        sizeof(zones),
+        ItsoLocStructLoc1,
+        "Zones 1,3,5",
+        "",
+        ItsoLocCodeNone);
 
     /* Truncations must not read past the end; ASan is the assertion. */
     for(size_t len = 0; len <= sizeof(service_stop); len++) {
@@ -372,8 +441,8 @@ static void shell_checksum(void) {
     itso_card_reset(&card);
     itso_parse_shell(&card, damaged, sizeof(card_shell));
     check("a corrupted shell fails its checksum", card.secrc_checked && !card.secrc_valid);
-    check("a corrupted shell still reports both numbers",
-          card.secrc_stored != card.secrc_computed);
+    check(
+        "a corrupted shell still reports both numbers", card.secrc_stored != card.secrc_computed);
     free(damaged);
 
     /* A shell whose declared length runs past what was read cannot be checked,
@@ -398,23 +467,26 @@ static void shell_reject_reasons(void) {
     ItsoCard card;
 
     itso_card_reset(&card);
-    check("a shell that parses reports no rejection",
-          itso_parse_shell(&card, card_shell, sizeof(card_shell)) &&
-              card.shell_reject == ItsoShellAccepted);
+    check(
+        "a shell that parses reports no rejection",
+        itso_parse_shell(&card, card_shell, sizeof(card_shell)) &&
+            card.shell_reject == ItsoShellAccepted);
 
     /* A buffer too short to hold the header: what a truncated read looks like. */
     itso_card_reset(&card);
-    check("a short buffer is rejected as short",
-          !itso_parse_shell(&card, card_shell, 23) && card.shell_reject == ItsoShellRejectShort);
+    check(
+        "a short buffer is rejected as short",
+        !itso_parse_shell(&card, card_shell, 23) && card.shell_reject == ItsoShellRejectShort);
 
     /* Long enough, but not ITSO's issuer number. */
     uint8_t* wrong_iin = malloc(sizeof(card_shell));
     memcpy(wrong_iin, card_shell, sizeof(card_shell));
     wrong_iin[3] ^= 0xFF;
     itso_card_reset(&card);
-    check("a foreign IIN is rejected as such",
-          !itso_parse_shell(&card, wrong_iin, sizeof(card_shell)) &&
-              card.shell_reject == ItsoShellRejectIin);
+    check(
+        "a foreign IIN is rejected as such",
+        !itso_parse_shell(&card, wrong_iin, sizeof(card_shell)) &&
+            card.shell_reject == ItsoShellRejectIin);
     free(wrong_iin);
 
     /* Bitmap bit 0 clear: a compact shell, with no directory behind it. */
@@ -423,9 +495,10 @@ static void shell_reject_reasons(void) {
     compact[0] &= (uint8_t)~0x02; /* Bitmap starts at bit 6, so bit 0 is byte 0 bit 1. */
     compact[1] &= (uint8_t)~0xF8;
     itso_card_reset(&card);
-    check("a compact shell is rejected as compact",
-          !itso_parse_shell(&card, compact, sizeof(card_shell)) &&
-              card.shell_reject == ItsoShellRejectCompact);
+    check(
+        "a compact shell is rejected as compact",
+        !itso_parse_shell(&card, compact, sizeof(card_shell)) &&
+            card.shell_reject == ItsoShellRejectCompact);
     free(compact);
 
     /* Header intact, geometry impossible. */
@@ -433,14 +506,16 @@ static void shell_reject_reasons(void) {
     memcpy(geometry, card_shell, sizeof(card_shell));
     geometry[16] = 0; /* Sector size zero. */
     itso_card_reset(&card);
-    check("impossible geometry is rejected as geometry",
-          !itso_parse_shell(&card, geometry, sizeof(card_shell)) &&
-              card.shell_reject == ItsoShellRejectGeometry);
+    check(
+        "impossible geometry is rejected as geometry",
+        !itso_parse_shell(&card, geometry, sizeof(card_shell)) &&
+            card.shell_reject == ItsoShellRejectGeometry);
     /* The checksum runs before the geometry check, so a shell rejected for its
      * geometry still says whether the bytes themselves arrived intact - which
      * is the whole point of reporting it on a failed read. */
-    check("a shell rejected for geometry still carries a checksum verdict",
-          card.secrc_checked && !card.secrc_valid);
+    check(
+        "a shell rejected for geometry still carries a checksum verdict",
+        card.secrc_checked && !card.secrc_valid);
     free(geometry);
 
     /* Nothing offered at all reads as "not read", not as an accepted shell. */
@@ -476,27 +551,43 @@ int main(void) {
     printf("  ISRN        %s\n", card.isrn);
     printf("  check digit %s\n", card.isrn_check_ok ? "ok" : "BAD");
     printf("  expiry      %s\n", fmt_unix(itso_date_to_unix(card.expiry)));
-    printf("  FVC %u KSC %u KVC %u  B=%u S=%u e#=%u SCTL=%u\n",
-           card.fvc, card.ksc, card.kvc, card.sector_size,
-           card.sector_count, card.dir_entries, card.sct_len);
+    printf(
+        "  FVC %u KSC %u KVC %u  B=%u S=%u e#=%u SCTL=%u\n",
+        card.fvc,
+        card.ksc,
+        card.kvc,
+        card.sector_size,
+        card.sector_count,
+        card.dir_entries,
+        card.sct_len);
     check("ISRN matches", strcmp(card.isrn, EXPECT_ISRN) == 0);
     check("check digit valid", card.isrn_check_ok);
     check("FVC is 7", card.fvc == 7);
-    check("geometry B=64 S=16 e#=8", card.sector_size == 64 && card.sector_count == 16 && card.dir_entries == 8);
+    check(
+        "geometry B=64 S=16 e#=8",
+        card.sector_size == 64 && card.sector_count == 16 && card.dir_entries == 8);
 
     printf("\n== Directory ==\n");
     check("directory parses", itso_parse_directory(&card, card_dir, sizeof(card_dir)));
-    printf("  products %u, log entry at E%u, blocked=%d\n",
-           card.product_count, card.log_dir_index, card.shell_blocked);
+    printf(
+        "  products %u, log entry at E%u, blocked=%d\n",
+        card.product_count,
+        card.log_dir_index,
+        card.shell_blocked);
     check("five products found", card.product_count == 5);
     check("log entry is E8", card.log_dir_index == 8);
     check("log entry decoded", card.log_entry_valid);
-    printf("  last tap flag: EEI=%u (%s), ptr=E%u, %s, RO=%u\n",
-           card.log_eei, card.log_eei ? "checked in" : "not checked in",
-           card.log_ptr, fmt_unix(itso_dts_to_unix(card.log_dts)), card.log_record_offset);
+    printf(
+        "  last tap flag: EEI=%u (%s), ptr=E%u, %s, RO=%u\n",
+        card.log_eei,
+        card.log_eei ? "checked in" : "not checked in",
+        card.log_ptr,
+        fmt_unix(itso_dts_to_unix(card.log_dts)),
+        card.log_record_offset);
     check("EEI says checked in", card.log_eei == 1);
-    check("log DTS is 2026-09-14 08:41",
-          strcmp(fmt_unix(itso_dts_to_unix(card.log_dts)), "2026-09-14 08:41") == 0);
+    check(
+        "log DTS is 2026-09-14 08:41",
+        strcmp(fmt_unix(itso_dts_to_unix(card.log_dts)), "2026-09-14 08:41") == 0);
 
     /* The blocking indicator is one bit of DIRBitMap and stops the whole shell,
      * not a product, so both of its states are pinned here: reading the
@@ -506,27 +597,31 @@ int main(void) {
     ItsoCard blocked;
     itso_card_reset(&blocked);
     itso_parse_shell(&blocked, card_shell, sizeof(card_shell));
-    check("blocked directory parses",
-          itso_parse_directory(&blocked, card_dir_blocked, sizeof(card_dir_blocked)));
+    check(
+        "blocked directory parses",
+        itso_parse_directory(&blocked, card_dir_blocked, sizeof(card_dir_blocked)));
     check("blocking indicator read", blocked.shell_blocked);
-    check("blocking indicator leaves the rest of the bitmap alone",
-          blocked.log_dir_index == 8 && blocked.product_count == 5);
+    check(
+        "blocking indicator leaves the rest of the bitmap alone",
+        blocked.log_dir_index == 8 && blocked.product_count == 5);
 
     printf("\n== Products ==\n");
-    check("E1 is TYP 2 with value group",
-          card.products[0].typ == 2 && card.products[0].value_group);
+    check(
+        "E1 is TYP 2 with value group", card.products[0].typ == 2 && card.products[0].value_group);
     check("E1 operator 1234", card.products[0].oid == 1234);
     check("E1 active", card.products[0].status == ItsoProductStatusActive);
     check("E2 is TYP 16", card.products[1].typ == 16);
-    check("E3 is TYP 22 blocked",
-          card.products[2].typ == 22 && card.products[2].status == ItsoProductStatusBlocked);
-    check("E4 is TYP 23 with value group",
-          card.products[3].typ == 23 && card.products[3].value_group);
+    check(
+        "E3 is TYP 22 blocked",
+        card.products[2].typ == 22 && card.products[2].status == ItsoProductStatusBlocked);
+    check(
+        "E4 is TYP 23 with value group",
+        card.products[3].typ == 23 && card.products[3].value_group);
     check("E5 is TYP 3 loyalty", card.products[4].typ == 3);
     /* TS 1000-2 Annex B: the extension flag shifts an IPE owner into 8192-16383. */
     check("E1 operator is in the base range", !card.products[0].oid_extended);
-    printf("  E3 operator %u (extended=%d)\n",
-           card.products[2].oid, card.products[2].oid_extended);
+    printf(
+        "  E3 operator %u (extended=%d)\n", card.products[2].oid, card.products[2].oid_extended);
     check("E3 operator uses the extended range", card.products[2].oid_extended);
     check("E3 operator is 5678 + 8192", card.products[2].oid == 13870);
 
@@ -539,18 +634,29 @@ int main(void) {
 
     char money[32];
     itso_format_money(&card.products[0].balance, money, sizeof(money));
-    printf("  E1 %s: balance %s at %s\n", itso_typ_name(card.products[0].typ), money,
-           fmt_unix(itso_dts_to_unix(card.products[0].value_dts)));
-    check("balance is GBP 12.34", strcmp(money, "\xC2\xA3" "12.34") == 0);
+    printf(
+        "  E1 %s: balance %s at %s\n",
+        itso_typ_name(card.products[0].typ),
+        money,
+        fmt_unix(itso_dts_to_unix(card.products[0].value_dts)));
+    check(
+        "balance is GBP 12.34",
+        strcmp(
+            money,
+            "\xC2\xA3"
+            "12.34") == 0);
     check("purse value record read", card.products[0].value_parsed);
-    check("balance timestamp is newest record",
-          strcmp(fmt_unix(itso_dts_to_unix(card.products[0].value_dts)), "2026-09-14 08:41") == 0);
+    check(
+        "balance timestamp is newest record",
+        strcmp(fmt_unix(itso_dts_to_unix(card.products[0].value_dts)), "2026-09-14 08:41") == 0);
 
     /* The common value record header: every product with a value group carries
      * it, and it says what the last thing to happen to the product was. */
-    printf("      last action %s, TS# %u, ISAM %08lX\n",
-           itso_transaction_name(card.products[0].value_txn), card.products[0].value_ts,
-           (unsigned long)card.products[0].value_isam);
+    printf(
+        "      last action %s, TS# %u, ISAM %08lX\n",
+        itso_transaction_name(card.products[0].value_txn),
+        card.products[0].value_ts,
+        (unsigned long)card.products[0].value_isam);
     check("last action is a fare deduction", card.products[0].value_txn == 7);
     check("TS# read from the live record", card.products[0].value_ts == 101);
     check("modifying POST ISAM read", card.products[0].value_isam == 0xC0FFEE01);
@@ -561,92 +667,151 @@ int main(void) {
      * should offer the balance as it was as well as the balance as it is. */
     const ItsoProduct* purse = &card.products[0];
     check("purse keeps both value records", purse->value_history_count == 2);
-    check("newest history entry is the live record",
-          purse->value_history[0].ts == purse->value_ts &&
-          purse->value_history[0].dts == purse->value_dts);
+    check(
+        "newest history entry is the live record",
+        purse->value_history[0].ts == purse->value_ts &&
+            purse->value_history[0].dts == purse->value_dts);
     itso_format_money(&purse->value_history[0].amount, money, sizeof(money));
-    check("history[0] balance is GBP 12.34", strcmp(money, "\xC2\xA3" "12.34") == 0);
+    check(
+        "history[0] balance is GBP 12.34",
+        strcmp(
+            money,
+            "\xC2\xA3"
+            "12.34") == 0);
     itso_format_money(&purse->value_history[1].amount, money, sizeof(money));
-    printf("      previously %s at %s (TS# %u, %s)\n", money,
-           fmt_unix(itso_dts_to_unix(purse->value_history[1].dts)),
-           purse->value_history[1].ts,
-           itso_transaction_name(purse->value_history[1].txn));
-    check("history[1] is the earlier balance of GBP 15.60", strcmp(money, "\xC2\xA3" "15.60") == 0);
-    check("history[1] keeps its own timestamp",
-          strcmp(fmt_unix(itso_dts_to_unix(purse->value_history[1].dts)),
-                 "2026-09-01 12:00") == 0);
-    check("history[1] keeps its own transaction type and TS#",
-          purse->value_history[1].txn == 4 && purse->value_history[1].ts == 100);
-    check("a purse history carries no counter",
-          !purse->value_history[0].has_count && !purse->value_history[1].has_count);
+    printf(
+        "      previously %s at %s (TS# %u, %s)\n",
+        money,
+        fmt_unix(itso_dts_to_unix(purse->value_history[1].dts)),
+        purse->value_history[1].ts,
+        itso_transaction_name(purse->value_history[1].txn));
+    check(
+        "history[1] is the earlier balance of GBP 15.60",
+        strcmp(
+            money,
+            "\xC2\xA3"
+            "15.60") == 0);
+    check(
+        "history[1] keeps its own timestamp",
+        strcmp(fmt_unix(itso_dts_to_unix(purse->value_history[1].dts)), "2026-09-01 12:00") == 0);
+    check(
+        "history[1] keeps its own transaction type and TS#",
+        purse->value_history[1].txn == 4 && purse->value_history[1].ts == 100);
+    check(
+        "a purse history carries no counter",
+        !purse->value_history[0].has_count && !purse->value_history[1].has_count);
 
     /* The IPE dataset: the commercial terms of the purse. */
     itso_format_money(&card.products[0].max_value, money, sizeof(money));
-    check("purse ceiling is GBP 90.00",
-          card.products[0].has_limits && strcmp(money, "\xC2\xA3" "90.00") == 0);
+    check(
+        "purse ceiling is GBP 90.00",
+        card.products[0].has_limits && strcmp(
+                                           money,
+                                           "\xC2\xA3"
+                                           "90.00") == 0);
     itso_format_money(&card.products[0].max_negative, money, sizeof(money));
-    check("overdraft is GBP 2.00", strcmp(money, "\xC2\xA3" "2.00") == 0);
+    check(
+        "overdraft is GBP 2.00",
+        strcmp(
+            money,
+            "\xC2\xA3"
+            "2.00") == 0);
     itso_format_money(&card.products[0].top_up_amount, money, sizeof(money));
-    check("auto top-up adds GBP 10.00",
-          card.products[0].has_top_up && strcmp(money, "\xC2\xA3" "10.00") == 0);
+    check(
+        "auto top-up adds GBP 10.00",
+        card.products[0].has_top_up && strcmp(
+                                           money,
+                                           "\xC2\xA3"
+                                           "10.00") == 0);
     itso_format_money(&card.products[0].top_up_threshold, money, sizeof(money));
-    check("auto top-up triggers below GBP 5.00", strcmp(money, "\xC2\xA3" "5.00") == 0);
+    check(
+        "auto top-up triggers below GBP 5.00",
+        strcmp(
+            money,
+            "\xC2\xA3"
+            "5.00") == 0);
     check("auto top-up is enabled in the value record", card.products[0].auto_top_up);
     itso_format_money(&card.products[0].deposit, money, sizeof(money));
-    check("deposit is GBP 5.00",
-          card.products[0].has_deposit && strcmp(money, "\xC2\xA3" "5.00") == 0);
+    check(
+        "deposit is GBP 5.00",
+        card.products[0].has_deposit && strcmp(
+                                            money,
+                                            "\xC2\xA3"
+                                            "5.00") == 0);
     check("deposit was paid in cash", card.products[0].deposit_mop == 1);
-    check("retailer is not the owner",
-          card.products[0].has_retailer && card.products[0].retailer == 247);
-    check("remove date says owner only",
-          card.products[0].has_remove_date && card.products[0].remove_date == 255);
-    check("auto top-up start date 2024-01-01",
-          card.products[0].has_start &&
-          strcmp(fmt_unix(itso_date_to_unix(card.products[0].start)), "2024-01-01 00:00") == 0);
+    check(
+        "retailer is not the owner",
+        card.products[0].has_retailer && card.products[0].retailer == 247);
+    check(
+        "remove date says owner only",
+        card.products[0].has_remove_date && card.products[0].remove_date == 255);
+    check(
+        "auto top-up start date 2024-01-01",
+        card.products[0].has_start &&
+            strcmp(fmt_unix(itso_date_to_unix(card.products[0].start)), "2024-01-01 00:00") == 0);
 
     /* A journey in progress. */
     itso_format_money(&card.products[0].cumulative_fare, money, sizeof(money));
-    check("two journey legs so far",
-          card.products[0].has_journey && card.products[0].journey_legs == 2);
-    check("cumulative fare is GBP 2.65", strcmp(money, "\xC2\xA3" "2.65") == 0);
+    check(
+        "two journey legs so far",
+        card.products[0].has_journey && card.products[0].journey_legs == 2);
+    check(
+        "cumulative fare is GBP 2.65",
+        strcmp(
+            money,
+            "\xC2\xA3"
+            "2.65") == 0);
 
     /* The IPE InstanceID, the only unique identity a product has. */
-    check("instance id decoded",
-          card.products[0].instance_valid && card.products[0].isam_id == 0x01020304 &&
-          card.products[0].isam_seq == 1);
+    check(
+        "instance id decoded",
+        card.products[0].instance_valid && card.products[0].isam_id == 0x01020304 &&
+            card.products[0].isam_seq == 1);
     check("seal key id decoded", card.products[0].key_id == 1);
 
     /* E2: ITSO ID. */
     memset(group, 0, sizeof(group));
     memcpy(group, card_sector2, sizeof(card_sector2));
     itso_parse_ipe(&card.products[1], group, 64, 64);
-    printf("  E2 %s: name '%s', entitlement %s, class %s\n",
-           itso_typ_name(card.products[1].typ), card.products[1].name,
-           itso_entitlement_name(card.products[1].entitlement_code),
-           itso_profile_name(card.products[1].concession_class));
+    printf(
+        "  E2 %s: name '%s', entitlement %s, class %s\n",
+        itso_typ_name(card.products[1].typ),
+        card.products[1].name,
+        itso_entitlement_name(card.products[1].entitlement_code),
+        itso_profile_name(card.products[1].concession_class));
     printf("      valid %s", fmt_unix(itso_date_to_unix(card.products[1].start)));
     printf(" to %s\n", fmt_unix(itso_date_to_unix(card.products[1].sub_expiry)));
     check("holder name", strcmp(card.products[1].name, "ALEX MORGAN") == 0);
     check("entitlement is limited free ride", card.products[1].entitlement_code == 2);
     check("concession class is pensioner", card.products[1].concession_class == 4);
-    check("entitlement start 2024-04-01",
-          strcmp(fmt_unix(itso_date_to_unix(card.products[1].start)), "2024-04-01 00:00") == 0);
-    check("entitlement expiry 2029-03-31",
-          strcmp(fmt_unix(itso_date_to_unix(card.products[1].sub_expiry)), "2029-03-31 00:00") == 0);
+    check(
+        "entitlement start 2024-04-01",
+        strcmp(fmt_unix(itso_date_to_unix(card.products[1].start)), "2024-04-01 00:00") == 0);
+    check(
+        "entitlement expiry 2029-03-31",
+        strcmp(fmt_unix(itso_date_to_unix(card.products[1].sub_expiry)), "2029-03-31 00:00") == 0);
 
-    printf("      born %04u-%02u-%02u, gender %s, passback %u min\n",
-           card.products[1].dob_year, card.products[1].dob_month, card.products[1].dob_day,
-           itso_gender_name(card.products[1].id_flags), card.products[1].passback);
-    check("date of birth is 1955-11-03",
-          card.products[1].has_dob && card.products[1].dob_year == 1955 &&
-          card.products[1].dob_month == 11 && card.products[1].dob_day == 3);
-    check("IDFlags say the card is photo personalised",
-          card.products[1].has_id_flags && itso_id_personalised(card.products[1].id_flags));
+    printf(
+        "      born %04u-%02u-%02u, gender %s, passback %u min\n",
+        card.products[1].dob_year,
+        card.products[1].dob_month,
+        card.products[1].dob_day,
+        itso_gender_name(card.products[1].id_flags),
+        card.products[1].passback);
+    check(
+        "date of birth is 1955-11-03",
+        card.products[1].has_dob && card.products[1].dob_year == 1955 &&
+            card.products[1].dob_month == 11 && card.products[1].dob_day == 3);
+    check(
+        "IDFlags say the card is photo personalised",
+        card.products[1].has_id_flags && itso_id_personalised(card.products[1].id_flags));
     check("IDFlags allow a companion", itso_id_companion(card.products[1].id_flags));
-    check("IDFlags record female",
-          strcmp(itso_gender_name(card.products[1].id_flags), "Female") == 0);
-    check("passback time is 30 minutes",
-          card.products[1].has_passback && card.products[1].passback == 30);
+    check(
+        "IDFlags record female",
+        strcmp(itso_gender_name(card.products[1].id_flags), "Female") == 0);
+    check(
+        "passback time is 30 minutes",
+        card.products[1].has_passback && card.products[1].passback == 30);
     /* TYP 14 and 16 put an accounting reference where other types put the
      * retailer, so reading one as the other would name the wrong operator. */
     check("identity IPE reports no retailer", !card.products[1].has_retailer);
@@ -656,41 +821,53 @@ int main(void) {
     memcpy(group, card_sector3, sizeof(card_sector3));
     memcpy(group + 64, card_sector11, sizeof(card_sector11));
     itso_parse_ipe(&card.products[2], group, 128, 64);
-    printf("  E3 %s: expires %s (%s)\n", itso_typ_name(card.products[2].typ),
-           fmt_unix(itso_date_to_unix(card.products[2].expiry)),
-           itso_date_expired(card.products[2].expiry, 1789000000UL) ? "expired" : "valid");
+    printf(
+        "  E3 %s: expires %s (%s)\n",
+        itso_typ_name(card.products[2].typ),
+        fmt_unix(itso_date_to_unix(card.products[2].expiry)),
+        itso_date_expired(card.products[2].expiry, 1789000000UL) ? "expired" : "valid");
     dump_location("from", &card.products[2].from);
     dump_location("to", &card.products[2].to);
-    check("period ticket from NLC 1072",
-          card.products[2].from.valid && strcmp(card.products[2].from.text, "Station 1072") == 0);
-    check("period ticket to NLC 1444",
-          card.products[2].to.valid && strcmp(card.products[2].to.text, "Station 1444") == 0);
-    check("validity start 2025-01-01",
-          card.products[2].has_start &&
-          strcmp(fmt_unix(itso_date_to_unix(card.products[2].start)), "2025-01-01 00:00") == 0);
-    check("2025-12-31 expiry reads as expired in 2026",
-          itso_date_expired(card.products[2].expiry, 1789000000UL));
+    check(
+        "period ticket from NLC 1072",
+        card.products[2].from.valid && strcmp(card.products[2].from.text, "Station 1072") == 0);
+    check(
+        "period ticket to NLC 1444",
+        card.products[2].to.valid && strcmp(card.products[2].to.text, "Station 1444") == 0);
+    check(
+        "validity start 2025-01-01",
+        card.products[2].has_start &&
+            strcmp(fmt_unix(itso_date_to_unix(card.products[2].start)), "2025-01-01 00:00") == 0);
+    check(
+        "2025-12-31 expiry reads as expired in 2026",
+        itso_date_expired(card.products[2].expiry, 1789000000UL));
 
     /* A period ticket counts unactivated passes, and expires the stock of them
      * separately from the pass currently in use. */
-    printf("      %u passes left, current pass to %s\n", (unsigned)card.products[2].count,
-           fmt_unix(itso_date_to_unix(card.products[2].current_expiry)));
+    printf(
+        "      %u passes left, current pass to %s\n",
+        (unsigned)card.products[2].count,
+        fmt_unix(itso_date_to_unix(card.products[2].current_expiry)));
     check("period value record read", card.products[2].value_parsed);
-    check("period ticket counts passes, not money",
-          card.products[2].count_kind == ItsoCountPasses &&
-          !card.products[2].balance.valid);
+    check(
+        "period ticket counts passes, not money",
+        card.products[2].count_kind == ItsoCountPasses && !card.products[2].balance.valid);
     check("four passes remain", card.products[2].count == 4);
-    check("the period ticket history shows five passes before that",
-          card.products[2].value_history_count == 2 &&
-          card.products[2].value_history[1].count == 5);
-    check("current pass expires 2025-02-28",
-          card.products[2].has_current_expiry &&
-          strcmp(fmt_unix(itso_date_to_unix(card.products[2].current_expiry)),
-                 "2025-02-28 00:00") == 0);
-    check("unused passes expire 2025-12-31",
-          card.products[2].has_stored_expiry &&
-          strcmp(fmt_unix(itso_date_to_unix(card.products[2].stored_expiry)),
-                 "2025-12-31 00:00") == 0);
+    check(
+        "the period ticket history shows five passes before that",
+        card.products[2].value_history_count == 2 && card.products[2].value_history[1].count == 5);
+    check(
+        "current pass expires 2025-02-28",
+        card.products[2].has_current_expiry &&
+            strcmp(
+                fmt_unix(itso_date_to_unix(card.products[2].current_expiry)),
+                "2025-02-28 00:00") == 0);
+    check(
+        "unused passes expire 2025-12-31",
+        card.products[2].has_stored_expiry &&
+            strcmp(
+                fmt_unix(itso_date_to_unix(card.products[2].stored_expiry)), "2025-12-31 00:00") ==
+                0);
     check("period ticket auto-renews", card.products[2].auto_renew);
 
     /* The rest of the revision 3 dataset (table 3.27). CPICC is optional here
@@ -707,18 +884,21 @@ int main(void) {
         check("revision 3 ticket terms read", t->valid);
         check("revision 3 CPICC read", p->has_cpicc && p->cpicc == 0x0457);
         check("no duration group when bit 3 is clear", !t->has_pass_duration);
-        check("issued 2024-12-20",
-              strcmp(fmt_unix(itso_date_to_unix(t->issue_date)), "2024-12-20 00:00") == 0);
+        check(
+            "issued 2024-12-20",
+            strcmp(fmt_unix(itso_date_to_unix(t->issue_date)), "2024-12-20 00:00") == 0);
         check("ends 04:30 the next day", t->expiry_time == 1440 + 270);
         check("valid from 09:30", t->has_start_time && t->start_time == 570);
         check("first class", t->travel_class == 1 && strcmp(itso_class_name(1), "First") == 0);
         check("one adult and two children", t->adults == 1 && t->children == 2);
-        check("paid GBP 123.45 by card at 20% VAT",
-              t->amount_paid.valid && t->amount_paid.value == 12345 && t->paid_mop == 3 &&
-              t->vat == 2000);
+        check(
+            "paid GBP 123.45 by card at 20% VAT",
+            t->amount_paid.valid && t->amount_paid.value == 12345 && t->paid_mop == 3 &&
+                t->vat == 2000);
         check("renews 3 at a time", t->renew_quantity == 3);
-        check("transferable, off-peak only",
-              (t->flags & ITSO_T22_TRANSFERABLE) && (t->flags & ITSO_T22_OFF_PEAK_ONLY));
+        check(
+            "transferable, off-peak only",
+            (t->flags & ITSO_T22_TRANSFERABLE) && (t->flags & ITSO_T22_OFF_PEAK_ONLY));
         check("passback 20 minutes", p->has_passback && p->passback == 20);
         /* ValidOnDayCode drops Sunday even though TYP22Flags allows it, and
          * neither allows public holidays: both must say yes (rule 7). */
@@ -740,27 +920,32 @@ int main(void) {
         const ItsoTicketTerms* t = &p.ticket;
         char days[40];
         itso_format_days(itso_ticket_days(t->valid_days, t->flags), days, sizeof(days));
-        printf("  rev 1 period: %u-day pass, ends %02u:%02u, %s\n", t->pass_duration,
-               t->expiry_time / 60, t->expiry_time % 60, days);
+        printf(
+            "  rev 1 period: %u-day pass, ends %02u:%02u, %s\n",
+            t->pass_duration,
+            t->expiry_time / 60,
+            t->expiry_time % 60,
+            days);
         check("revision 1 ticket terms read", t->valid);
         check("revision 1 has no locations", !p.from.valid && !p.to.valid);
-        check("revision 1 PassDuration after the locations",
-              t->has_pass_duration && t->pass_duration == 31 &&
-              t->duration_unit == ItsoDurationDays);
+        check(
+            "revision 1 PassDuration after the locations",
+            t->has_pass_duration && t->pass_duration == 31 &&
+                t->duration_unit == ItsoDurationDays);
         check("revision 1 has no CPICC", !p.has_cpicc);
         check("sold by operator 163", p.has_retailer && p.retailer == 163);
         check("ends 04:00 on the expiry date", t->expiry_time == 240);
         check("no issue date recorded", t->issue_date == 0);
         check("no validity start recorded", t->valid_from_dts == 0 && !p.has_start);
         check("valid every day", strcmp(days, "Every day") == 0);
-        check("public holidays too",
-              itso_ticket_days(t->valid_days, t->flags) & ITSO_DOW_SPECIAL);
+        check("public holidays too", itso_ticket_days(t->valid_days, t->flags) & ITSO_DOW_SPECIAL);
         check("no amount paid recorded", !t->amount_paid.valid);
         check("one adult", t->adults == 1 && t->children == 0 && t->concessions == 0);
         check("stored-pass mode", p.stored_passes && !p.auto_renew);
         check("pass activated, none left", p.value_parsed && p.value_txn == 13 && p.count == 0);
-        check("current pass to 2026-02-05",
-              strcmp(fmt_unix(itso_date_to_unix(p.current_expiry)), "2026-02-05 00:00") == 0);
+        check(
+            "current pass to 2026-02-05",
+            strcmp(fmt_unix(itso_date_to_unix(p.current_expiry)), "2026-02-05 00:00") == 0);
         free(buf);
     }
 
@@ -775,22 +960,29 @@ int main(void) {
         p.typ = ItsoTypPeriodTicket;
         itso_parse_ipe(&p, buf, sizeof(period_rev2_group), 64);
         const ItsoTicketTerms* t = &p.ticket;
-        printf("  rev 2 period: paid %ld, from %s to %s\n", (long)t->amount_paid.value,
-               p.from.text, p.to.text);
+        printf(
+            "  rev 2 period: paid %ld, from %s to %s\n",
+            (long)t->amount_paid.value,
+            p.from.text,
+            p.to.text);
         check("revision 2 ticket terms read", t->valid);
-        check("revision 2 paid GBP 4040.00 by card",
-              t->amount_paid.valid && t->amount_paid.value == 404000 &&
-              t->amount_paid.currency == 0 && t->paid_mop == 3);
+        check(
+            "revision 2 paid GBP 4040.00 by card",
+            t->amount_paid.valid && t->amount_paid.value == 404000 &&
+                t->amount_paid.currency == 0 && t->paid_mop == 3);
         check("revision 2 standard class", t->travel_class == 2);
         check("revision 2 validity code", t->validity_code == 17);
-        check("revision 2 issued 2018-06-21",
-              strcmp(fmt_unix(itso_date_to_unix(t->issue_date)), "2018-06-21 00:00") == 0);
-        check("revision 2 valid from 2018-06-25 00:00",
-              strcmp(fmt_unix(itso_dts_to_unix(t->valid_from_dts)), "2018-06-25 00:00") == 0);
+        check(
+            "revision 2 issued 2018-06-21",
+            strcmp(fmt_unix(itso_date_to_unix(t->issue_date)), "2018-06-21 00:00") == 0);
+        check(
+            "revision 2 valid from 2018-06-25 00:00",
+            strcmp(fmt_unix(itso_dts_to_unix(t->valid_from_dts)), "2018-06-25 00:00") == 0);
         check("revision 2 ends 04:30 the next day", t->expiry_time == 1710);
-        check("revision 2 locations behind RouteCode",
-              p.from.valid && strcmp(p.from.text, "Station 5685") == 0 && p.to.valid &&
-              strcmp(p.to.text, "Station 0035") == 0);
+        check(
+            "revision 2 locations behind RouteCode",
+            p.from.valid && strcmp(p.from.text, "Station 5685") == 0 && p.to.valid &&
+                strcmp(p.to.text, "Station 0035") == 0);
         free(buf);
     }
 
@@ -804,11 +996,13 @@ int main(void) {
         p.typ = ItsoTypPeriodTicket;
         itso_parse_ipe(&p, buf, sizeof(period_rev3_group), 64);
         const ItsoTicketTerms* t = &p.ticket;
-        check("revision 3 pass lasts one month",
-              t->has_pass_duration && t->pass_duration == 1 &&
-              t->duration_unit == ItsoDurationMonths);
-        check("revision 3 stock renews for 365 days",
-              t->has_stock_duration && t->stock_duration == 365);
+        check(
+            "revision 3 pass lasts one month",
+            t->has_pass_duration && t->pass_duration == 1 &&
+                t->duration_unit == ItsoDurationMonths);
+        check(
+            "revision 3 stock renews for 365 days",
+            t->has_stock_duration && t->stock_duration == 365);
         check("revision 3 without CPICC reads none", !p.has_cpicc);
         free(buf);
     }
@@ -837,41 +1031,45 @@ int main(void) {
     memset(group, 0, sizeof(group));
     memcpy(group, card_sector4, sizeof(card_sector4));
     memcpy(group + sizeof(card_sector4), card_sector10, sizeof(card_sector10));
-    itso_parse_ipe(
-        &card.products[3], group, sizeof(card_sector4) + sizeof(card_sector10), 64);
-    printf("  E4 %s: rev %u, rides left %u, used %d\n",
-           itso_typ_name(card.products[3].typ), card.products[3].format_rev,
-           (unsigned)card.products[3].count, card.products[3].ticket_used);
+    itso_parse_ipe(&card.products[3], group, sizeof(card_sector4) + sizeof(card_sector10), 64);
+    printf(
+        "  E4 %s: rev %u, rides left %u, used %d\n",
+        itso_typ_name(card.products[3].typ),
+        card.products[3].format_rev,
+        (unsigned)card.products[3].count,
+        card.products[3].ticket_used);
     dump_location("from", &card.products[3].from);
     dump_location("to", &card.products[3].to);
     check("journey ticket is revision 2", card.products[3].format_rev == 2);
-    check("journey ticket from NLC 5631",
-          card.products[3].from.valid &&
-          strcmp(card.products[3].from.text, "Station 5631") == 0);
-    check("journey ticket to NLC 5685",
-          card.products[3].to.valid && strcmp(card.products[3].to.text, "Station 5685") == 0);
+    check(
+        "journey ticket from NLC 5631",
+        card.products[3].from.valid && strcmp(card.products[3].from.text, "Station 5631") == 0);
+    check(
+        "journey ticket to NLC 5685",
+        card.products[3].to.valid && strcmp(card.products[3].to.text, "Station 5685") == 0);
 
     /* Both value records carry the same DTS, so only TS# distinguishes them. The
      * live one is the later of the two: the ride has been spent. */
     check("journey value record read", card.products[3].value_parsed);
-    check("journey ticket counts rides, not money",
-          card.products[3].count_kind == ItsoCountRides &&
-          !card.products[3].balance.valid);
-    check("TS# picks the newer record over an equal DTS",
-          card.products[3].count == 0 && card.products[3].ticket_used);
+    check(
+        "journey ticket counts rides, not money",
+        card.products[3].count_kind == ItsoCountRides && !card.products[3].balance.valid);
+    check(
+        "TS# picks the newer record over an equal DTS",
+        card.products[3].count == 0 && card.products[3].ticket_used);
 
     /* And the history has to be ordered the same way. Both records share a
      * timestamp to the minute, so a history sorted by time would put them in
      * either order and read as a ride being restored rather than spent. */
-    check("journey ticket keeps both records",
-          card.products[3].value_history_count == 2);
-    check("history is ordered by TS#, not by an equal DTS",
-          card.products[3].value_history[0].ts == 5 &&
-          card.products[3].value_history[1].ts == 4);
-    check("the earlier record still had the ride",
-          card.products[3].value_history[1].has_count &&
-          card.products[3].value_history[1].count == 1 &&
-          card.products[3].value_history[0].count == 0);
+    check("journey ticket keeps both records", card.products[3].value_history_count == 2);
+    check(
+        "history is ordered by TS#, not by an equal DTS",
+        card.products[3].value_history[0].ts == 5 && card.products[3].value_history[1].ts == 4);
+    check(
+        "the earlier record still had the ride",
+        card.products[3].value_history[1].has_count &&
+            card.products[3].value_history[1].count == 1 &&
+            card.products[3].value_history[0].count == 0);
 
     /* E5: loyalty. A points balance is three bytes wide, so decoding it as a
      * purse would silently truncate it to the low two. */
@@ -879,18 +1077,22 @@ int main(void) {
     memcpy(group, card_sector5, sizeof(card_sector5));
     memcpy(group + 64, card_sector12, sizeof(card_sector12));
     itso_parse_ipe(&card.products[4], group, 128, 64);
-    printf("  E5 %s: %lu points\n", itso_typ_name(card.products[4].typ),
-           (unsigned long)card.products[4].count);
+    printf(
+        "  E5 %s: %lu points\n",
+        itso_typ_name(card.products[4].typ),
+        (unsigned long)card.products[4].count);
     check("loyalty value record read", card.products[4].value_parsed);
-    check("loyalty counts points",
-          card.products[4].count_kind == ItsoCountPoints &&
-          !card.products[4].balance.valid);
+    check(
+        "loyalty counts points",
+        card.products[4].count_kind == ItsoCountPoints && !card.products[4].balance.valid);
     check("74500 points does not truncate to 16 bits", card.products[4].count == 74500);
-    check("the loyalty history keeps the earlier points balance",
-          card.products[4].value_history_count == 2 &&
-          card.products[4].value_history[1].count == 1200);
-    check("loyalty remove date is 30 days",
-          card.products[4].has_remove_date && card.products[4].remove_date == 30);
+    check(
+        "the loyalty history keeps the earlier points balance",
+        card.products[4].value_history_count == 2 &&
+            card.products[4].value_history[1].count == 1200);
+    check(
+        "loyalty remove date is 30 days",
+        card.products[4].has_remove_date && card.products[4].remove_date == 30);
 
     printf("\n== Taps ==\n");
     itso_parse_log(&card, card_log, sizeof(card_log));
@@ -898,21 +1100,33 @@ int main(void) {
     for(uint8_t i = 0; i < card.tap_count; i++) {
         const ItsoTap* tap = &card.taps[i];
         itso_format_money(&tap->amount, money, sizeof(money));
-        printf("  [%u]%s %s at %s, %s\n", i, tap->latest ? " *" : "  ",
-               itso_transaction_name(tap->transaction_type),
-               fmt_unix(itso_dts_to_unix(tap->dts)), money);
+        printf(
+            "  [%u]%s %s at %s, %s\n",
+            i,
+            tap->latest ? " *" : "  ",
+            itso_transaction_name(tap->transaction_type),
+            fmt_unix(itso_dts_to_unix(tap->dts)),
+            money);
         dump_location("from", &tap->origin);
         dump_location("to", &tap->destination);
     }
     check("four taps decoded", card.tap_count == 4);
     check("newest tap first is tap out", card.taps[0].transaction_type == 12);
     check("newest tap flagged latest", card.taps[0].latest);
-    check("tap out origin", card.taps[0].origin.valid &&
-          strcmp(card.taps[0].origin.text, "Station 1072") == 0);
-    check("tap out destination", card.taps[0].destination.valid &&
-          strcmp(card.taps[0].destination.text, "Station 1444") == 0);
+    check(
+        "tap out origin",
+        card.taps[0].origin.valid && strcmp(card.taps[0].origin.text, "Station 1072") == 0);
+    check(
+        "tap out destination",
+        card.taps[0].destination.valid &&
+            strcmp(card.taps[0].destination.text, "Station 1444") == 0);
     itso_format_money(&card.taps[0].amount, money, sizeof(money));
-    check("tap out fare GBP 2.65", strcmp(money, "\xC2\xA3" "2.65") == 0);
+    check(
+        "tap out fare GBP 2.65",
+        strcmp(
+            money,
+            "\xC2\xA3"
+            "2.65") == 0);
     check("older tap is tap in", card.taps[1].transaction_type == 11);
 
     /* The third record is on format revision 4, which a check-in/check-out
@@ -922,39 +1136,55 @@ int main(void) {
      * on a NaptanCode as well as on the rail NLCs above, and the stop code
      * reaches the app in the form the stop table is keyed on. */
     const ItsoTap* bus = &card.taps[3];
-    check("bus tap origin is a stop",
-          bus->origin.valid && strcmp(bus->origin.text, "Stop 00062624") == 0);
-    check("bus tap origin offers a NaptanCode",
-          strcmp(bus->origin.code, "00062624") == 0 &&
-          itso_location_code_kind(&bus->origin) == ItsoLocCodeNaptan);
-    check("bus tap destination is a stop",
-          bus->destination.valid && strcmp(bus->destination.text, "Stop 62697956") == 0);
-    check("bus tap destination offers a NaptanCode",
-          strcmp(bus->destination.code, "62697956") == 0 &&
-          itso_location_code_kind(&bus->destination) == ItsoLocCodeNaptan);
+    check(
+        "bus tap origin is a stop",
+        bus->origin.valid && strcmp(bus->origin.text, "Stop 00062624") == 0);
+    check(
+        "bus tap origin offers a NaptanCode",
+        strcmp(bus->origin.code, "00062624") == 0 &&
+            itso_location_code_kind(&bus->origin) == ItsoLocCodeNaptan);
+    check(
+        "bus tap destination is a stop",
+        bus->destination.valid && strcmp(bus->destination.text, "Stop 62697956") == 0);
+    check(
+        "bus tap destination offers a NaptanCode",
+        strcmp(bus->destination.code, "62697956") == 0 &&
+            itso_location_code_kind(&bus->destination) == ItsoLocCodeNaptan);
 
     const ItsoTap* rev4 = &card.taps[2];
-    printf("  rev%u: via %s, paid by %s, entry %s, entry op %u\n", rev4->format_rev,
-           rev4->route.text, itso_payment_name(rev4->mop),
-           fmt_unix(itso_dts_to_unix(rev4->entry_dts)), rev4->entry_oid);
+    printf(
+        "  rev%u: via %s, paid by %s, entry %s, entry op %u\n",
+        rev4->format_rev,
+        rev4->route.text,
+        itso_payment_name(rev4->mop),
+        fmt_unix(itso_dts_to_unix(rev4->entry_dts)),
+        rev4->entry_oid);
     check("third record is format revision 4", rev4->format_rev == 4);
-    check("routing code is NLC 1444",
-          rev4->route.valid && strcmp(rev4->route.text, "Station 1444") == 0);
-    check("destination survives the routing group",
-          rev4->destination.valid && strcmp(rev4->destination.text, "Station 5685") == 0);
+    check(
+        "routing code is NLC 1444",
+        rev4->route.valid && strcmp(rev4->route.text, "Station 1444") == 0);
+    check(
+        "destination survives the routing group",
+        rev4->destination.valid && strcmp(rev4->destination.text, "Station 5685") == 0);
     itso_format_money(&rev4->amount, money, sizeof(money));
-    check("rev 4 fare GBP 4.80", strcmp(money, "\xC2\xA3" "4.80") == 0);
+    check(
+        "rev 4 fare GBP 4.80",
+        strcmp(
+            money,
+            "\xC2\xA3"
+            "4.80") == 0);
     check("fare was paid in cash", rev4->has_mop && rev4->mop == 1);
     check("fare was collected", !rev4->no_fare_charged);
     check("VAT is 20%", rev4->has_vat && rev4->vat == 2000);
     check("POST network IIN read", rev4->has_iin && rev4->iin == 0x633597);
-    check("candidate IPEs read",
-          rev4->has_cipe && rev4->cipe[0] == 1 && rev4->cipe[1] == 4 && rev4->cipe[2] == 0);
-    check("inspection flag set, invalid travel clear",
-          rev4->inspected && !rev4->invalid_travel);
-    check("entry timestamp is 2026-09-12 08:12",
-          rev4->has_entry &&
-          strcmp(fmt_unix(itso_dts_to_unix(rev4->entry_dts)), "2026-09-12 08:12") == 0);
+    check(
+        "candidate IPEs read",
+        rev4->has_cipe && rev4->cipe[0] == 1 && rev4->cipe[1] == 4 && rev4->cipe[2] == 0);
+    check("inspection flag set, invalid travel clear", rev4->inspected && !rev4->invalid_travel);
+    check(
+        "entry timestamp is 2026-09-12 08:12",
+        rev4->has_entry &&
+            strcmp(fmt_unix(itso_dts_to_unix(rev4->entry_dts)), "2026-09-12 08:12") == 0);
     check("entry operator is 109", rev4->has_entry_oid && rev4->entry_oid == 109);
 
     printf("\n== Shell checksum ==\n");
@@ -984,8 +1214,9 @@ int main(void) {
     check("16-bit ISAM OID from 57344", itso_isam_oid((1u << 19) | (0x7u << 16)) == 57345);
 
     check("directory InstanceID read", card.dir_instance_valid);
-    check("directory last written by operator 109",
-          itso_isam_oid(card.dir_isam) == 109 && card.dir_kid == 1 && card.shell_iteration == 3);
+    check(
+        "directory last written by operator 109",
+        itso_isam_oid(card.dir_isam) == 109 && card.dir_kid == 1 && card.shell_iteration == 3);
 
     check("purse deposit VAT 20%", card.products[0].deposit_vat == 2000);
     check("purse tops up from another purse", card.products[0].auto_top_up_internal);
@@ -994,49 +1225,63 @@ int main(void) {
         const ItsoProduct* id16 = &card.products[1];
         char lang[3];
         check("ID CPICC", id16->has_cpicc && id16->cpicc == 0x9100);
-        check("ID language is Welsh",
-              id16->language == 182 && itso_language_code(182, lang) && strcmp(lang, "cy") == 0 &&
-              strcmp(itso_language_name(182), "Welsh") == 0);
-        check("ITSO language 44 is English",
-              itso_language_code(44, lang) && strcmp(lang, "en") == 0);
-        check("the misprinted language 71 reads as Igbo",
-              itso_language_code(71, lang) && strcmp(lang, "ig") == 0);
+        check(
+            "ID language is Welsh",
+            id16->language == 182 && itso_language_code(182, lang) && strcmp(lang, "cy") == 0 &&
+                strcmp(itso_language_name(182), "Welsh") == 0);
+        check(
+            "ITSO language 44 is English",
+            itso_language_code(44, lang) && strcmp(lang, "en") == 0);
+        check(
+            "the misprinted language 71 reads as Igbo",
+            itso_language_code(71, lang) && strcmp(lang, "ig") == 0);
         check("language 0 is not a language", !itso_language_code(0, lang));
         check("ID holder ID", id16->has_holder_id && id16->holder_id == 4078);
-        check("ID secondary holder",
-              id16->has_secondary_holder && id16->secondary_holder_id == 1234567);
-        check("names still found after the secondary holder",
-              strcmp(id16->name, "ALEX MORGAN") == 0);
-        check("rounding enabled, flag set, value flag clear",
-              id16->rounding == (ITSO_ROUNDING_ENABLED | ITSO_ROUNDING_FLAG));
-        check("ID deposit GBP 5.00 cash",
-              id16->has_deposit && id16->deposit.value == 500 && id16->deposit_mop == 1);
-        check("ID shell deposit GBP 3.00 by card at 20%",
-              id16->has_shell_deposit && id16->shell_deposit.value == 300 &&
-              id16->shell_deposit_mop == 3 && id16->shell_deposit_vat == 2000);
+        check(
+            "ID secondary holder",
+            id16->has_secondary_holder && id16->secondary_holder_id == 1234567);
+        check(
+            "names still found after the secondary holder",
+            strcmp(id16->name, "ALEX MORGAN") == 0);
+        check(
+            "rounding enabled, flag set, value flag clear",
+            id16->rounding == (ITSO_ROUNDING_ENABLED | ITSO_ROUNDING_FLAG));
+        check(
+            "ID deposit GBP 5.00 cash",
+            id16->has_deposit && id16->deposit.value == 500 && id16->deposit_mop == 1);
+        check(
+            "ID shell deposit GBP 3.00 by card at 20%",
+            id16->has_shell_deposit && id16->shell_deposit.value == 300 &&
+                id16->shell_deposit_mop == 3 && id16->shell_deposit_vat == 2000);
     }
 
     {
         const ItsoProduct* j = &card.products[3];
         const ItsoTicketTerms* t = &j->ticket;
         check("journey terms read", t->valid);
-        check("journey issued 2026-09-14",
-              strcmp(fmt_unix(itso_date_to_unix(t->issue_date)), "2026-09-14 00:00") == 0);
-        check("journey validity code and end time",
-              t->validity_code == 25 && t->expiry_time == 1440 + 270);
-        check("journey standard class, adult and child",
-              t->travel_class == 2 && t->adults == 1 && t->children == 1);
-        check("journey paid GBP 5.80 by card",
-              t->amount_paid.valid && t->amount_paid.value == 580 && t->paid_mop == 3);
-        check("journey photocard, promotion and CPICC",
-              t->photocard == 987654 && t->promotion_code == 7 && j->has_cpicc &&
-              j->cpicc == 0x12);
-        check("journey mode group",
-              t->has_mode_group && t->mode == ItsoJourneyModeStoredJourneys &&
-              t->max_transfers == 2 && t->time_limit == 120 && t->ride_value.valid &&
-              t->ride_value.value == 250);
-        check("journey locations still land after the terms",
-              j->from.valid && strcmp(j->from.text, "Station 5631") == 0);
+        check(
+            "journey issued 2026-09-14",
+            strcmp(fmt_unix(itso_date_to_unix(t->issue_date)), "2026-09-14 00:00") == 0);
+        check(
+            "journey validity code and end time",
+            t->validity_code == 25 && t->expiry_time == 1440 + 270);
+        check(
+            "journey standard class, adult and child",
+            t->travel_class == 2 && t->adults == 1 && t->children == 1);
+        check(
+            "journey paid GBP 5.80 by card",
+            t->amount_paid.valid && t->amount_paid.value == 580 && t->paid_mop == 3);
+        check(
+            "journey photocard, promotion and CPICC",
+            t->photocard == 987654 && t->promotion_code == 7 && j->has_cpicc && j->cpicc == 0x12);
+        check(
+            "journey mode group",
+            t->has_mode_group && t->mode == ItsoJourneyModeStoredJourneys &&
+                t->max_transfers == 2 && t->time_limit == 120 && t->ride_value.valid &&
+                t->ride_value.value == 250);
+        check(
+            "journey locations still land after the terms",
+            j->from.valid && strcmp(j->from.text, "Station 5631") == 0);
     }
 
     {
@@ -1044,14 +1289,17 @@ int main(void) {
         const ItsoTap* out = &card.taps[0];
         const ItsoTap* in = NULL;
         for(uint8_t i = 0; i < card.tap_count; i++) {
-            if(card.taps[i].transaction_type == 11 && card.taps[i].format_rev == 2) in = &card.taps[i];
+            if(card.taps[i].transaction_type == 11 && card.taps[i].format_rev == 2)
+                in = &card.taps[i];
         }
-        check("tap out names its reader's operator",
-              out && out->has_writer && itso_isam_oid(out->writer_isam) == 9000);
-        check("tap out was a return with a companion",
-              out && out->companion && out->return_ticket);
-        check("tap in names its reader's operator",
-              in && in->has_writer && itso_isam_oid(in->writer_isam) == 109);
+        check(
+            "tap out names its reader's operator",
+            out && out->has_writer && itso_isam_oid(out->writer_isam) == 9000);
+        check(
+            "tap out was a return with a companion", out && out->companion && out->return_ticket);
+        check(
+            "tap in names its reader's operator",
+            in && in->has_writer && itso_isam_oid(in->writer_isam) == 109);
         check("tap in carried no companion", in && !in->companion && !in->return_ticket);
     }
 
@@ -1069,27 +1317,36 @@ int main(void) {
         itso_parse_ipe(&p, buf, len, 64);
         ItsoCapping* cap = malloc(sizeof(ItsoCapping));
         bool ok = itso_parse_capping(buf, len, 64, 0, cap);
-        printf("  VGXRef %d: strategy %u, day %ld, 7-day %ld after %u days\n", ref,
-               cap->strategy, (long)cap->acc[0].day.value, (long)cap->acc[1].multiday.value,
-               cap->acc[1].day_count);
-        check(ref == 1 ? "reduced capping extension flagged" : "full capping extension flagged",
-              p.vgx_ref == ref);
-        check("the extension leaves the balance alone",
-              p.balance.valid && p.balance.value == 1375);
+        printf(
+            "  VGXRef %d: strategy %u, day %ld, 7-day %ld after %u days\n",
+            ref,
+            cap->strategy,
+            (long)cap->acc[0].day.value,
+            (long)cap->acc[1].multiday.value,
+            cap->acc[1].day_count);
+        check(
+            ref == 1 ? "reduced capping extension flagged" : "full capping extension flagged",
+            p.vgx_ref == ref);
+        check(
+            "the extension leaves the balance alone", p.balance.valid && p.balance.value == 1375);
         check("capping decoded", ok && cap->valid && cap->ref == ref && cap->strategy == 7);
-        check("day cap accumulator",
-              cap->acc[0].rule == ItsoCapRuleDay && cap->acc[0].uncapped.value == 900 &&
-              cap->acc[0].day.value == 700 && cap->acc[0].last_txn == 11);
-        check("multi-day accumulator",
-              cap->acc[1].rule == ItsoCapRuleShortPeriod && cap->acc[1].multiday.value == 2500 &&
-              cap->acc[1].day_count == 3);
+        check(
+            "day cap accumulator",
+            cap->acc[0].rule == ItsoCapRuleDay && cap->acc[0].uncapped.value == 900 &&
+                cap->acc[0].day.value == 700 && cap->acc[0].last_txn == 11);
+        check(
+            "multi-day accumulator",
+            cap->acc[1].rule == ItsoCapRuleShortPeriod && cap->acc[1].multiday.value == 2500 &&
+                cap->acc[1].day_count == 3);
         check("unused accumulators are empty", cap->acc[2].rule == ItsoCapRuleNone);
-        check("where the last cap applied",
-              cap->acc[0].location.valid && strcmp(cap->acc[0].location.text, "Station 1072") == 0);
+        check(
+            "where the last cap applied",
+            cap->acc[0].location.valid && strcmp(cap->acc[0].location.text, "Station 1072") == 0);
         if(ref == 2) {
             check("full form keeps the last fare", cap->acc[0].last_fare.value == 185);
-            check("full form keeps when the cap applied",
-                  strcmp(fmt_unix(itso_dts_to_unix(cap->acc[0].cap_dts)), "2026-09-14 08:41") == 0);
+            check(
+                "full form keeps when the cap applied",
+                strcmp(fmt_unix(itso_dts_to_unix(cap->acc[0].cap_dts)), "2026-09-14 08:41") == 0);
             check("null locations stay absent", !cap->acc[1].location.valid);
         }
         /* A group cut short anywhere must fail cleanly, never over-read: each
@@ -1107,11 +1364,15 @@ int main(void) {
     }
     {
         ItsoCapping cap;
-        check("a purse with no extension has no capping",
-              !itso_parse_capping(capping1_group, 64, 64, 0, &cap) && !cap.valid);
+        check(
+            "a purse with no extension has no capping",
+            !itso_parse_capping(capping1_group, 64, 64, 0, &cap) && !cap.valid);
     }
 
-    printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
-           failures, failures == 1 ? "" : "s");
+    printf(
+        "\n%s (%d failure%s)\n",
+        failures ? "FAILED" : "ALL PASSED",
+        failures,
+        failures == 1 ? "" : "s");
     return failures != 0;
 }

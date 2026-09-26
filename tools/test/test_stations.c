@@ -179,8 +179,9 @@ int main(void) {
     size = make_table(table, "London Zone R1256", "Woking");
     table[0] = 'X';
     write_file("stub_data_stations.dat", table, size);
-    check("bad magic falls through to the asset",
-          lookup("5685") && strcmp(lookup("5685"), "Woking") == 0);
+    check(
+        "bad magic falls through to the asset",
+        lookup("5685") && strcmp(lookup("5685"), "Woking") == 0);
 
     size = make_table(table, "London Zone R1256", "Woking");
     table[4] = 99; /* future version */
@@ -218,13 +219,13 @@ int main(void) {
     printf("Shipped table (%s)\n", shipped);
     check("opens", opens());
     check("5685 is Woking", lookup("5685") && strcmp(lookup("5685"), "Woking") == 0);
-    check("1444 is London Euston",
-          lookup("1444") && strcmp(lookup("1444"), "London Euston") == 0);
+    check("1444 is London Euston", lookup("1444") && strcmp(lookup("1444"), "London Euston") == 0);
     /* Fare groups are journey endpoints too, and come from the wider source. */
-    check("1072 is a fare group",
-          lookup("1072") && strcmp(lookup("1072"), "London Stations") == 0);
-    check("0035 is a zone group",
-          lookup("0035") && strcmp(lookup("0035"), "London Zone R1256") == 0);
+    check(
+        "1072 is a fare group", lookup("1072") && strcmp(lookup("1072"), "London Stations") == 0);
+    check(
+        "0035 is a zone group",
+        lookup("0035") && strcmp(lookup("0035"), "London Zone R1256") == 0);
     check("0000 is absent", lookup("0000") == NULL);
 
     /* Walk the index and look every code up, so the search is exercised over
@@ -232,8 +233,8 @@ int main(void) {
     data = read_file(shipped, &shipped_size);
     uint32_t count = (uint32_t)data[8] | ((uint32_t)data[9] << 8) | ((uint32_t)data[10] << 16) |
                      ((uint32_t)data[11] << 24);
-    uint32_t names = (uint32_t)data[12] | ((uint32_t)data[13] << 8) |
-                     ((uint32_t)data[14] << 16) | ((uint32_t)data[15] << 24);
+    uint32_t names = (uint32_t)data[12] | ((uint32_t)data[13] << 8) | ((uint32_t)data[14] << 16) |
+                     ((uint32_t)data[15] << 24);
     uint32_t wrong = 0, previous = 0;
     for(uint32_t i = 0; i < count; i++) {
         const uint8_t* entry = data + 16 + i * 6;
