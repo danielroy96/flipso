@@ -203,7 +203,15 @@ Directory: 00 21 13 48 40 ...
 Product 1: 18 01 FF 00 F7 ...
 Product 2: 2C 42 FF 00 00 ...
 Log: 14 02 00 DB EE 5A ...
+Chip: 04 01 01 01 00 18 05 ...
 ```
+
+`Chip` is the one block that is not part of the ITSO shell: a DESFire's
+GetVersion reply (seven bytes of hardware version, seven of software, the UID,
+batch number and production week and year) and then GetFreeMemory's three
+bytes, when the card answered it. It is what lets a saved card's Card screen
+name its chip as a live read does. A CMD2 card has no such block, and neither
+does a file saved before Flipso 1.3 kept it.
 
 `Product n` is keyed by directory entry E(n), which is how a block is matched
 back to the product it belongs to; the sector chain behind it has already been
@@ -224,7 +232,9 @@ Rewriting is the risky moment, because the old file may hold journeys that
 exist nowhere else any more. So the new file is written whole to
 `<name>.flipso.tmp` first and renamed over the old one only once it is complete;
 a write that fails - a full SD card - fails before the record is touched, and
-removes its temporary file. Renames guard the same way: firmware 1.4's rename
+removes its temporary file. So does a rename that fails: the old record is
+never removed to make way for a second try, which would leave nothing if that
+failed too. Renames guard the same way: firmware 1.4's rename
 replaces whatever holds the destination name, so Flipso refuses one that would
 land on another card, and changes only the case of a name by way of a free one.
 
@@ -495,7 +505,7 @@ it, and when. A card holds no statement anywhere else, so those few records are
 the only history it carries.
 
 They are shown under **Earlier on card** on the Pay as you go and product
-screens, and the ones only a saved file remembers under **From past reads**. The
+screens, and the ones only a saved file remembers under **Off card**. The
 journey log is split the same way. Each
 record contributes whichever of a balance or a counter its IPE type keeps in the
 tail — the same field the screen shows above as the current value, decoded in one

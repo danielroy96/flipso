@@ -11,9 +11,9 @@
  * more useful answer than "read failed" for a card such as an Oyster whose
  * contents are locked.
  *
- * This is the data model and its rendering, kept free of the NFC stack so that
- * it builds and is tested on the host: flipso_reader.c fills it in, the media
- * scene prints it. Sizes are capped rather than grown, so a card with more
+ * This is the data model, kept free of the NFC stack so that it builds and is
+ * tested on the host: flipso_reader.c fills it in, and flipso_format.c turns
+ * it into the screen. Sizes are capped rather than grown, so a card with more
  * applications or files than we keep is reported as truncated rather than
  * silently shortened.
  */
@@ -40,6 +40,28 @@ extern "C" {
 #define FLIPSO_MEDIA_MAX_FILES 16
 /** Total bytes of freely readable file content kept for display. */
 #define FLIPSO_MEDIA_MAX_DATA  128
+
+/* Access rights are one 16-bit word per file: four key numbers, four bits each.
+ * Key 14 is "anyone" and key 15 is "nobody"; anything else names a key that has
+ * to be authenticated with first. */
+#define FLIPSO_ACCESS_FREE  0x0E
+#define FLIPSO_ACCESS_NEVER 0x0F
+
+#define FLIPSO_ACCESS_READ(a)       (((a) >> 12) & 0x0F)
+#define FLIPSO_ACCESS_WRITE(a)      (((a) >> 8) & 0x0F)
+#define FLIPSO_ACCESS_READ_WRITE(a) (((a) >> 4) & 0x0F)
+#define FLIPSO_ACCESS_CHANGE(a)     ((a) & 0x0F)
+
+/* File types and communication settings, as the DESFire wire values - which is
+ * also what the firmware's MfDesfireFileType and
+ * MfDesfireFileCommunicationSettings are. Repeated rather than included so
+ * that this stays free of the NFC stack. */
+#define FLIPSO_FILE_STANDARD      0
+#define FLIPSO_FILE_BACKUP        1
+#define FLIPSO_FILE_VALUE         2
+#define FLIPSO_FILE_LINEAR_RECORD 3
+#define FLIPSO_FILE_CYCLIC_RECORD 4
+#define FLIPSO_FILE_TRANSACTION   5
 
 /** Chip generation, derived from the hardware version GetVersion reports. */
 typedef enum {
@@ -145,16 +167,23 @@ uint32_t flipso_media_storage_bytes(uint8_t code, bool* exact);
 /** True when the file can be read with no key, per its access rights. */
 bool flipso_media_file_free_read(const FlipsoMediaFile* file);
 
-/**
- * Append the few lines of chip description worth showing beside a decoded ITSO
- * card: what chip it is, its UID, storage and when it was made. The full
- * description is flipso_media_cat()'s, for a card there is nothing else to say
- * about.
- */
-void flipso_media_cat_chip_summary(FuriString* out, const FlipsoMedia* media);
+/** GetVersion's reply: seven bytes of hardware, seven of software, then the
+ * UID, batch number and production week and year. */
+#define FLIPSO_MEDIA_VERSION_LEN 28
+/** That, then GetFreeMemory's three bytes: the block a saved card keeps. */
+#define FLIPSO_MEDIA_CHIP_LEN (FLIPSO_MEDIA_VERSION_LEN + 3)
 
-/** Append everything known about the card, in sections, ready to be scrolled. */
-void flipso_media_cat(FuriString* out, const FlipsoMedia* media);
+/**
+ * Fill in the chip half of @p media from the bytes the card answered with.
+ *
+ * The reader builds these bytes from GetVersion and GetFreeMemory, and a saved
+ * card keeps them, so a card opened from the SD card describes its chip as it
+ * did when it was read. The free memory is optional: @p len of
+ * FLIPSO_MEDIA_VERSION_LEN is a card that did not report it.
+ *
+ * @return false, leaving @p media alone, when there are too few bytes.
+ */
+bool flipso_media_parse_chip(FlipsoMedia* media, const uint8_t* data, size_t len);
 
 #ifdef __cplusplus
 }

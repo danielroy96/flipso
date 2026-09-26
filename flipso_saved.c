@@ -136,16 +136,11 @@ bool flipso_saved_write(const FlipsoCapture* capture, const char* path) {
      * fails part way - a full SD card - must fail before the old record is
      * touched, not after it has been truncated. */
     bool ok = flipso_saved_write_file(storage, capture, temp_path);
-    if(ok) {
-        ok = storage_common_rename(storage, temp_path, path) == FSE_OK;
-        if(!ok) {
-            /* Firmware that will not rename onto a name in use. The new file
-             * is complete by now, so this is the one moment the old record can
-             * go without anything being lost with it. */
-            storage_simply_remove(storage, path);
-            ok = storage_common_rename(storage, temp_path, path) == FSE_OK;
-        }
-    }
+    /* The rename replaces the old record in one step: the SDK documents that
+     * it overwrites its destination. A rename that fails leaves the old record
+     * alone, and nothing here removes it to try again - if that retry failed
+     * too, both copies would be gone. */
+    if(ok) ok = storage_common_rename(storage, temp_path, path) == FSE_OK;
 
     if(!ok) {
         /* Everything downstream treats a file that is there as a card that can

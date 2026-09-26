@@ -86,14 +86,15 @@ static void flipso_scene_save_ask_update(Flipso* app, uint32_t read_at) {
      * only place it still exists. */
     if(diff->kept_products) {
         furi_string_cat_printf(
-            text, "\n%s %u product%s the card\nno longer carries", kept ? "and" : "Keeping",
+            text, "\n%s %u product%s now\noff the card", kept ? "and" : "Keeping",
             diff->kept_products, diff->kept_products == 1 ? "" : "s");
     }
 
     widget_reset(app->widget);
-    widget_add_icon_element(app->widget, 2, 1, &I_save_10px);
+    /* The same header line as the error and delete screens. */
+    widget_add_icon_element(app->widget, 4, 3, &I_save_10px);
     widget_add_string_element(
-        app->widget, 70, 2, AlignCenter, AlignTop, FontPrimary, "Update saved card?");
+        app->widget, 70, 4, AlignCenter, AlignTop, FontPrimary, "Update saved card?");
     widget_add_text_scroll_element(app->widget, 0, 17, 128, 33, furi_string_get_cstr(text));
     widget_add_button_element(
         app->widget, GuiButtonTypeLeft, "Cancel", flipso_scene_save_button_callback, app);

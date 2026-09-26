@@ -14,6 +14,10 @@
 #define FLIPSO_GLYPH_H 7
 /* The space the font leaves after each of its own glyphs. */
 #define FLIPSO_GLYPH_ADVANCE (FLIPSO_GLYPH_W + 1)
+/* The same space in front of a symbol that follows the font's own ink. The font
+ * measures a run without the gap after its last glyph, so without this a minus
+ * sign runs straight into the pound's crossbar, which is on the same row. */
+#define FLIPSO_GLYPH_GAP 1
 
 /*  ..##.
  *  .#..#
@@ -80,6 +84,9 @@ static uint16_t flipso_glyphs_walk(Canvas* canvas, int32_t x, int32_t y, const c
     char run[48];
     size_t fill = 0;
     uint16_t width = 0;
+    /* The character before the current position, or 0 at the start and after
+     * a hand-drawn symbol, whose advance already carries its gap. */
+    char last = 0;
 
     for(const char* p = text;; ) {
         const FlipsoGlyph* glyph = *p ? flipso_glyphs_at(p) : NULL;
@@ -96,6 +103,8 @@ static uint16_t flipso_glyphs_walk(Canvas* canvas, int32_t x, int32_t y, const c
         if(end) break;
 
         if(glyph) {
+            if(last && last != ' ') width = (uint16_t)(width + FLIPSO_GLYPH_GAP);
+            last = 0;
             if(draw) {
                 /* The font's glyphs stand on the row above the y it is given,
                  * so the symbol's foot goes there too. */
@@ -108,6 +117,7 @@ static uint16_t flipso_glyphs_walk(Canvas* canvas, int32_t x, int32_t y, const c
             continue;
         }
 
+        last = *p;
         run[fill++] = *p++;
     }
 

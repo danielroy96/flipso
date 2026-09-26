@@ -81,13 +81,15 @@ screen opens the ones already there — the same screens, without the card.
 
 What is saved is not the decoded screens but *what the card said*: the Shell
 Environment, the Directory, each product's sector chain and the journey log,
-exactly as they came off the card. Loading one runs those bytes back through the
+exactly as they came off the card — and, for a DESFire, what the chip said about
+itself, so a saved card's Card screen still names its chip. Loading one runs those bytes back through the
 decoder in the build that is running, so a saved card shows whatever the current
 Flipso can make of it, and a decoder fix reaches the cards already on the card.
 
 An open saved card can be renamed or deleted from its own menu. The name is the
 only part of the file that is yours rather than the card's, so it is the only
-part there is anything to change.
+part there is anything to change. Deleting one takes you back to the list of
+saved cards, so clearing out several is one after another.
 
 Reading a card you have saved before updates that record instead of making a
 second copy. Cards are matched by card number rather than by file name, so the
@@ -112,7 +114,7 @@ holds — with a clock for an icon instead of its own, **Off card** at the end o
 its row, and the date of the last read that found it on the card at the top of its
 detail screen. The same distinction runs through a product's transactions: what
 is still in its value records is listed under **Earlier on card**, and what only
-the file remembers under **From past reads**. The screens that describe the card
+the file remembers under **Off card**. The screens that describe the card
 as it is — the purse, the ID, the product count on the card's own menu — count
 only what is on it.
 

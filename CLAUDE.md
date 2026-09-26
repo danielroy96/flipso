@@ -48,7 +48,7 @@ flipso.c              app entry, the icon table, the name validator
 flipso_format.c       the text of every detail screen; host-tested by test_format.c
 flipso_reader.c       card reading: DESFire (CMD7/CMD12) and the retry logic
 flipso_cmd2.c         ISO 7816 transport for CMD2 media
-flipso_media.c        what a non-ITSO card says about itself (incl. Oyster)
+flipso_media.c        what a DESFire says about itself (incl. Oyster); the text is flipso_format.c's
 flipso_capture.c      the raw blocks a read produced; saved cards decode from these
 flipso_saved.c        those blocks on the SD card: write, read, browse, match, rename, delete
 flipso_operators.c    operator id -> name, built-in table plus the user's file

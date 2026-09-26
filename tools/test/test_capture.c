@@ -154,6 +154,46 @@ static void round_trip(void) {
     flipso_capture_free(capture);
 }
 
+/* The chip's description: saved and loaded like any block, byte for byte, and
+ * left alone by a merge, which only replaces the history blocks. */
+static void chip_block(void) {
+    uint8_t chip[31];
+    for(uint8_t i = 0; i < sizeof(chip); i++) chip[i] = (uint8_t)(0xA0 + i);
+
+    FlipsoCapture* capture = flipso_capture_alloc();
+    ItsoCard reference;
+    reference_decode(&reference);
+    fill(capture, &reference);
+    size_t len = 0;
+    check("a read with no chip block has none", flipso_capture_chip(capture, &len) == NULL);
+    check("a chip block is kept", flipso_capture_add(capture, FlipsoBlockChip, 0, chip, sizeof(chip)));
+
+    size_t count = 0;
+    char** lines = to_lines(capture, &count);
+    bool keyed = false;
+    for(size_t i = 0; i < count; i++) {
+        if(strncmp(lines[i], "Chip: A0 A1", 11) == 0) keyed = true;
+    }
+    check("it is written under its own key", keyed);
+
+    FlipsoCapture* loaded = flipso_capture_alloc();
+    for(size_t i = 0; i < count; i++) flipso_capture_parse_line(loaded, lines[i]);
+    const uint8_t* back = flipso_capture_chip(loaded, &len);
+    check("and reads back byte for byte", back && len == sizeof(chip) && memcmp(back, chip, len) == 0);
+
+    ItsoCard decoded;
+    flipso_capture_decode(loaded, &decoded);
+    check("without changing the card it decodes to", memcmp(&decoded, &reference, sizeof(ItsoCard)) == 0);
+
+    flipso_capture_merge_history(capture, loaded, NULL);
+    back = flipso_capture_chip(capture, &len);
+    check("a merge keeps it", back && len == sizeof(chip) && memcmp(back, chip, len) == 0);
+
+    free_lines(lines, count);
+    flipso_capture_free(loaded);
+    flipso_capture_free(capture);
+}
+
 /* A directory entry no product claims: written out, read back, and simply not
  * used by the decode. It must not take the rest of the file with it. */
 static void spare_entry(void) {
@@ -860,6 +900,7 @@ int main(void) {
 
     printf("Save and load\n");
     round_trip();
+    chip_block();
     printf("\nIncomplete reads\n");
     partial();
     spare_entry();

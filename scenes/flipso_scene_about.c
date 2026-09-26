@@ -26,7 +26,7 @@ void flipso_scene_about_on_enter(void* context) {
     flipso_cat_heading(text, FlipsoIconNone, "Station names");
     uint32_t stations = flipso_stations_count(app->stations);
     if(stations) {
-        furi_string_cat_printf(text, "Installed: %lu codes\n", (unsigned long)stations);
+        furi_string_cat_printf(text, "Installed: %lu stations\n", (unsigned long)stations);
     } else {
         furi_string_cat(text, "Installed: No\nReinstall Flipso to restore them.\n");
     }
@@ -41,7 +41,8 @@ void flipso_scene_about_on_enter(void* context) {
             text,
             "Installed: No\n"
             "Bus stops show as numbers until naptan.dat is copied to "
-            "apps_data/flipso on the SD card. See the README.\n");
+            "apps_data/flipso on the SD card. It comes with Flipso's source, in "
+            "its data folder.\n");
     }
 
     furi_string_cat(text, "\n");

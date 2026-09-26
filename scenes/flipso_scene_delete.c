@@ -39,9 +39,11 @@ void flipso_scene_delete_on_enter(void* context) {
         furi_string_get_cstr(name));
 
     widget_reset(app->widget);
-    widget_add_icon_element(app->widget, 2, 1, &I_warning_10px);
+    /* The same header line as the error and save screens: title at row 4, and
+     * the icon centred on it. */
+    widget_add_icon_element(app->widget, 4, 3, &I_warning_10px);
     widget_add_string_element(
-        app->widget, 70, 2, AlignCenter, AlignTop, FontPrimary, "Delete saved card?");
+        app->widget, 70, 4, AlignCenter, AlignTop, FontPrimary, "Delete saved card?");
     widget_add_text_scroll_element(
         app->widget, 0, 17, 128, 33, furi_string_get_cstr(text));
     widget_add_button_element(
@@ -69,9 +71,20 @@ bool flipso_scene_delete_on_event(void* context, SceneManagerEvent event) {
 
     if(flipso_saved_delete(furi_string_get_cstr(app->loaded_path))) {
         notification_message(app->notifications, &flipso_sequence_deleted);
-        /* The file the card came from has gone, so there is nothing sensible
-         * left to go back to: the scan screen resets everything on entry. */
-        scene_manager_search_and_switch_to_previous_scene(app->scene_manager, FlipsoSceneScan);
+        /* The file the card came from has gone, so its menu has nothing left to
+         * show. Back to the list it was picked from, which is where a user
+         * clearing out old cards wants to be next - opened at the top, since
+         * the card it would have put the cursor on is the one just deleted. A
+         * card saved from a scan has no list behind it, and goes back to the
+         * scan screen, which resets everything on entry. */
+        furi_string_reset(app->loaded_path);
+        if(scene_manager_has_previous_scene(app->scene_manager, FlipsoSceneSaved)) {
+            scene_manager_search_and_switch_to_previous_scene(
+                app->scene_manager, FlipsoSceneSaved);
+        } else {
+            scene_manager_search_and_switch_to_previous_scene(
+                app->scene_manager, FlipsoSceneScan);
+        }
     } else {
         notification_message(app->notifications, &sequence_error);
         flipso_saved_alert("Cannot delete card", "The file could not be\nremoved.");

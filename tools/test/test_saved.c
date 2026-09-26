@@ -137,8 +137,12 @@ bool storage_common_exists(Storage* storage, const char* path) {
     return access(path, F_OK) == 0;
 }
 
+/* Set to make every rename fail, as an SD card error would. */
+static bool stub_rename_fails = false;
+
 FS_Error storage_common_rename(Storage* storage, const char* old_path, const char* new_path) {
     (void)storage;
+    if(stub_rename_fails) return FSE_INTERNAL;
     /* Firmware 1.4 replaces a destination that exists, as rename(2) does, so
      * the stub does too: refusing a taken name is flipso_saved_rename()'s job,
      * and a stub that did it for it would hide the check going missing. */
@@ -533,6 +537,17 @@ static void finding(void) {
         check("not even the half-written file", access(furi_string_get_cstr(temp), F_OK) != 0);
         furi_string_free(temp);
     }
+
+    /* The same for a write that completes and then cannot be moved into place:
+     * the rename is the step that replaces the record, and when it fails the
+     * record must still be there - not removed to make way for a second try. */
+    stub_rename_fails = true;
+    check("an update whose rename fails fails",
+          !flipso_saved_write(mine, furi_string_get_cstr(found)));
+    stub_rename_fails = false;
+    flipso_saved_find(mine, found, &read_at);
+    check("and the record it was replacing survives it", read_at == 3000);
+    check("with nothing left beside it", count_files() == before);
 
     /* A capture with nothing in it cannot match anything, and must not be
      * answered with somebody else's file. */

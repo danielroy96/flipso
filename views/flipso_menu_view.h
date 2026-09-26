@@ -23,8 +23,8 @@ extern "C" {
  * saved card remembers from before the card dropped them. */
 #define FLIPSO_MENU_MAX_ITEMS 20
 #define FLIPSO_MENU_LABEL_LEN 32
-/** Longest tag, terminator included: "Off card". */
-#define FLIPSO_MENU_TAG_LEN   12
+/** Longest tag, terminator included: "99 + 99 off card". */
+#define FLIPSO_MENU_TAG_LEN   18
 
 typedef struct FlipsoMenuView FlipsoMenuView;
 

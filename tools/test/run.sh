@@ -94,8 +94,10 @@ echo
 echo "Card media"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
-  -I"$ROOT" -Istub \
-  test_media.c "$ROOT/flipso_media.c" \
+  -I"$ROOT" -I"$ROOT/itso" -I. -Istub \
+  test_media.c "$ROOT/flipso_media.c" "$ROOT/flipso_format.c" "$ROOT/flipso_capture.c" \
+  "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
+  "$ROOT/itso/itso_operators.c" \
   -o test_media
 ./test_media
 

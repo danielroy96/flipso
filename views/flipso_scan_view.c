@@ -57,6 +57,12 @@ static void flipso_scan_view_draw(Canvas* canvas, void* model) {
 
     canvas_set_font(canvas, FontPrimary);
     canvas_draw_str(canvas, 2, 10, "Flipso");
+    if(m->scanning) {
+        /* Back stops the reader rather than leaving the app, which nothing
+         * else on this screen says. The header is the one band with room. */
+        canvas_set_font(canvas, FontSecondary);
+        canvas_draw_str_aligned(canvas, 126, 10, AlignRight, AlignBottom, "Back to stop");
+    }
     canvas_draw_line(canvas, 0, 13, 127, 13);
 
     /* Graphic band: a smartcard with waves radiating towards it from the left.

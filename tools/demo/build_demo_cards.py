@@ -120,6 +120,17 @@ def history_block(last_seen, entry_index, entry, ipe_group):
     return last_seen.to_bytes(4, "big") + bytes([entry_index]) + entry + ipe_group
 
 
+def chip_block(uid, free_bytes):
+    """What a DESFire EV1 with 4K of storage answers to GetVersion, then
+    GetFreeMemory: the Chip block a live read saves (flipso_media.h)."""
+    hardware = bytes([0x04, 0x01, 0x01, 0x01, 0x00, 0x18, 0x05])
+    software = bytes([0x04, 0x01, 0x01, 0x01, 0x04, 0x18, 0x05])
+    batch = bytes([0xBA, 0x44, 0x9C, 0x30, 0x10])
+    week, year = 0x37, 0x19  # BCD: week 37 of 2019
+    return (hardware + software + uid + batch + bytes([week, year]) +
+            free_bytes.to_bytes(3, "little"))
+
+
 def write_card(path, read_at, blocks):
     lines = ["Filetype: Flipso card", "Version: 1", f"Read at: {read_at}"]
     for key, data in blocks:
@@ -355,6 +366,9 @@ def card_the_key():
 
     return "Demo 1 The Key", unix(2026, 9, 21, 19, 12), [
         ("Shell", bytes(shell.buf)),
+        # What the chip said about itself, so the Card screen's Chip section
+        # has something to show for a saved card too.
+        ("Chip", chip_block(bytes.fromhex("04512A3AB25E80"), 1824)),
         ("Directory", directory(entries, chain, S, E, SCTL, 0x5B)),
         # The purse gets an InstanceID of its own: it is the only element in a
         # shell that names one particular product rather than a kind of one, so

@@ -13,11 +13,38 @@
  * and does hand over file contents, which exercises the branches the Oyster
  * never reaches.
  */
+#include "flipso_format.h"
 #include "flipso_media.h"
 
 #include <stdio.h>
 
 static int failures = 0;
+
+/* The screen builders link against the lookup tables; a DESFire's description
+ * asks none of them anything, so they answer nothing. */
+const char* flipso_operators_name(const FlipsoOperators* instance, uint16_t oid) {
+    (void)instance;
+    (void)oid;
+    return NULL;
+}
+
+const char* flipso_stations_name(FlipsoStations* instance, const char* nlc) {
+    (void)instance;
+    (void)nlc;
+    return NULL;
+}
+
+const char* flipso_naptan_stop(FlipsoNaptan* instance, const char* digits) {
+    (void)instance;
+    (void)digits;
+    return NULL;
+}
+
+const char* flipso_naptan_atco(FlipsoNaptan* instance, const char* atco) {
+    (void)instance;
+    (void)atco;
+    return NULL;
+}
 
 static void check(const char* what, int ok) {
     printf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
@@ -32,6 +59,12 @@ static void hides(const FuriString* text, const char* needle) {
     printf("  [%s] no \"%s\"\n",
            strstr(furi_string_get_cstr(text), needle) ? "FAIL" : "PASS", needle);
     if(strstr(furi_string_get_cstr(text), needle)) failures++;
+}
+
+static int occurrences(const FuriString* text, const char* needle) {
+    int count = 0;
+    for(const char* p = furi_string_get_cstr(text); (p = strstr(p, needle)); p++) count++;
+    return count;
 }
 
 static void dump(const char* title, const FuriString* text) {
@@ -100,12 +133,12 @@ int main(void) {
 
     /* Nothing scanned yet: the screen must still say something. */
     flipso_media_reset(&media);
-    flipso_media_cat(text, &media);
+    flipso_format_media(text, &media);
     check("an unread card renders", furi_string_size(text) > 0);
 
     build_oyster(&media);
     furi_string_reset(text);
-    flipso_media_cat(text, &media);
+    flipso_format_media(text, &media);
     dump("Oyster", text);
 
     shows(text, "MIFARE DESFire EV1");
@@ -113,16 +146,16 @@ int main(void) {
     shows(text, "Free space: 1248 bytes");
     shows(text, "UID: 048B1FF1AD2680");
     shows(text, "Made: Week 42 of 2008");
-    shows(text, "4F5931  Oyster");
+    shows(text, "4F5931: Oyster");
     shows(text, "Files in Oyster");
     shows(text, "File 0: Standard");
     shows(text, "Size: 8 bytes");
-    shows(text, "Encryption: Encrypted\nAccess rights: 1111");
+    shows(text, "  Encryption: Encrypted\n  Access rights: 1111");
     shows(text, "Read: Key 1");
     shows(text, "Contents: Locked");
     shows(text, "File 7");
     /* Nothing came off this card, so nothing may be shown as having done. */
-    hides(text, "Contents:\n");
+    check("every file says it is locked", occurrences(text, "  Contents: Locked\n") == 8);
     hides(text, "Could not be read");
 
     /* A card that keeps its directory to itself, and files that are not locked. */
@@ -171,18 +204,18 @@ int main(void) {
     media.files[3].settings_valid = false;
 
     furi_string_reset(text);
-    flipso_media_cat(text, &media);
+    flipso_format_media(text, &media);
     dump("Unlisted applications, readable files", text);
 
     shows(text, "MIFARE DESFire EV3");
-    shows(text, "Storage: up to 8192 bytes");
-    shows(text, "Card will not list them.");
-    shows(text, "ABCDEF\n");
-    shows(text, "Contents:\nDEADBEEF");
+    shows(text, "Storage: Up to 8192 bytes");
+    shows(text, "Listed by the card: No");
+    shows(text, "ABCDEF: Unknown\n");
+    shows(text, "  Contents: DEADBEEF\n");
     shows(text, "Range: 0 to 5000");
     shows(text, "Records: 2 of 4, 16 bytes each");
     shows(text, "Contents: Could not be read");
-    shows(text, "Settings: Locked");
+    shows(text, "File 4: Details locked");
     shows(text, "Write: Nobody");
     /* No free memory was reported, so no line may claim any. */
     hides(text, "Free space:");
@@ -214,6 +247,34 @@ int main(void) {
     for(uint32_t i = 0; i < FLIPSO_MEDIA_MAX_APPS * 2; i++) flipso_media_add_app(&media, i + 1);
     check("the list stops at its capacity", media.app_count == FLIPSO_MEDIA_MAX_APPS);
     check("and says it was cut short", media.apps_truncated);
+
+    /* The chip block a saved card keeps: GetVersion then GetFreeMemory, as the
+     * card sent them. The same Oyster as above. */
+    static const uint8_t chip[FLIPSO_MEDIA_CHIP_LEN] = {
+        0x04, 0x01, 0x01, 0x01, 0x00, 0x16, 0x05, /* hardware */
+        0x04, 0x01, 0x01, 0x01, 0x03, 0x16, 0x05, /* software */
+        0x04, 0x8B, 0x1F, 0xF1, 0xAD, 0x26, 0x80, /* UID */
+        0xBA, 0x34, 0xCD, 0x56, 0xEF, /* batch */
+        0x42, 0x08, /* week 42 of 2008 */
+        0xE0, 0x04, 0x00, /* 1248 bytes free */
+    };
+    flipso_media_reset(&media);
+    check("a chip block parses", flipso_media_parse_chip(&media, chip, sizeof(chip)));
+    check("into the chip it names", media.valid && media.chip == FlipsoChipEv1);
+    check("with its UID", memcmp(media.uid, "\x04\x8B\x1F\xF1\xAD\x26\x80", 7) == 0);
+    check("its batch", memcmp(media.batch, "\xBA\x34\xCD\x56\xEF", 5) == 0);
+    check("its software version", media.sw_major == 0x01 && media.sw_minor == 0x03);
+    check("its date", media.prod_week == 0x42 && media.prod_year == 0x08);
+    check("and its free space", media.free_memory_valid && media.free_memory == 1248);
+
+    flipso_media_reset(&media);
+    check("one with no free memory still parses",
+          flipso_media_parse_chip(&media, chip, FLIPSO_MEDIA_VERSION_LEN));
+    check("and claims none", !media.free_memory_valid);
+
+    flipso_media_reset(&media);
+    check("a short block is refused", !flipso_media_parse_chip(&media, chip, 20));
+    check("and leaves the card undescribed", !media.valid);
 
     furi_string_free(text);
 

@@ -384,30 +384,34 @@ static void flipso_read_media_picc(FlipsoReader* reader, MfDesfirePoller* poller
     MfDesfireVersion version = {0};
     if(mf_desfire_poller_read_version(poller, &version) != MfDesfireErrorNone) return;
 
-    media->valid = true;
-    media->chip = flipso_media_chip_from_hw(version.hw_type, version.hw_major);
-    media->hw_vendor = version.hw_vendor;
-    media->hw_type = version.hw_type;
-    media->hw_subtype = version.hw_subtype;
-    media->hw_major = version.hw_major;
-    media->hw_minor = version.hw_minor;
-    media->hw_storage = version.hw_storage;
-    media->hw_proto = version.hw_proto;
-    media->sw_major = version.sw_major;
-    media->sw_minor = version.sw_minor;
-    media->sw_storage = version.sw_storage;
-    media->sw_proto = version.sw_proto;
-    memcpy(media->uid, version.uid, sizeof(media->uid));
-    memcpy(media->batch, version.batch, sizeof(media->batch));
-    media->prod_week = version.prod_week;
-    media->prod_year = version.prod_year;
+    /* Put back into the bytes the card sent, which is both what describes the
+     * chip here and what a saved card keeps: one layout, read one way. */
+    uint8_t chip[FLIPSO_MEDIA_CHIP_LEN];
+    const uint8_t fields[] = {
+        version.hw_vendor, version.hw_type,    version.hw_subtype, version.hw_major,
+        version.hw_minor,  version.hw_storage, version.hw_proto,   version.sw_vendor,
+        version.sw_type,   version.sw_subtype, version.sw_major,   version.sw_minor,
+        version.sw_storage, version.sw_proto,
+    };
+    _Static_assert(sizeof(fields) == 14, "GetVersion's first two frames are 7 bytes each");
+    memcpy(chip, fields, sizeof(fields));
+    memcpy(chip + 14, version.uid, 7);
+    memcpy(chip + 21, version.batch, 5);
+    chip[26] = version.prod_week;
+    chip[27] = version.prod_year;
+    size_t chip_len = FLIPSO_MEDIA_VERSION_LEN;
 
     MfDesfireFreeMemory free_memory = {0};
     if(mf_desfire_poller_read_free_memory(poller, &free_memory) == MfDesfireErrorNone &&
        free_memory.is_present) {
-        media->free_memory_valid = true;
-        media->free_memory = free_memory.bytes_free;
+        chip[28] = (uint8_t)free_memory.bytes_free;
+        chip[29] = (uint8_t)(free_memory.bytes_free >> 8);
+        chip[30] = (uint8_t)(free_memory.bytes_free >> 16);
+        chip_len = FLIPSO_MEDIA_CHIP_LEN;
     }
+
+    flipso_media_parse_chip(media, chip, chip_len);
+    flipso_capture_add(reader->capture, FlipsoBlockChip, 0, chip, chip_len);
 
     SimpleArray* app_ids = simple_array_alloc(&flipso_app_id_array_config);
     if(mf_desfire_poller_read_application_ids(poller, app_ids) == MfDesfireErrorNone) {

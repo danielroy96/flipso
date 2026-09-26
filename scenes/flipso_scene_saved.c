@@ -18,10 +18,13 @@ void flipso_scene_saved_on_enter(void* context) {
 
     FuriString* path = furi_string_alloc();
     /* A card still named here is the one the user has just backed out of. */
-    bool picked = flipso_saved_pick(path, app->loaded_path);
+    FuriString* select = furi_string_alloc_set(app->loaded_path);
     bool loaded = false;
 
-    if(picked) {
+    /* Back into the list after a file that will not open, with the cursor on
+     * it: the user is choosing a card, and the one they chose not working is
+     * no reason to throw them out of the list. */
+    while(!loaded && flipso_saved_pick(path, select)) {
         /* Decoding here rather than at save time is the whole point of keeping
          * the raw blocks: the card is parsed by the build that is running, so a
          * decoder fix reaches the cards already on the SD card. */
@@ -31,6 +34,12 @@ void flipso_scene_saved_on_enter(void* context) {
         if(loaded) {
             furi_string_set(app->loaded_path, path);
             flipso_reset_card_menus(app);
+            /* What the chip said when it was read, for the Card screen; a card
+             * saved before the file kept it simply has none. */
+            flipso_media_reset(&app->media);
+            size_t chip_len = 0;
+            const uint8_t* chip = flipso_capture_chip(app->capture, &chip_len);
+            if(chip) flipso_media_parse_chip(&app->media, chip, chip_len);
             /* The detail scenes read this to decide a card was read at all. */
             app->status = FlipsoReaderStatusSuccess;
         } else {
@@ -39,9 +48,11 @@ void flipso_scene_saved_on_enter(void* context) {
             flipso_saved_alert(
                 "Cannot open card",
                 "The file is damaged, or was\nsaved by a newer Flipso.");
+            furi_string_set(select, path);
         }
     }
 
+    furi_string_free(select);
     furi_string_free(path);
 
     view_dispatcher_send_custom_event(

@@ -18,6 +18,7 @@
 #include "flipso_format.h"
 #include "itso/itso_operators.h"
 #include "card_data.h"
+#include "itso_i.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -52,7 +53,7 @@ const char* flipso_stations_name(FlipsoStations* instance, const char* nlc) {
 
 const char* flipso_naptan_stop(FlipsoNaptan* instance, const char* digits) {
     (void)instance;
-    (void)digits;
+    if(strcmp(digits, "00062624") == 0) return "High Street";
     return NULL;
 }
 
@@ -210,6 +211,9 @@ static bool load(FlipsoCapture* capture, const char* path) {
     return ok && flipso_capture_valid(capture);
 }
 
+/* 2060-01-01: past the expiry of every card and product the tests build. */
+#define FLIPSO_TEST_LATER 2840140800u
+
 int main(int argc, char** argv) {
     printf("Screen text\n");
 
@@ -238,7 +242,8 @@ int main(int argc, char** argv) {
     printf("\n%s\n", furi_string_get_cstr(text));
     check("the in/out state is where the holder is", shows(text, "Inside ticket gates: "));
     check("not a bare IN or OUT", !shows(text, ": IN\n") && !shows(text, ": OUT\n"));
-    check("a tap's time is labelled", shows(text, "  At: "));
+    check("a tap's time is labelled as every time is", shows(text, "  When: "));
+    check("with no other word for it", !shows(text, "  At: ") && !shows(text, "\nTime: "));
     check("a tap out says which time is which", shows(text, "  Out: ") && shows(text, "  In: "));
     check("and how long the journey took", shows(text, "  Journey time: "));
     check("stations are named", shows(text, "London Waterloo"));
@@ -267,6 +272,16 @@ int main(int argc, char** argv) {
 
     every_screen("synthetic", &f, &card);
 
+    /* The same card decades on, when it and everything on it has expired: the
+     * wording changes with the clock, and the house style has to hold for both.
+     * Pinning one date alone once hid a "Card: Expired: ..." on every card. */
+    FlipsoFormat later = f;
+    later.now = FLIPSO_TEST_LATER;
+    every_screen("synthetic, expired", &later, &card);
+    furi_string_reset(text);
+    flipso_format_summary(text, &later, &card);
+    check("an expired card's summary says so", shows(text, "Card: Expired "));
+
     /* The product list's tags. */
     check("an in-date product has no tag", flipso_product_tag(&card.products[0], f.now) == NULL);
     ItsoProduct gone = card.products[0];
@@ -275,10 +290,54 @@ int main(int argc, char** argv) {
 
     /* Heading icons are one byte after the markup, above '\n'. */
     furi_string_reset(text);
-    flipso_cat_heading(text, FlipsoIconPast, "From past reads");
+    flipso_cat_heading(text, FlipsoIconPast, "Off card");
     const char* heading = furi_string_get_cstr(text);
     check("a heading's icon byte is never a newline", heading[2] != '\n');
     check("and the heading is one line", strchr(heading, '\n') == heading + strlen(heading) - 1);
+
+    /* A location listing several stops, the first of which the stop table
+     * names: the name replaces the code, and the others are still counted. */
+    {
+        static const uint8_t stops[] = {212, 12, 0x00, 0x06, 0x26, 0x24, 0x12, 0x34,
+                                        0x56, 0x78, 0x87, 0x65, 0x43, 0x21};
+        ItsoProduct ticket = card.products[0];
+        itso_parse_location(stops, sizeof(stops), ItsoLocStructLoc1, &ticket.from);
+        furi_string_reset(text);
+        flipso_format_product(text, &f, &card, &ticket);
+        check("a named stop keeps the count of the others", shows(text, "High Street and 2 more\n"));
+    }
+
+    /* The card details screen for a DESFire Flipso cannot decode, which is
+     * held to the same style as the ITSO screens. */
+    static const uint8_t chip[FLIPSO_MEDIA_CHIP_LEN] = {
+        0x04, 0x01, 0x01, 0x01, 0x00, 0x16, 0x05, 0x04, 0x01, 0x01, 0x01, 0x03, 0x16, 0x05,
+        0x04, 0x8B, 0x1F, 0xF1, 0xAD, 0x26, 0x80, 0xBA, 0x34, 0xCD, 0x56, 0xEF, 0x42, 0x08,
+        0xE0, 0x04, 0x00,
+    };
+    static FlipsoMedia media;
+    flipso_media_reset(&media);
+    furi_string_reset(text);
+    flipso_format_media(text, &media);
+    house_style("card details, undescribed", text);
+    flipso_media_parse_chip(&media, chip, sizeof(chip));
+    flipso_media_add_app(&media, FLIPSO_AID_OYSTER);
+    flipso_media_add_app(&media, 0xABCDEFu);
+    media.has_files = true;
+    media.selected_aid = FLIPSO_AID_OYSTER;
+    media.file_count = 3;
+    media.files[0] = (FlipsoMediaFile){.id = 0, .settings_valid = true, .access = 0xEEEE};
+    media.files[0].data.size = 8;
+    media.files[0].data_len = 8;
+    memcpy(media.data, "\xDE\xAD\xBE\xEF\x01\x02\x03\x04", 8);
+    media.data_len = 8;
+    media.files[1] = (FlipsoMediaFile){.id = 1, .settings_valid = true, .type = FLIPSO_FILE_VALUE, .access = 0x1111};
+    media.files[2] = (FlipsoMediaFile){.id = 2};
+    furi_string_reset(text);
+    flipso_format_media(text, &media);
+    printf("\n%s\n", furi_string_get_cstr(text));
+    house_style("card details", text);
+    check("the details open on the chip", shows(text, "Chip: MIFARE DESFire EV1"));
+    check("contents wrap between groups of bytes", shows(text, "  Contents: DEADBEEF 01020304\n"));
 
     furi_string_free(text);
     flipso_capture_free(capture);
@@ -288,7 +347,7 @@ int main(int argc, char** argv) {
         DIR* dir = opendir(argv[1]);
         check("the demo cards are there", dir != NULL);
         struct dirent* entry;
-        int cards = 0;
+        int cards = 0, chips = 0;
         while(dir && (entry = readdir(dir))) {
             const char* ext = strrchr(entry->d_name, '.');
             if(!ext || strcmp(ext, ".flipso") != 0) continue;
@@ -300,12 +359,35 @@ int main(int argc, char** argv) {
             snprintf(what, sizeof(what), "%s loads", entry->d_name);
             check(what, load(demo, path) && flipso_capture_decode(demo, &demo_card));
             f.capture = demo;
+            /* What the saved-card scene does with a card's chip block. */
+            static FlipsoMedia demo_media;
+            flipso_media_reset(&demo_media);
+            size_t chip_len = 0;
+            const uint8_t* chip = flipso_capture_chip(demo, &chip_len);
+            if(chip) {
+                flipso_media_parse_chip(&demo_media, chip, chip_len);
+                FuriString* screen = furi_string_alloc();
+                FlipsoFormat with_chip = f;
+                with_chip.media = &demo_media;
+                flipso_format_card(screen, &with_chip, &demo_card, "A name", 0);
+                snprintf(what, sizeof(what), "%s shows its saved chip", entry->d_name);
+                check(what, shows(screen, "Chip: MIFARE DESFire EV1\n"));
+                furi_string_free(screen);
+                chips++;
+            }
+            f.media = &demo_media;
             every_screen(entry->d_name, &f, &demo_card);
+            f.media = NULL;
+            FlipsoFormat expired = f;
+            expired.now = FLIPSO_TEST_LATER;
+            snprintf(what, sizeof(what), "%s, expired", entry->d_name);
+            every_screen(what, &expired, &demo_card);
             flipso_capture_free(demo);
             cards++;
         }
         if(dir) closedir(dir);
         check("all four demo cards were rendered", cards == 4);
+        check("and a saved chip block was among them", chips > 0);
     }
 
     printf("\n%s\n", failures ? "FAILED" : "All screen text tests passed");

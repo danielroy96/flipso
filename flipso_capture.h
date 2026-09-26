@@ -31,12 +31,12 @@ extern "C" {
 #endif
 
 /**
- * A shell, a directory, a cyclic log and its history, one group per directory
- * entry, one value history per entry, and the same pair again for each product
- * the card has dropped since a file was written.
+ * A shell, a directory, a cyclic log and its history, the chip's description,
+ * one group per directory entry, one value history per entry, and the same pair
+ * again for each product the card has dropped since a file was written.
  */
 #define FLIPSO_CAPTURE_MAX_BLOCKS \
-    (ITSO_MAX_PRODUCTS * 2 + ITSO_MAX_HISTORIC_PRODUCTS * 2 + 4)
+    (ITSO_MAX_PRODUCTS * 2 + ITSO_MAX_HISTORIC_PRODUCTS * 2 + 5)
 
 /**
  * Block index the products that have left the card are keyed from.
@@ -118,6 +118,12 @@ typedef enum {
      * IPE group behind the header described above. Keyed by history slot, and
      * its own value history is keyed by the same slot. */
     FlipsoBlockProductHistory,
+
+    /* What a DESFire said about itself: GetVersion's reply and then
+     * GetFreeMemory's, as flipso_media_parse_chip() reads them. Not part of the
+     * ITSO shell, but it is still what the card said, and without it a saved
+     * card could not say what chip it is. */
+    FlipsoBlockChip,
 } FlipsoBlockKind;
 
 /**
@@ -203,6 +209,9 @@ bool flipso_capture_decode(const FlipsoCapture* capture, ItsoCard* card);
  */
 const uint8_t*
     flipso_capture_product_group(const FlipsoCapture* capture, uint8_t dir_index, size_t* len);
+
+/** The chip's own description, as the card gave it, or NULL if none was kept. */
+const uint8_t* flipso_capture_chip(const FlipsoCapture* capture, size_t* len);
 
 /**
  * Fold the history @p previous holds into @p capture, so that saving over it

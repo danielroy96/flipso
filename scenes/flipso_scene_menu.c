@@ -88,9 +88,16 @@ void flipso_scene_menu_on_enter(void* context) {
         }
         uint8_t past = (uint8_t)(app->card.product_count - on_card);
 
+        /* "Off card" is what the product list tags each of those rows, so the
+         * count says it in the same words. A card that has dropped everything
+         * says only that, rather than "0 + 3". */
         char count[FLIPSO_MENU_TAG_LEN];
-        if(past) {
-            snprintf(count, sizeof(count), "%u + %u old", (unsigned)(on_card % 100), (unsigned)(past % 100));
+        if(past && on_card) {
+            snprintf(
+                count, sizeof(count), "%u + %u off card", (unsigned)(on_card % 100),
+                (unsigned)(past % 100));
+        } else if(past) {
+            snprintf(count, sizeof(count), "%u off card", (unsigned)(past % 100));
         } else {
             snprintf(count, sizeof(count), "%u", on_card);
         }

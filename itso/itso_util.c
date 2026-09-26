@@ -392,7 +392,10 @@ static void itso_render_location(
             itso_bcd(body, 0, 8, scratch);
             size_t others = n / 4 - 1;
             if(others > 0) {
-                snprintf(out, len, "Stop %s +%u", scratch, (unsigned)others);
+                /* Bounded for the compiler as the data bounds it: eight digits,
+                 * and at most 62 others in a 255-byte body. */
+                snprintf(
+                    out, len, "Stop %.8s and %u more", scratch, (unsigned)(others % 100));
             } else {
                 snprintf(out, len, "Stop %s", scratch);
             }
@@ -477,6 +480,9 @@ size_t itso_parse_location(
     out->valid = (def_type != 255);
     itso_render_location(
         def_type, body, body_len, out->text, sizeof(out->text), out->code, &out->code_kind);
+    /* The count the text above already carries, kept apart for a screen that
+     * replaces the first stop's code with its name (TS 1000-1 4.2.4.3.13). */
+    if(def_type == 212 && body_len >= 8) out->more = (uint8_t)(body_len / 4 - 1);
     return consumed;
 }
 

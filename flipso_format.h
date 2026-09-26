@@ -103,6 +103,13 @@ void flipso_format_id(FuriString* out, const FlipsoFormat* f, const ItsoCard* ca
 /** Where the card stands in a journey, and the journey log. */
 void flipso_format_taps(FuriString* out, const FlipsoFormat* f, const ItsoCard* card);
 
+/**
+ * Everything a DESFire said about itself without a key: the chip, its
+ * applications and the files of the one looked inside. The screen for a card
+ * Flipso recognises and cannot decode, such as an Oyster.
+ */
+void flipso_format_media(FuriString* out, const FlipsoMedia* media);
+
 /** Everything decoded about one product. */
 void flipso_format_product(
     FuriString* out,

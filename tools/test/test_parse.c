@@ -274,11 +274,24 @@ static void bus_stop_locations(void) {
     static const uint8_t naptan_many[] = {212, 12, 0x00, 0x06, 0x26, 0x24, 0x12, 0x34,
                                           0x56, 0x78, 0x87, 0x65, 0x43, 0x21};
     check_location("212 multiple NaptanCodes", naptan_many, sizeof(naptan_many),
-                   ItsoLocStructLoc1, "Stop 00062624 +2", "00062624", ItsoLocCodeNaptan);
+                   ItsoLocStructLoc1, "Stop 00062624 and 2 more", "00062624", ItsoLocCodeNaptan);
+
+    {
+        /* The count is kept apart too, for a screen that names the first stop
+         * and so loses the text that carried it. */
+        ItsoLocation many;
+        itso_parse_location(naptan_many, sizeof(naptan_many), ItsoLocStructLoc1, &many);
+        check("212 keeps the count of the other stops", many.more == 2);
+    }
 
     static const uint8_t naptan_one[] = {212, 4, 0x00, 0x06, 0x26, 0x24};
     check_location("212 holding a single NaptanCode", naptan_one, sizeof(naptan_one),
                    ItsoLocStructLoc1, "Stop 00062624", "00062624", ItsoLocCodeNaptan);
+    {
+        ItsoLocation one;
+        itso_parse_location(naptan_one, sizeof(naptan_one), ItsoLocStructLoc1, &one);
+        check("and a single stop has no others", one.more == 0);
+    }
 
     /* An AtcoCode is stored whole, so unlike a NaptanCode it needs no unfolding. */
     static const uint8_t atco[] = {211, 12, '1', '8', '0', '0', 'A', 'L',

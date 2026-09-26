@@ -230,6 +230,32 @@ int main(void) {
     check("the amounts are drawn", on_screen("24.15") && on_screen("1.00"));
     check("no raw UTF-8 reaches the font", !on_screen("\xC2") && !on_screen("\xE2"));
 
+    /* A symbol after the font's own ink keeps a pixel clear of it: a minus
+     * sign sits on the pound's crossbar row, and the font measures a run
+     * without the gap after its last glyph. After a space it needs none. */
+    flipso_text_view_set_text(text, "Balance: -\xC2\xA3" "1.50\nFare: \xC2\xA3" "1.00\n");
+    render(text);
+    show("a negative balance");
+    int after_minus = -1, after_space = -1;
+    for(int i = 0; i < canvas.text_count; i++) {
+        int end = canvas.text_x[i] + (int)strlen(canvas.texts[i]) * STUB_GLYPH_W;
+        if(strcmp(canvas.texts[i], "Balance: -") == 0) after_minus = end;
+        if(strcmp(canvas.texts[i], "Fare: ") == 0) after_space = end;
+    }
+    /* The leftmost column of each symbol, which is the crossbar's. */
+    int pound_x[2] = {-1, -1};
+    for(int line = 0; line < 2; line++) {
+        int top = line * 11, left = STUB_W;
+        for(int y = top; y < top + 11 && y < STUB_H; y++) {
+            for(int x = 0; x < STUB_W; x++) {
+                if(canvas.pixels[y][x] == '%' && x < left) left = x;
+            }
+        }
+        pound_x[line] = left;
+    }
+    check("a pound after a minus sign stands a pixel clear of it", pound_x[0] == after_minus + 1);
+    check("a pound after a space does not", pound_x[1] == after_space);
+
     /* --- Heading icons. --- */
     static const Icon heading = {.width = 10, .height = 10, .mark = '@'};
     static const Icon* const icons[] = {&heading};

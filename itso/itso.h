@@ -208,6 +208,9 @@ typedef struct {
     uint8_t code_kind; /**< ItsoLocCodeKind; meaningless while @c code is empty. */
     char text[ITSO_LOC_LEN];
     char code[ITSO_LOC_CODE_LEN]; /**< Bare code, empty when not resolvable. */
+    /** Further stops a LocDefType 212 lists after the one in @c code, so a
+     * screen that names that stop can still say there are others. */
+    uint8_t more;
 } ItsoLocation;
 
 /**

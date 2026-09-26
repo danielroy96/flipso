@@ -12,11 +12,8 @@ void flipso_scene_media_on_enter(void* context) {
     Flipso* app = context;
 
     FuriString* text = furi_string_alloc();
-    flipso_media_cat(text, &app->media);
-
-    flipso_text_view_set_text(app->text_view, furi_string_get_cstr(text));
-    view_dispatcher_switch_to_view(app->view_dispatcher, FlipsoViewText);
-
+    flipso_format_media(text, &app->media);
+    flipso_show_text(app, text);
     furi_string_free(text);
 }
 

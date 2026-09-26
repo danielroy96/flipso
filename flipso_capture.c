@@ -72,7 +72,7 @@ static const FlipsoCaptureBlock*
         if(block->kind != (uint8_t)kind) continue;
         /* Only the per-product blocks carry an index - a directory entry, or a
          * history slot for a product that has left the card; the shell, the
-         * directory and the two log blocks occur once per card. */
+         * directory, the two log blocks and the chip occur once per card. */
         if((kind == FlipsoBlockProduct || kind == FlipsoBlockValueHistory ||
             kind == FlipsoBlockProductHistory) &&
            block->index != index) {
@@ -140,6 +140,13 @@ bool flipso_capture_add(
     if(!out) return false;
     memcpy(out, data, len);
     return true;
+}
+
+const uint8_t* flipso_capture_chip(const FlipsoCapture* capture, size_t* len) {
+    const FlipsoCaptureBlock* block = capture ? flipso_capture_find(capture, FlipsoBlockChip, 0) : NULL;
+    if(!block) return NULL;
+    *len = block->len;
+    return capture->bytes + block->offset;
 }
 
 bool flipso_capture_valid(const FlipsoCapture* capture) {
@@ -726,6 +733,9 @@ static void flipso_capture_key(const FlipsoCaptureBlock* block, char* out, size_
     case FlipsoBlockLogHistory:
         snprintf(out, out_len, "Log history");
         break;
+    case FlipsoBlockChip:
+        snprintf(out, out_len, "Chip");
+        break;
     case FlipsoBlockValueHistory:
         snprintf(out, out_len, "Value history %u", block->index);
         break;
@@ -915,6 +925,8 @@ bool flipso_capture_parse_line(FlipsoCapture* capture, const char* line) {
         kind = FlipsoBlockLog;
     } else if(strcmp(key, "Log history") == 0) {
         kind = FlipsoBlockLogHistory;
+    } else if(strcmp(key, "Chip") == 0) {
+        kind = FlipsoBlockChip;
     } else if(flipso_capture_indexed_key(key, "Product history ", &index)) {
         kind = FlipsoBlockProductHistory;
     } else if(flipso_capture_indexed_key(key, "Product ", &index)) {
