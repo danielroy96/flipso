@@ -308,23 +308,21 @@ ICONS["read_failed_14px"] = """
 # --- 10x10: the app icon -----------------------------------------------------
 
 # application.fam's fap_icon, shown in the Flipper's app browser. It is not an
-# I_ symbol, so it sits beside application.fam rather than in images/. A card,
-# chip and all, laid at a tilt over the corner of a reader's ring. Its edges
-# step two across for one down, the only slope that stays a solid line at this
-# size, and the ring breaks a pixel short of the card so the two outlines do
-# not run together.
+# I_ symbol, so it sits beside application.fam rather than in images/. A train
+# seen head on, running towards you on its rails: the cards are travel cards,
+# and a card drawn here would read as one more of the menu icons.
 APP_ICON_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "flipso.png")
 APP_ICON = """
-..####....
-.#....#...
-#......#..
-#.........
-#.....###.
-#...##...#
-.#.#.....#
-..#.#..##.
-..#..##...
-...##.....
+..######..
+.#......#.
+.#.####.#.
+.#.####.#.
+.#......#.
+.#.#..#.#.
+.#......#.
+..######..
+.#......#.
+#........#
 """
 
 
