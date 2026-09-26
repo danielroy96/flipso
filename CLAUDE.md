@@ -60,6 +60,7 @@ tools/flipper/        flipctl: the device driver described above
 tools/ide/            compile_commands.json, so CLion and clangd index the tree
 tools/test/           host test suite, synthetic card builder, card replay
 tools/debug/          opt-in card-dump instrumentation
+tools/demo/           synthetic demo cards for the device, as saved-card files
 tools/stations/       station table builder and its data provenance
 data/                 reference data shipped but not packaged; see its README
 tools/naptan/         stop table builder; data/naptan.dat is its output
@@ -89,10 +90,10 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-today about 44 KB of the 176 KB file, because the 79 KB station table lives in
+today about 47 KB of the 181 KB file, because the 79 KB station table lives in
 `.fapassets`, which the firmware unpacks to the SD card and never maps. Anything
-added as a `const` array *does* reach RAM. Flipso costs about 70 KB of heap all
-told while running, of which that 44 KB is the image and the rest is what it
+added as a `const` array *does* reach RAM. Flipso costs about 51 KB of heap all
+told while running, of which that 47 KB is the image and the rest is what it
 allocates - measured as the difference between `flipctl mem` with the app up
 and with the desktop showing, which is the only honest way to read it.
 

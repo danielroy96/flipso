@@ -5,80 +5,14 @@ CMD2 (generic micro-processor) one with the larger geometry that real CMD2 cards
 turn out to use - 80-byte sectors, 64 of them, 16 directory entries, and so a
 six-bit Sector Chain Table rather than the four-bit one CMD7 needs.
 """
-import datetime
+import os
+import sys
 
-EPOCH = datetime.date(1997, 1, 1)
-DTS_EPOCH = datetime.datetime(2028, 11, 24, 20, 16)
-
-def date_stamp(y, m, d):
-    return (datetime.date(y, m, d) - EPOCH).days
-
-def dts(y, mo, d, h, mi):
-    delta = datetime.datetime(y, mo, d, h, mi) - DTS_EPOCH
-    minutes = int(delta.total_seconds() // 60)
-    return minutes & 0xFFFFFF
-
-class Bits:
-    """Bit-oriented writer, MSB first, matching ITSO field packing."""
-    def __init__(self, nbytes):
-        self.buf = bytearray(nbytes)
-    def put(self, bit_off, bit_len, value):
-        for i in range(bit_len):
-            bit = (value >> (bit_len - 1 - i)) & 1
-            pos = bit_off + i
-            if bit:
-                self.buf[pos // 8] |= 1 << (7 - pos % 8)
-            else:
-                self.buf[pos // 8] &= ~(1 << (7 - pos % 8)) & 0xFF
-    def putb(self, byte_off, data):
-        self.buf[byte_off:byte_off + len(data)] = data
-
-def bcd(digits):
-    s = "".join(digits)
-    assert len(s) % 2 == 0
-    return bytes(int(s[i:i+2], 16) for i in range(0, len(s), 2))
-
-def pad(data, size):
-    assert len(data) <= size, (len(data), size)
-    return bytes(data) + bytes(size - len(data))
-
-def crc_b(data):
-    """CRC_B over data, as ITSO TS 1000-2 Annex A defines it.
-
-    The shell carries one as its SECRC, so a synthetic shell has to compute it
-    rather than invent it: the decoder checks it, and a made-up value would make
-    every synthetic card look corrupt.
-    """
-    crc = 0xFFFF
-    for b in data:
-        ch = b ^ (crc & 0xFF)
-        ch = (ch ^ (ch << 4)) & 0xFF
-        crc = ((crc >> 8) ^ (ch << 8) ^ (ch << 3) ^ (ch >> 4)) & 0xFFFF
-    return (~crc) & 0xFFFF
-
-
-def put_secrc(shell):
-    """Seal a shell with its SECRC, low byte first (TS 1000-2 clause 4.1.15).
-
-    ShellLength says where it goes, which is byte 22 without an MCRN and byte 30
-    with one, and the CRC covers everything before it.
-    """
-    dataset_len = (shell.buf[0] >> 2) * 4
-    crc = crc_b(bytes(shell.buf[:dataset_len - 2]))
-    shell.putb(dataset_len - 2, bytes([crc & 0xFF, crc >> 8]))
-
-
-def luhn(num17):
-    total, dbl = 0, True
-    for ch in reversed(num17):
-        d = int(ch)
-        if dbl:
-            d *= 2
-            if d > 9:
-                d -= 9
-        total += d
-        dbl = not dbl
-    return str((10 - total % 10) % 10)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from itso_build import (  # noqa: E402
+    Bits, bcd, date_stamp, dir_entry, dts, instance_and_seal, journey_tail,
+    log_entry, loyalty_tail, loc2, luhn, pad, period_tail, purse_tail,
+    put_secrc, tt_record, tt_record_rev4, value_group, value_record)
 
 # ---------------------------------------------------------------- Shell (FID 15)
 IIN, OID, ISSN = "633597", "1234", "0012345"
@@ -103,27 +37,6 @@ shell.buf[19] = 7           # SCTL
 put_secrc(shell)            # SECRC over everything above
 
 # ---------------------------------------------------------------- Directory (FID 0)
-def dir_entry(oid, typ, ptyp, vgp, expiry, extended=False):
-    e = Bits(5)
-    e.put(0, 1, 1 if extended else 0)   # OID extension flag (TS 1000-2 Annex B)
-    e.put(1, 13, oid & 0x1FFF)
-    e.put(14, 5, typ)
-    e.put(19, 5, ptyp)
-    e.put(24, 1, 1 if vgp else 0)
-    e.put(25, 1, 0)         # IINL
-    e.put(26, 14, expiry)
-    return bytes(e.buf)
-
-def log_entry(ptr, eei, when, record_offset, passback):
-    e = Bits(5)
-    e.put(0, 1, 1)          # LPF: normal mode
-    e.put(1, 5, ptr)
-    e.put(6, 2, eei)
-    e.put(8, 24, when)
-    e.put(32, 2, record_offset)
-    e.put(34, 6, passback)
-    return bytes(e.buf)
-
 d = Bits(64)
 d.put(0, 6, 0)              # DIRLength: RFU
 d.put(6, 6, 0b000010)       # DIRBitMap: last entry is a log entry
@@ -162,9 +75,6 @@ d_blocked.putb(0, bytes(d.buf))
 d_blocked.put(11, 1, 1)
 
 # ---------------------------------------------------------------- IPEs
-def instance_and_seal():
-    return bytes([0x11]) + b"\x01\x02\x03\x04" + b"\x00\x00\x01" + b"\xDE" * 8
-
 # E1 sector 1: TYP 2 stored travel rights
 ipe2 = Bits(24)
 ipe2.put(0, 6, 6)           # IPELength = 6 blocks = 24 bytes
@@ -184,41 +94,11 @@ ipe2.put(160, 4, 0)         # DepositCurrencyCode: sterling
 sector1 = bytes(ipe2.buf) + instance_and_seal()
 
 # E1 sector 9: the value record data group holding the balance
-vg = Bits(32)
-vg.put(0, 6, 8)             # VGLength = 8 blocks = 32 bytes
-vg.put(6, 6, 0b110000)      # VGBitMap: two value records supported
-vg.put(12, 4, 9)            # VGFormatRevision = IPEFormatRevision + 8
-def value_record(txn, seq, when, tail=b"", modifier=0xC0FFEE01, action_seq=3):
-    """A value record: the TS 1000-2 table 15 common header plus a 5-byte tail
-    whose meaning TS 1000-5 defines per IPE type."""
-    r = Bits(15)
-    r.put(0, 4, txn)
-    r.put(4, 12, seq)
-    r.put(16, 24, when)
-    r.put(40, 32, modifier)     # ISAMIDModifier: the POST that wrote the record
-    r.put(72, 8, action_seq)    # ActionSequenceNumber
-    r.putb(10, tail)
-    return bytes(r.buf)
-
-def purse_tail(value, valc, legs=0, cumulative=0, flags=0):
-    """TYP 2 table 4, as five bytes starting at record byte 10: Value, then the
-    currency and journey-leg nibbles, then a 13-bit cumulative fare and three
-    flag bits."""
-    t = Bits(5)
-    t.put(0, 16, value & 0xFFFF)
-    t.put(16, 4, valc)
-    t.put(20, 4, legs)
-    t.put(24, 13, cumulative)
-    t.put(37, 3, flags)
-    return bytes(t.buf)
-
-def journey_tail(rides, transfers, flags):
-    """TYP 23 table 33a: a ride count, not money, at record bytes 10 to 12."""
-    return bytes([rides, transfers, flags, 0, 0])
-vg.putb(2, value_record(4, 100, dts(2026, 9, 1, 12, 0), purse_tail(1560, 0)))
-vg.putb(17, value_record(7, 101, dts(2026, 9, 14, 8, 41),
-                         purse_tail(1234, 0, legs=2, cumulative=265, flags=0b001)))
-sector9 = bytes(vg.buf) + instance_and_seal()
+sector9 = value_group([
+    value_record(4, 100, dts(2026, 9, 1, 12, 0), purse_tail(1560, 0)),
+    value_record(7, 101, dts(2026, 9, 14, 8, 41),
+                 purse_tail(1234, 0, legs=2, cumulative=265, flags=0b001)),
+], format_rev=1) + instance_and_seal()
 
 # E2 sector 2: TYP 16 ITSO ID with holder name
 name_fore, name_sur = b"ALEX", b"MORGAN"
@@ -277,37 +157,21 @@ sector4 = pad(bytes(ipe23.buf) + instance_and_seal(), 128)
 
 # E4 sector 10: two value records a minute apart in DTS terms - which is to say,
 # not apart at all. Only TS# says which of them is live.
-vg23 = Bits(32)
-vg23.put(0, 6, 8)
-vg23.put(6, 6, 0b110000)    # two value records supported
-vg23.put(12, 4, 10)         # VGFormatRevision = IPEFormatRevision + 8
 USED_TAP = dts(2026, 9, 14, 8, 41)
-vg23.putb(2, value_record(11, 0x004, USED_TAP, journey_tail(1, 0, 0)))
-vg23.putb(17, value_record(6, 0x005, USED_TAP, journey_tail(0, 0, 0x02)))
-sector10 = bytes(vg23.buf) + instance_and_seal()
+sector10 = value_group([
+    value_record(11, 0x004, USED_TAP, journey_tail(1, 0, 0)),
+    value_record(6, 0x005, USED_TAP, journey_tail(0, 0, 0x02)),
+], format_rev=2) + instance_and_seal()
 
 # E3 sector 11: a TYP 22 value record. A period ticket keeps a stock of
 # unactivated passes and expires them separately from the pass in use
 # (TS 1000-5 table 3.29).
-def period_tail(passes, flags, stored_expiry, current_expiry):
-    t = Bits(5)
-    t.put(0, 6, passes)
-    t.put(6, 6, flags)
-    t.put(12, 14, stored_expiry)
-    t.put(26, 14, current_expiry)
-    return bytes(t.buf)
-
-vg22 = Bits(32)
-vg22.put(0, 6, 8)
-vg22.put(6, 6, 0b110000)    # two value records supported
-vg22.put(12, 4, 11)         # VGFormatRevision = IPEFormatRevision + 8
-vg22.putb(2, value_record(1, 7, dts(2025, 1, 1, 9, 0),
-                          period_tail(5, 0b01, date_stamp(2025, 12, 31),
-                                      date_stamp(2025, 1, 31))))
-vg22.putb(17, value_record(13, 8, dts(2025, 2, 1, 9, 0),
-                           period_tail(4, 0b01, date_stamp(2025, 12, 31),
-                                       date_stamp(2025, 2, 28))))
-sector11 = bytes(vg22.buf) + instance_and_seal()
+sector11 = value_group([
+    value_record(1, 7, dts(2025, 1, 1, 9, 0),
+                 period_tail(5, 0b01, date_stamp(2025, 12, 31), date_stamp(2025, 1, 31))),
+    value_record(13, 8, dts(2025, 2, 1, 9, 0),
+                 period_tail(4, 0b01, date_stamp(2025, 12, 31), date_stamp(2025, 2, 28))),
+], format_rev=3) + instance_and_seal()
 
 # E5 sector 5: a TYP 3 loyalty IPE. The dataset is only eight bytes: everything
 # that changes lives in the value record.
@@ -321,113 +185,12 @@ sector5 = bytes(ipe3.buf) + instance_and_seal()
 
 # E5 sector 12: LoyaltyPoints is three bytes wide, so a points balance does not
 # fit the two-byte slot a purse balance uses (TS 1000-5 table 9).
-vg3 = Bits(32)
-vg3.put(0, 6, 8)
-vg3.put(6, 6, 0b110000)
-vg3.put(12, 4, 9)
-def loyalty_tail(points):
-    t = Bits(5)
-    t.put(0, 24, points)
-    return bytes(t.buf)
-vg3.putb(2, value_record(1, 20, dts(2026, 8, 1, 10, 0), loyalty_tail(1200)))
-vg3.putb(17, value_record(1, 21, dts(2026, 9, 10, 10, 0), loyalty_tail(74500)))
-sector12 = bytes(vg3.buf) + instance_and_seal()
+sector12 = value_group([
+    value_record(1, 20, dts(2026, 8, 1, 10, 0), loyalty_tail(1200)),
+    value_record(1, 21, dts(2026, 9, 10, 10, 0), loyalty_tail(74500)),
+], format_rev=1) + instance_and_seal()
 
 # ---------------------------------------------------------------- Cyclic log (FID 1)
-def loc2(def_type, body):
-    """A LOC2 location: the tag then a fixed six-byte body, zero padded.
-
-    The log stores locations this way rather than as the tag-length-value LOC1
-    that an IPE uses, so a location type is only covered end to end once it has
-    been through here as well.
-    """
-    assert len(body) <= 6, f"{len(body)} bytes does not fit a LOC2 body"
-    return bytes([def_type]) + body + b"\x00" * (6 - len(body))
-
-
-def tt_record(txn, when, amount, origin, dest, ipe_ptr):
-    groups = b""
-    bitmap = 0
-    bitmap |= 1 << 0
-    groups += bytes([0x80]) + (amount & 0xFFFF).to_bytes(2, "big") + b"\x00\x00"
-    if dest:
-        bitmap |= 1 << 1
-        groups += dest
-    bitmap |= 1 << 2
-    groups += bytes([ipe_ptr & 0x1F])
-    if origin:
-        bitmap |= 1 << 3
-        groups += origin
-
-    total = 7 + len(groups)
-    assert total <= 48, f"record is {total} bytes, over a 48-byte slot"
-    blocks = (total + 3) // 4
-    r = Bits(48)
-    r.put(0, 6, blocks)
-    r.put(6, 6, 0)          # TTBitMap1
-    r.put(12, 4, 2)         # TTFormatRevision
-    r.put(16, 12, bitmap)   # TTBitMap2
-    r.put(28, 4, txn)       # TTTransactionType
-    r.put(32, 24, when)     # DateTimeStamp
-    r.putb(7, groups)
-    return bytes(r.buf)
-
-def tt_record_rev4(txn, when, amount, via, dest, ipe_ptr,
-                   entry_when, entry_oid, candidates, no_fare=False):
-    """A format revision 4 record: the shape a check-in/check-out closed system
-    writes on exit. It carries the entry it closes, the products the gate weighed
-    up, and a routing point (TS 1000-5 tables 64 and 66)."""
-    groups = b""
-    bitmap = 0
-
-    bitmap |= 1 << 0                                    # AMT
-    amt = Bits(5)
-    amt.put(0, 4, 1)                                    # MOP: cash
-    amt.put(4, 4, 0)                                    # currency: sterling
-    amt.put(8, 16, amount & 0xFFFF)
-    amt.put(27, 1, 1 if no_fare else 0)                 # NoFareCharged
-    amt.put(28, 12, 2000)                               # VAT: 20.00%
-    groups += bytes(amt.buf)
-
-    bitmap |= 1 << 1                                    # DEST
-    groups += dest
-    bitmap |= 1 << 2                                    # IPEID
-    groups += bytes([ipe_ptr & 0x1F])
-    bitmap |= 1 << 5                                    # RC
-    groups += via
-    bitmap |= 1 << 7                                    # IIN
-    groups += bcd("633597")
-
-    bitmap |= 1 << 8                                    # CIPE
-    cipe = Bits(3)
-    for i, c in enumerate(candidates):
-        cipe.put(i * 5, 5, c)
-    cipe.put(20, 4, 0b10)                               # CIPEFlags: inspected
-    groups += bytes(cipe.buf)
-
-    bitmap |= 1 << 9                                    # ENTRY
-    entry = Bits(10)
-    entry.putb(0, b"\x01\x02\x03\x04")
-    entry.putb(4, b"\x00\x00\x09")
-    entry.put(56, 24, entry_when)
-    groups += bytes(entry.buf)
-
-    bitmap |= 1 << 10                                   # ENTRY OID
-    groups += entry_oid.to_bytes(2, "big") + b"\x01"
-
-    total = 7 + len(groups)
-    assert total <= 48, f"revision 4 record is {total} bytes, over a 48-byte slot"
-    blocks = (total + 3) // 4
-    r = Bits(48)
-    r.put(0, 6, blocks)
-    r.put(6, 6, 0)
-    r.put(12, 4, 4)         # TTFormatRevision = 4
-    r.put(16, 12, bitmap)
-    r.put(28, 4, txn)
-    r.put(32, 24, when)
-    r.putb(7, groups)
-    return bytes(r.buf)
-
 log = bytearray(192)
 NLC_1072, NLC_1444, NLC_5685 = (loc2(203, n) for n in (b"1072", b"1444", b"5685"))
 # A bus stop as the card stores one: "MANAG" and "manwpwjm" folded onto the
@@ -513,13 +276,11 @@ cmd2_sector1 = pad(bytes(cmd2_ipe2.buf) + instance_and_seal(), CMD2_B)
 # A blank record reads as a DTS of zero, and that epoch is in 2028 - later than
 # any real timestamp - so the decoder has to ignore it rather than treat it as
 # the newest.
-cmd2_vg = Bits(32)
-cmd2_vg.put(0, 6, 8)
-cmd2_vg.put(6, 6, 0b110000)             # two value records supported
-cmd2_vg.put(12, 4, 9)
-cmd2_vg.putb(2, value_record(4, 1, dts(2025, 4, 16, 14, 31), purse_tail(250, 0)))
-cmd2_vg.putb(17, bytes(15))             # never written
-cmd2_sector18 = pad(bytes(cmd2_vg.buf) + instance_and_seal(), CMD2_B)
+cmd2_sector18 = pad(
+    value_group([
+        value_record(4, 1, dts(2025, 4, 16, 14, 31), purse_tail(250, 0)),
+        bytes(15),                      # never written
+    ], format_rev=1) + instance_and_seal(), CMD2_B)
 
 # E2 sector 2: an ITSO ID carrying a name.
 cmd2_name_fore, cmd2_name_sur = b"JO", b"CLYDE"
