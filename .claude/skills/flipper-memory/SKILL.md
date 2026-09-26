@@ -74,6 +74,13 @@ Note the baseline moves between boots (110–135 KB free idle depending on
 firmware state), so compare within one session, never against a number written
 down earlier.
 
+Much of that spread is the screenshot. `flipctl shot` works over an RPC
+session, and the memory that session takes stays allocated after it. Measured on
+2026-09-26 at the desktop after closing Flipso: 138,904 bytes free with no
+screenshot since boot, 113,600 with one. So take the idle figure and the
+after-exit figure on the same side of a screenshot, or a ~25 KB gap reads as a
+leak the app does not have.
+
 ## Crashes
 
 A `furi_check` or `furi_assert` failure **halts the device**. Know what that

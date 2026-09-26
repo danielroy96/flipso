@@ -214,6 +214,41 @@ def main():
     check("--arm refuses to stream when the reader could not be armed", rc == 1)
     check("and does not open the port to stream anyway", len(opened) == 0)
 
+    # A launch counts only when the app says its UI is up. The loader reports an
+    # app stuck in its own startup as running - measured on 2026-09-26, with
+    # the desktop on screen and every key press landing on it.
+    def launcher(script):
+        patch([script])
+        f = flipctl.Flipper.__new__(flipctl.Flipper)
+        f.s = flipctl.open_serial("/dev/fake")
+        f._sync = lambda limit: None
+        return f
+
+    limit = flipctl.APP_STARTUP_LIMIT_S
+    flipctl.APP_STARTUP_LIMIT_S = 0.5
+    f = launcher([b"loader open /ext/apps/NFC/flipso.fap\r\n",
+                  b"10 [I][Flipso] UI ready\r\n"])
+    with Captured():
+        check("a launch that logs UI ready is up", flipctl.launch_app(f, "flipso"))
+    check("the launch and the log go down one session, in that order",
+          any(b"loader open" in w and w.index(b"loader open") < w.index(b"log info")
+              for w in f.s.written))
+
+    f = launcher([b"loader open /ext/apps/NFC/flipso.fap\r\n",
+                  b"10 [I][Flipso] Station table: 2600 entries\r\n", b""])
+    with Captured():
+        check("an app that stops before UI ready is not up",
+              not flipctl.launch_app(f, "flipso"))
+
+    f = launcher([b"10 [I][Other] UI ", b"ready\r\n"])
+    with Captured():
+        check("another app's line with the same words does not count",
+              not flipctl.launch_app(f, "flipso"))
+    f = launcher([b"[Flipso] UI ", b"ready\r\n"])
+    with Captured():
+        check("the marker is recognised across two reads", flipctl.launch_app(f, "flipso"))
+    flipctl.APP_STARTUP_LIMIT_S = limit
+
     print("FAILED" if failures else "All flipctl recovery tests passed")
     return 1 if failures else 0
 

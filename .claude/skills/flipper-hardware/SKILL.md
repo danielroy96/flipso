@@ -46,11 +46,10 @@ arming all mean you must `arm` again before asking.
 `ready` used to be the rule on this page. It was wrong twice over, both
 measured:
 
-- It finishes by asking `loader info` whether the app is running - the one
-  signal this page already called worthless. On 2026-09-21 it printed
-  `ready: Flipso` and exited 0 while a screenshot taken seconds later showed
-  the Flipper desktop. The app was resident, the loader named it, the heap
-  agreed, and it did not own the screen.
+- It used to finish by asking `loader info`, which on 2026-09-21 printed
+  `ready: Flipso` while the screen showed the desktop. The cause turned out to
+  be a Flipso bug (below, "An app stuck in startup"), and `ready` now waits for
+  the app's own `UI ready` log line instead - so that half is fixed.
 - Even when the app really is on screen, Flipso's scan scene **starts idle on
   purpose** - the field costs power, so it only comes up when someone presses
   OK. A completely healthy `ready` still leaves a screen reading "Ready to read
@@ -124,9 +123,45 @@ Closes and relaunches the app so that whatever scene it was left in is gone and
 the UI can be driven from a known start. Takes about 15 s, and reboots first if
 the loader will not let go.
 
-It cannot tell you the app reached the screen — it has nothing to ask but
-`loader info` — so pair it with a screenshot when that matters, and use `arm`,
-never this, before a card tap.
+The launch goes down the same CLI session as a log stream, and only counts when
+Flipso logs `UI ready` - which it does just before `view_dispatcher_run()`, once
+the first scene is up and input will reach it. If the line does not come
+within 15 s, `ready` reboots, tries once more, and exits non-zero if that fails
+too. Exit 0 therefore means the app is on screen. It still does not mean the
+reader is on: use `arm`, never this, before a card tap.
+
+**Screenshot before sending keys**, every time after a launch. Keys go to
+whatever owns the screen; at the desktop they open menus and other apps, and on
+2026-09-26 a `Left` meant for Flipso's Saved button went to the desktop because
+the app was not on screen.
+
+### An app stuck in startup
+
+The loader calls an app "running" from the moment its thread exists. An app
+blocked inside its own startup therefore looks running to `loader info`, holds
+its heap, leaves the desktop on screen, and cannot be closed - `loader close`
+answers "has to be closed manually", because the exit handler is only
+registered by `view_dispatcher_run()`.
+
+That was Flipso on every second launch after a boot until 2026-09-26: a failed
+`storage_file_open()` of the optional `/data/stations.dat` was never closed,
+so the path stayed registered with the storage service after the app exited,
+and the next launch's open of it waited for ever. `tools/test/lint_storage.py`
+now guards the pattern.
+
+If a launch ever fails to reach `UI ready` again, **find out where startup
+stops rather than rebooting past it**:
+
+```bash
+tools/flipper/flipctl close
+tools/flipper/flipctl log --launch --all --seconds 15
+```
+
+`--launch` opens the app in the same session the stream starts in, so every
+line from the first instant of startup is caught - which nothing else can do,
+because the stream and a separate `loader open` cannot share the port and the
+firmware keeps no log history. Add temporary `FURI_LOG_I` checkpoints to
+`flipso_alloc()` if the existing lines do not narrow it down.
 
 ## Deploy
 
@@ -135,7 +170,10 @@ tools/flipper/flipctl deploy
 ```
 
 Compiles, copies the `.fap` to `dist/`, closes any running app, uploads,
-launches, then reports what is running and the free heap. About 13 s when the
+launches, then reports what is running and the free heap. `ufbt launch` cannot
+say whether the app reached the screen, so deploy then closes that instance and
+relaunches it the checked way (above), and exits non-zero if `UI ready` never
+comes. About 13 s when the
 app closes cleanly, about 45 s when it has to reboot to get there — which
 happens, and needs nothing from you or the user.
 
@@ -242,8 +280,12 @@ should be tapping anything.
 | `the serial port is held by another process` | a log stream or `ufbt` from an earlier session | `flipctl` clears its own helpers; `--force` clears anything |
 | `[flipctl] serial dropped - reconnecting` | macOS dropped the CDC endpoint, usually just after an RPC call (a screenshot, `ufbt launch`) | nothing: the stream reopens and re-arms itself and keeps watching |
 | The screen shows the app browser and nothing responds | a Back press landed after the app exited and wedged the GUI | `flipctl reboot` |
-| The app will not open, or the desktop is showing while `loader info` says it runs | a zombie still holds the loader lock: `loader open` answers "Loader is locked" | `flipctl reboot`, then `flipctl arm` |
+| The app will not open, or the desktop is showing while `loader info` says it runs | the app is blocked in its own startup (see "An app stuck in startup"); `loader open` answers "Loader is locked" and `loader close` "has to be closed manually" | `flipctl reboot` to recover, then **find the cause** with `flipctl log --launch` - it is a bug, not noise |
 | `arm` says `NOT ARMED` | the app is not on screen, or the OK press did not reach the scan scene | it has already retried and rebooted; `flipctl shot` and look |
+
+Reboots are visible on the user's desk and look like crashes. Say so whenever
+`flipctl` reboots (its output says `rebooting`), and treat a second reboot in a
+session as a bug to investigate, not a routine step.
 
 `flipctl reboot` is the universal escape hatch: it reboots, waits for the port
 to come back, and reports the fresh heap baseline. It takes about 20 s and is

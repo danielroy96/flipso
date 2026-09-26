@@ -423,11 +423,13 @@ def cmd_ready(args):
     if h:
         print(f"  free heap  {h.get('Free heap size', 0):,} of "
               f"{h.get('Total heap size', 0):,}")
-    if not args.desktop and running is None:
+    if not args.desktop and (running is None or message != "ready"):
         return 1
     if not args.desktop:
-        print("  relaunched, but not verified on screen - run `flipctl arm` "
-              "before asking for a tap")
+        # "UI ready" means the first scene is up and input reaches the app. It
+        # does not mean the reader is on: the scan scene starts idle.
+        print("  on screen (the app logged \"UI ready\") - the reader is off "
+              "until `flipctl arm`")
     return 0
 
 
@@ -599,15 +601,80 @@ def cmd_close(args):
 APP_HEAP_JUMP = 20_000
 
 
-def launch_app(f: Flipper, appid: str) -> bool:
-    """Start the installed .fap. External apps open by path, not by name.
+# Logged by flipso_app() immediately before view_dispatcher_run(). See launch_app.
+APP_UI_READY = b"[Flipso] UI ready"
+APP_STARTUP_LIMIT_S = 15.0
 
-    `loader open <name>` only resolves the built-in apps that `loader list`
-    prints, which is why launching Flipso that way reports "not found".
+
+def launch_app(f: Flipper, appid: str) -> bool:
+    """Start the installed .fap and prove it reached its event loop.
+
+    External apps open by path, not by name: `loader open <name>` only resolves
+    the built-in apps that `loader list` prints.
+
+    `loader info` cannot be the check. The loader calls an app running from the
+    moment its thread exists, and on 2026-09-26 Flipso was measured blocked
+    inside its own startup - in a storage_file_open() that waits for ever when
+    the storage service believes the path is already open - with the desktop
+    on screen, every key going to the desktop, and `loader close` answering
+    "has to be closed manually" because the exit handler is only registered by
+    view_dispatcher_run(). So the launch goes down the same CLI session as a log
+    stream, and the app's own "UI ready" line is what counts.
     """
-    f.cmd(f"loader open /ext/apps/NFC/{appid}.fap", limit=10.0)
-    time.sleep(2.0)
-    return f.app_running() is not None
+    s = f.s
+    drain_to_prompt(s)
+    s.write(f"loader open /ext/apps/NFC/{appid}.fap\r\nlog info\r\n".encode())
+    deadline = time.time() + APP_STARTUP_LIMIT_S
+    buf = b""
+    ready = False
+    while time.time() < deadline:
+        chunk = s.read(4096)
+        if not chunk:
+            time.sleep(0.05)
+            continue
+        buf += chunk
+        if APP_UI_READY in ANSI.sub(b"", buf):
+            ready = True
+            break
+    f._sync(2.0)  # Ctrl-C ends the stream and gets back to a prompt
+    if not ready:
+        text = ANSI.sub(b"", buf).decode("utf-8", "replace").replace("\r", "")
+        said = [l for l in text.split("\n")
+                if l.strip() and "log info" not in l and "loader open" not in l]
+        print("[flipctl] the app did not report \"UI ready\" within "
+              f"{APP_STARTUP_LIMIT_S:g}s - it is not on screen, whatever `loader info` "
+              "says", file=sys.stderr)
+        for l in said[-8:]:
+            print(f"[flipctl]   {l.strip()}", file=sys.stderr)
+    return ready
+
+
+def launch_verified(port: str, args) -> tuple:
+    """launch_app, rebooting once if the app does not come up. Returns (port, ok).
+
+    A reboot is the right second attempt rather than a relaunch: an app stuck in
+    startup cannot be closed by the loader, and whatever it was stuck on - a
+    storage registration, a held lock - is state the reboot clears.
+    """
+    f = Flipper(port)
+    try:
+        ok = launch_app(f, args.appid)
+    finally:
+        f.close()
+    if ok or getattr(args, "no_reboot", False):
+        return port, ok
+    print("[flipctl] rebooting and launching once more", file=sys.stderr)
+    port = reboot_device(port)
+    f = Flipper(port)
+    try:
+        ok = launch_app(f, args.appid)
+    finally:
+        f.close()
+    if not ok:
+        print("[flipctl] still not up after a reboot - the app is blocking in its "
+              "own startup. See it with `flipctl close; flipctl log --launch --all`",
+              file=sys.stderr)
+    return port, ok
 
 
 def ensure_usable(port: str, args, want_running: bool = True) -> tuple:
@@ -632,11 +699,7 @@ def ensure_usable(port: str, args, want_running: bool = True) -> tuple:
     if not want_running:
         return port, "at the desktop"
 
-    f = Flipper(port)
-    try:
-        ok = launch_app(f, args.appid)
-    finally:
-        f.close()
+    port, ok = launch_verified(port, args)
     return port, ("ready" if ok else "the app did not start")
 
 
@@ -855,6 +918,17 @@ def cmd_deploy(args):
                   "start; check `tools/flipper/flipctl log`")
     finally:
         f.close()
+
+    # `ufbt launch` starts the app over RPC and cannot say whether it reached
+    # the screen, and the loader says "running" either way. Close that instance
+    # and launch again the checked way; a refused close is itself the sign of an
+    # app stuck in startup, and close_running_app reboots out of it.
+    port = close_running_app(port, args)
+    port, ok = launch_verified(port, args)
+    if not ok:
+        print("[flipctl] installed, but the app does not come up - see above")
+        return 1
+    print("[flipctl] on screen (the app logged \"UI ready\")")
     return 0
 
 
@@ -881,13 +955,24 @@ def close_running_app(port: str, args) -> str:
     return port
 
 
-def start_log_stream(handle, level: str):
-    """Put a freshly opened port into streaming state."""
+def start_log_stream(handle, level: str, launch: str | None = None):
+    """Put a freshly opened port into streaming state.
+
+    With @p launch, `loader open` goes down the same session immediately before
+    `log`, in one write. The CLI runs them back to back, so the stream is live
+    within milliseconds of the app thread starting - which is the only way to
+    see an app's startup at all, because the port cannot be held by a stream
+    and a separate `loader open` at once, and the firmware keeps no log history.
+    """
     drain_to_prompt(handle)
     # The level belongs to this session: sending `log debug` from a previous
     # connection and `log` here silently gives the system default instead.
     # That is also why a reconnect has to re-arm rather than just reopen.
-    handle.write(f"log {level}\r\n".encode())
+    opener = f"loader open {launch}\r\n" if launch else ""
+    handle.write(f"{opener}log {level}\r\n".encode())
+    if launch:
+        # Swallowing the echo would swallow the app's first lines with it.
+        return
     time.sleep(0.5)
     handle.read(65536)
 
@@ -927,11 +1012,22 @@ def cmd_log(args):
             f.close()
         time.sleep(0.3)
 
-    def arm(handle):
-        start_log_stream(handle, args.level)
+    def arm(handle, launch=None):
+        start_log_stream(handle, args.level, launch)
+
+    launch = None
+    if getattr(args, "launch", False):
+        f = Flipper(port)
+        try:
+            if f.app_running():
+                die("an app is already running, so `--launch` would only be refused "
+                    "by the loader. Run `flipctl close` first.")
+        finally:
+            f.close()
+        launch = f"/ext/apps/NFC/{args.appid}.fap"
 
     s = open_serial(port)
-    arm(s)
+    arm(s, launch)
     print(f"[flipctl] streaming log at level '{args.level}'"
           f"{'' if args.all else ' (filtered)'}"
           f"{f' for {args.seconds:g}s' if args.seconds else ''}", flush=True)
@@ -1566,6 +1662,9 @@ def build_parser():
                         "field is polling")
     s.add_argument("--shot", metavar="PATH",
                    help="with --arm, capture the armed screen as a PNG")
+    s.add_argument("--launch", action="store_true",
+                   help="open the app in the same session the stream starts in, "
+                        "so its startup is logged (the app must not be running)")
     s.set_defaults(func=cmd_log)
 
     s = sub.add_parser("mem", help="heap snapshot, sampling, or the app's cost")

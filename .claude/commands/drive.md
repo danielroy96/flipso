@@ -8,7 +8,10 @@ Walk through this part of Flipso on the connected Flipper: $ARGUMENTS
 
 Method:
 
-1. Screenshot first to see where the device already is.
+1. Screenshot first to see where the device already is. If it is not Flipso -
+   the dolphin, or any other app - do not send keys: they would go to the
+   desktop. Run `tools/flipper/flipctl ready`, check it exited 0, and
+   screenshot again.
 2. Send keys with `tools/flipper/flipctl keys ...` (`up down left right ok back`,
    `ok:long` for a long press, `@1.5` to wait).
 3. Screenshot after each meaningful step, write the PNGs into the scratchpad,
