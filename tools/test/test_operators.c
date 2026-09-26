@@ -105,7 +105,7 @@ int main(void) {
      * stays sorted.
      */
     static const uint16_t known[] = {
-        78, 96, 109, 143, 165, 196, 226, 246, 247, 289, 1136, 8000, 8288};
+        78, 96, 109, 143, 163, 165, 196, 226, 246, 247, 289, 1136, 8000, 8288};
     unsigned unreachable = 0;
     for(size_t i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
         if(!itso_operator_name(known[i])) unreachable++;
@@ -115,9 +115,9 @@ int main(void) {
     same("a known operator is named", itso_operator_name(78), "Transport for London");
     same("a council that issues concessionary passes is named", itso_operator_name(165),
          "Reading Borough Council");
-    /* The pass is branded by the national scheme, not by the council that issued
-     * it, so the menu keeps saying "ITSO Card" rather than borrowing the name. */
-    same("but it brands no card", itso_operator_brand(165), NULL);
+    /* The pass carries the national scheme's artwork, but the menu is titled
+     * with the council that issued it rather than a generic "ITSO Card". */
+    same("and titles the pass it issues", itso_operator_brand(165), "Reading Borough Council");
     same("an unknown operator is not", itso_operator_name(4242), NULL);
     /* Shared central-product OIDs are named but brand nothing: they own
      * products on other issuers' cards and issue none of their own. */
@@ -126,6 +126,10 @@ int main(void) {
     same("but it brands no card", itso_operator_brand(246), NULL);
 
     same("a shell owner that brands a card reports it", itso_operator_brand(226), "Freedom Pass");
+    /* Neighbouring OIDs in the same town: the bus company brands its card, the
+     * council's concessionary pass is covered above. */
+    same("a bus operator is named", itso_operator_name(163), "Reading Buses");
+    same("and brands its own card", itso_operator_brand(163), "Reading Buses");
     /* The brand is the app's title bar, so an operator we have only seen as a
      * product owner must not lend its name to somebody else's card. */
     same("an operator that brands no card reports none", itso_operator_brand(78), NULL);
