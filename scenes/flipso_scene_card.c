@@ -62,6 +62,12 @@ void flipso_scene_card_on_enter(void* context) {
     if(card->mcrn_present && card->mcrn[0]) {
         furi_string_cat_printf(text, "Card ref: %s\n", card->mcrn);
     }
+    /* The directory is rewritten by every transaction, so the ISAM that last
+     * sealed it is the last device to change anything on the card - and the
+     * ISAM ID names the operator it belongs to (TS 1000-2 table 8, annex B). */
+    if(card->dir_instance_valid) {
+        flipso_cat_isam(text, app, "Last used with", card->dir_isam);
+    }
 
     furi_string_cat(text, "\n\e#Platform\n");
     const char* media = (card->fvc == 7) ? "DESFire (CMD7)" :
@@ -92,6 +98,10 @@ void flipso_scene_card_on_enter(void* context) {
      * are told apart, and it counts every change made to the shell. */
     if(card->dir_valid) {
         furi_string_cat_printf(text, "Dir sequence: %u\n", card->dir_sequence);
+        if(card->dir_instance_valid && card->shell_iteration) {
+            /* INS#: bumped to bring a hotlisted card back into use. */
+            furi_string_cat_printf(text, "Shell iteration: %u\n", card->shell_iteration);
+        }
     }
 
     /* Where this came from, for a card opened off the SD card. The read time

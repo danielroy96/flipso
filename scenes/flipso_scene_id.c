@@ -84,6 +84,8 @@ void flipso_scene_id_on_enter(void* context) {
             furi_string_cat_printf(text, "Passback: %u min\n", product->passback);
         }
 
+        flipso_cat_id_details(text, product);
+
         furi_string_cat_printf(text, "Status: %s\n", itso_status_name(product->status));
     }
 

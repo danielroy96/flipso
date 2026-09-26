@@ -33,9 +33,12 @@ void flipso_scene_product_on_enter(void* context) {
     }
 
     flipso_cat_product(text, app, product, flipso_now());
+    flipso_cat_ticket_terms(text, product);
+    flipso_cat_id_details(text, product);
 
     flipso_cat_last_transaction(text, product);
     flipso_cat_purse_terms(text, product);
+    flipso_cat_capping(text, app, product);
     flipso_cat_value_history(text, product);
 
     if(product->value_group && !product->value_parsed) {
@@ -71,6 +74,18 @@ void flipso_scene_product_on_enter(void* context) {
                     text, "Removable: %u days\n  after expiry\n", product->remove_date);
             }
         }
+        /* Owner-defined codes: meaningless without the scheme's own tables, but
+         * they are what tells two otherwise identical tickets apart. */
+        /* An ID's CPICC is its issuer and is shown with the holder details. */
+        if(product->has_cpicc && product->typ != ItsoTypId) {
+            furi_string_cat_printf(text, "CPICC: %u\n", product->cpicc);
+        }
+        if(product->ticket.validity_code) {
+            furi_string_cat_printf(text, "Validity code: %u\n", product->ticket.validity_code);
+        }
+        if(product->ticket.promotion_code) {
+            furi_string_cat_printf(text, "Promotion: %u\n", product->ticket.promotion_code);
+        }
         if(product->has_iin) {
             furi_string_cat_printf(text, "Owner network: %06lu\n", (unsigned long)product->iin);
         }
@@ -79,8 +94,10 @@ void flipso_scene_product_on_enter(void* context) {
          * copy of a product from another, so this is what a scheme would quote
          * back when asked about this particular ticket. */
         if(product->instance_valid) {
-            furi_string_cat_printf(text, "Created by ISAM:\n  %08lX #%lu\n",
-                (unsigned long)product->isam_id, (unsigned long)product->isam_seq);
+            /* The ISAM ID carries the OID of the operator it is registered to
+             * (TS 1000-2 annex B), so it says whose machine sold the product. */
+            flipso_cat_isam(text, app, "Created by", product->isam_id);
+            furi_string_cat_printf(text, "  seq #%lu\n", (unsigned long)product->isam_seq);
             if(product->iteration) {
                 furi_string_cat_printf(text, "Iteration: %u\n", product->iteration);
             }
@@ -89,8 +106,7 @@ void flipso_scene_product_on_enter(void* context) {
 
         if(product->value_parsed) {
             furi_string_cat_printf(text, "Value writes: %u\n", product->value_ts);
-            furi_string_cat_printf(
-                text, "Last POST ISAM:\n  %08lX\n", (unsigned long)product->value_isam);
+            flipso_cat_isam(text, app, "Last written by", product->value_isam);
             if(product->value_action_seq) {
                 furi_string_cat_printf(text, "Action seq: %u\n", product->value_action_seq);
             }

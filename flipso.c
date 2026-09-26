@@ -256,6 +256,16 @@ void flipso_cat_product(FuriString* out, Flipso* app, const ItsoProduct* product
     if(product->has_start && product->typ != ItsoTypStoredTravelRights) {
         furi_string_cat(out, "Valid from: ");
         flipso_cat_date(out, product->start);
+        if(product->ticket.has_start_time && product->ticket.start_time) {
+            furi_string_cat_printf(
+                out, " %02u:%02u", product->ticket.start_time / 60,
+                product->ticket.start_time % 60);
+        }
+        furi_string_push_back(out, '\n');
+    } else if(product->ticket.valid_from_dts) {
+        /* Revisions 1 and 2 of a period ticket hold a DTS here, not a DATE. */
+        furi_string_cat(out, "Valid from: ");
+        flipso_cat_datetime(out, product->ticket.valid_from_dts);
         furi_string_push_back(out, '\n');
     }
 
@@ -274,6 +284,15 @@ void flipso_cat_product(FuriString* out, Flipso* app, const ItsoProduct* product
 
     flipso_cat_location(out, app, "From", &product->from);
     flipso_cat_location(out, app, "To", &product->to);
+
+    /* A period ticket may leave both locations out, and then it is good wherever
+     * its owner has configured that product type to be accepted - an operator's
+     * whole network, typically. The card cannot say more than that, and saying
+     * nothing reads as though Flipso had failed to decode them. */
+    if(product->typ == ItsoTypPeriodTicket && product->ticket.valid && !product->from.valid &&
+       !product->to.valid) {
+        furi_string_cat(out, "Area: not on the card;\n  set by the operator\n  for this ticket type\n");
+    }
 
     if(product->balance.valid) {
         flipso_cat_money(
@@ -427,6 +446,7 @@ void flipso_cat_purse_terms(FuriString* out, const ItsoProduct* product) {
         flipso_cat_money(out, "  when below", &product->top_up_threshold);
         furi_string_cat_printf(
             out, "  %s\n", product->auto_top_up ? "(enabled)" : "(not enabled)");
+        if(product->auto_top_up_internal) furi_string_cat(out, "  from another purse\n");
         if(product->typ == ItsoTypStoredTravelRights && product->has_start) {
             furi_string_cat(out, "  not before ");
             flipso_cat_date(out, product->start);
@@ -440,6 +460,241 @@ void flipso_cat_purse_terms(FuriString* out, const ItsoProduct* product) {
             furi_string_cat_printf(
                 out, "  paid by %s\n", itso_payment_name(product->deposit_mop));
         }
+        if(product->deposit_vat) {
+            furi_string_cat_printf(
+                out, "  VAT %u.%02u%%\n", product->deposit_vat / 100, product->deposit_vat % 100);
+        }
+    }
+}
+
+void flipso_cat_isam(FuriString* out, const Flipso* app, const char* label, uint32_t isam) {
+    /* Zero is what a record holds until a POST first writes it (TS 1000-2
+     * clause 7.2.4.4), not an ISAM of operator zero. */
+    if(!isam) return;
+    flipso_cat_operator(out, app, label, itso_isam_oid(isam));
+    furi_string_cat_printf(out, "  ISAM %08lX\n", (unsigned long)isam);
+}
+
+/** A deposit line and what the card says about paying it and getting it back. */
+static void flipso_cat_deposit(
+    FuriString* out,
+    const char* label,
+    const ItsoMoney* amount,
+    uint8_t mop,
+    uint16_t vat,
+    bool refundable) {
+    flipso_cat_money(out, label, amount);
+    if(mop) furi_string_cat_printf(out, "  paid by %s\n", itso_payment_name(mop));
+    if(vat) furi_string_cat_printf(out, "  VAT %u.%02u%%\n", vat / 100, vat % 100);
+    furi_string_cat(out, refundable ? "  refundable\n" : "  refund at owner's say\n");
+}
+
+void flipso_cat_id_details(FuriString* out, const ItsoProduct* product) {
+    if(product->typ != ItsoTypId || !product->body_parsed) return;
+
+    /* On an English, Scottish or Welsh concessionary pass this is the pass
+     * issuer - the council - by the schemes' own numbering, which is not
+     * published; elsewhere it is whatever the owner uses it for. */
+    if(product->has_cpicc) {
+        furi_string_cat_printf(out, "Issuer code: %u\n  (0x%04X)\n", product->cpicc, product->cpicc);
+    }
+    if(product->has_holder_id) {
+        furi_string_cat_printf(out, "Holder no.: %lu\n", (unsigned long)product->holder_id);
+    }
+    if(product->has_secondary_holder && product->secondary_holder_id) {
+        furi_string_cat_printf(
+            out, "2nd holder no.: %lu\n", (unsigned long)product->secondary_holder_id);
+    }
+
+    char code[3];
+    if(itso_language_code(product->language, code)) {
+        const char* name = itso_language_name(product->language);
+        furi_string_cat_printf(out, "Language: %s\n", name ? name : code);
+    }
+
+    /* HalfDayOfWeek: two network-defined periods per day (annex A.10). A zero
+     * mask selects nothing, which on a real card means the element is unused. */
+    if(product->has_half_days && product->half_days) {
+        char days[40];
+        uint8_t mask = itso_half_days_mask(product->half_days);
+        itso_format_days(mask, days, sizeof(days));
+        furi_string_cat_printf(out, "Valid: %s\n", days);
+        static const char* const names[] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+        for(int day = 0; day < 7; day++) {
+            uint8_t pair = (product->half_days >> (14 - 2 * day)) & 0x03;
+            if(pair == 0x02) furi_string_cat_printf(out, "  %s 1st period only\n", names[day]);
+            if(pair == 0x01) furi_string_cat_printf(out, "  %s 2nd period only\n", names[day]);
+        }
+        if(mask & ITSO_DOW_SPECIAL) furi_string_cat(out, "  and special days\n");
+    }
+
+    /* How a POST rounds a half or proportional fare for this holder. */
+    if(product->rounding & ITSO_ROUNDING_ENABLED) {
+        furi_string_cat_printf(
+            out, "Fares rounded %s\n  to %s\n",
+            (product->rounding & ITSO_ROUNDING_FLAG) ? "up" : "down",
+            (product->rounding & ITSO_ROUNDING_VALUE) ? "5p" : "1p");
+    }
+
+    /* IDFlags bits 3, 6 and 7 (TS 1000-5 table 24). */
+    if(product->has_id_flags && (product->id_flags & 0x08)) {
+        furi_string_cat(out, "Details held in a URI\n  application\n");
+    }
+    if(product->has_deposit) {
+        flipso_cat_deposit(
+            out, "Deposit", &product->deposit, product->deposit_mop, product->deposit_vat,
+            (product->id_flags & 0x40) != 0);
+    }
+    if(product->has_shell_deposit) {
+        flipso_cat_deposit(
+            out, "Card deposit", &product->shell_deposit, product->shell_deposit_mop,
+            product->shell_deposit_vat, (product->id_flags & 0x80) != 0);
+    }
+}
+
+void flipso_cat_capping(FuriString* out, Flipso* app, const ItsoProduct* product) {
+    if(product->vgx_ref != 1 && product->vgx_ref != 2) return;
+    /* Decoded here rather than held in ItsoProduct: four locations make it the
+     * largest thing a product could carry, and at most one product has one. */
+    size_t len = 0;
+    const uint8_t* group = flipso_capture_product_group(app->capture, product->dir_index, &len);
+    if(!group || !product->on_card) return;
+
+    ItsoCapping* cap = malloc(sizeof(ItsoCapping));
+    uint8_t valc = product->balance.valid ? product->balance.currency : 0;
+    if(itso_parse_capping(group, len, app->card.sector_size, valc, cap)) {
+        furi_string_cat(out, "\n\e#Fare capping\n");
+        bool any = false;
+        static const char* const rules[] = {NULL, "daily", "short period", "long period"};
+        for(uint8_t a = 0; a < ITSO_CAP_ACCUMULATORS; a++) {
+            const ItsoCapAccumulator* acc = &cap->acc[a];
+            if(acc->rule == ItsoCapRuleNone) continue;
+            any = true;
+            furi_string_cat_printf(
+                out, "Cap %u: %s\n", a + 1, acc->rule < COUNT_OF(rules) ? rules[acc->rule] : "other");
+            if(acc->rule == ItsoCapRuleDay) {
+                flipso_cat_money(out, "  today", &acc->day);
+            } else {
+                flipso_cat_money(out, "  so far", &acc->multiday);
+                if(acc->day_count) furi_string_cat_printf(out, "  day %u\n", acc->day_count);
+            }
+            flipso_cat_money(out, "  uncapped", &acc->uncapped);
+            if(acc->last_fare.valid && acc->last_fare.value) {
+                flipso_cat_money(out, "  last fare", &acc->last_fare);
+            }
+            if(acc->cap_dts) {
+                furi_string_cat(out, "  capped ");
+                flipso_cat_datetime(out, acc->cap_dts);
+                furi_string_push_back(out, '\n');
+            }
+            flipso_cat_location(out, app, "  at", &acc->location);
+        }
+        /* An unused product holds the structure with every rule at zero. */
+        if(!any) furi_string_cat(out, "Not used yet\n");
+        if(cap->strategy) furi_string_cat_printf(out, "Strategy: %u\n", cap->strategy);
+    }
+    free(cap);
+}
+
+void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product) {
+    const ItsoTicketTerms* t = &product->ticket;
+    if(!t->valid) return;
+
+    char text[48];
+    /* Day filters are a period ticket's; a journey ticket has none to show. */
+    if(product->typ == ItsoTypPeriodTicket) {
+        uint8_t days = itso_ticket_days(t->valid_days, t->flags);
+        itso_format_days(days, text, sizeof(text));
+        furi_string_cat_printf(out, "Days: %s\n", text);
+        itso_format_part_days(days, t->flags, text, sizeof(text));
+        if(text[0]) furi_string_cat_printf(out, "  %s\n", text);
+        if(!(days & ITSO_DOW_SPECIAL)) furi_string_cat(out, "  not public holidays\n");
+        if(t->flags & ITSO_T22_OFF_PEAK_ONLY) furi_string_cat(out, "Off-peak only\n");
+    }
+
+    /* TYP 23's mode group: how rides are counted, and what joins legs into one
+     * journey (TS 1000-5 table 35a). */
+    if(t->has_mode_group) {
+        static const char* const modes[] = {"each ride", "each journey", "simple ticket"};
+        furi_string_cat_printf(
+            out, "Counts: %s\n", t->mode < COUNT_OF(modes) ? modes[t->mode] : "other");
+        if(t->mode == ItsoJourneyModeStoredJourneys) {
+            /* TimeLimit counts 30 second steps between the start of one leg and
+             * the next. */
+            furi_string_cat_printf(
+                out, "  up to %u changes,\n  %u min apart\n", t->max_transfers,
+                t->time_limit / 2);
+        }
+        flipso_cat_money(out, "Ride value", &t->ride_value);
+    }
+
+    /* Below 1440 the time falls on the expiry date itself; from 1440 it is the
+     * next morning, which is how a ticket covers the last buses after midnight.
+     * Zero is left out: schemes use it for "the POST decides". */
+    if(t->expiry_time) {
+        uint16_t minutes = t->expiry_time;
+        bool next_day = minutes >= 1440;
+        if(next_day) minutes -= 1440;
+        furi_string_cat_printf(
+            out, "Ends: %02u:%02u %s\n", minutes / 60, minutes % 60,
+            next_day ? "the day after expiry" : "on the expiry date");
+    }
+
+    if(t->has_pass_duration && t->pass_duration) {
+        static const char* const units[] = {"day", "month", "quarter", "year"};
+        const char* unit = t->duration_unit < COUNT_OF(units) ? units[t->duration_unit] : "unit";
+        furi_string_cat_printf(
+            out, "Pass length: %u %s%s\n", t->pass_duration, unit,
+            t->pass_duration == 1 ? "" : "s");
+    }
+
+    /* AutoRenewQuantity1 counts passes in stored-pass mode and days otherwise
+     * (rules 5 and 6 of TS 1000-5 clause 2.9.1.4). */
+    if(product->auto_renew && t->renew_quantity) {
+        const bool one = t->renew_quantity == 1;
+        furi_string_cat_printf(
+            out, "Renewal adds: %u %s\n", t->renew_quantity,
+            product->stored_passes ? (one ? "pass" : "passes") : (one ? "day" : "days"));
+    }
+    if(product->auto_renew && t->has_stock_duration && t->stock_duration) {
+        furi_string_cat_printf(out, "  and %u days' stock\n", t->stock_duration);
+    }
+
+    if(t->adults || t->children || t->concessions) {
+        furi_string_cat(out, "Travellers:");
+        const char* sep = " ";
+        if(t->adults) {
+            furi_string_cat_printf(out, "%s%u adult%s", sep, t->adults, t->adults == 1 ? "" : "s");
+            sep = ", ";
+        }
+        if(t->children) {
+            furi_string_cat_printf(
+                out, "%s%u child%s", sep, t->children, t->children == 1 ? "" : "ren");
+            sep = ", ";
+        }
+        if(t->concessions) {
+            furi_string_cat_printf(
+                out, "%s%u concession%s", sep, t->concessions, t->concessions == 1 ? "" : "s");
+        }
+        furi_string_push_back(out, '\n');
+    }
+
+    const char* travel_class = itso_class_name(t->travel_class);
+    if(travel_class) furi_string_cat_printf(out, "Class: %s\n", travel_class);
+    if(product->typ == ItsoTypPeriodTicket && (t->flags & ITSO_T22_TRANSFERABLE)) {
+        furi_string_cat(out, "Transferable\n");
+    }
+    if(t->photocard) furi_string_cat_printf(out, "Photocard: %lu\n", (unsigned long)t->photocard);
+
+    if(t->issue_date) {
+        furi_string_cat(out, "Issued: ");
+        flipso_cat_date(out, t->issue_date);
+        furi_string_push_back(out, '\n');
+    }
+    if(t->amount_paid.valid) {
+        flipso_cat_money(out, "Paid", &t->amount_paid);
+        if(t->paid_mop) furi_string_cat_printf(out, "  by %s\n", itso_payment_name(t->paid_mop));
+        if(t->vat) furi_string_cat_printf(out, "  VAT %u.%02u%%\n", t->vat / 100, t->vat % 100);
     }
 }
 
@@ -564,6 +819,11 @@ int32_t flipso_app(void* p) {
 
     view_dispatcher_attach_to_gui(app->view_dispatcher, app->gui, ViewDispatcherTypeFullscreen);
     scene_manager_next_scene(app->scene_manager, FlipsoSceneScan);
+    /* tools/flipper/flipctl waits for this line after a launch. The loader calls
+     * an app running as soon as its thread exists, which is also true of one
+     * stuck in startup behind the desktop; this line is only reached once the
+     * first scene is up and Back and `loader close` will be heard. */
+    FURI_LOG_I("Flipso", "UI ready");
     view_dispatcher_run(app->view_dispatcher);
 
     flipso_free(app);

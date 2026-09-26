@@ -190,7 +190,7 @@ def value_record(txn, seq, when, tail=b"", modifier=0xC0FFEE01, action_seq=3):
     return bytes(r.buf)
 
 
-def value_group(records, format_rev):
+def value_group(records, format_rev, extension=b""):
     """A Value Record Data Group holding @p records (TS 1000-2 clause 7).
 
     The upper five bits of VGBitMap count the records the group supports, so a
@@ -198,14 +198,63 @@ def value_group(records, format_rev):
     been written.
     """
     assert 1 <= len(records) <= 5, "table 14 allows five records"
-    length = (2 + len(records) * 15 + 3) // 4
+    length = (2 + len(records) * 15 + len(extension) + 3) // 4
     vg = Bits(length * 4)
     vg.put(0, 6, length)
-    vg.put(6, 6, ((1 << len(records)) - 1) << (6 - len(records)))
+    # The LSB flags a Value Group Extension after the records (clause 7.5).
+    vg.put(6, 6, (((1 << len(records)) - 1) << (6 - len(records))) | (1 if extension else 0))
     vg.put(12, 4, (format_rev + 8) & 0x0F)   # VGFormatRevision = IPEFormatRevision + 8
     for i, record in enumerate(records):
         vg.putb(2 + i * 15, record)
+    vg.putb(2 + len(records) * 15, extension)
     return bytes(vg.buf)
+
+
+def isam(oid, serial):
+    """An ISAM ID: the OID in the top bits, extended per TS 1000-2 annex B."""
+    if oid < 8192:
+        return (oid << 19) | serial
+    if oid < 16384:
+        return ((oid & 0x1FFF) << 19) | (1 << 18) | serial
+    ext = 0b110 if oid < 57344 else 0b111
+    return ((oid & 0x1FFF) << 19) | (ext << 16) | serial
+
+
+def capping_vgx(ref, strategy, sets, locations):
+    """A Complex Capping Value Group Extension (TS 1000-5 tables AD1, AD2).
+
+    @p sets: four (rule, last_txn, last_fare, uncapped, day, multiday, days).
+    @p locations: LOC1 bytes, one for AD1, or (loc, dts) pairs for AD2.
+    """
+    stride = 9 if ref == 1 else 11
+    body = Bits(4 + 4 * stride)
+    body.putb(2, strategy.to_bytes(2, "big"))
+    for a, (rule, txn, last, uncapped, day, multi, days) in enumerate(sets):
+        base = 4 + a * stride
+        body.put(base * 8, 4, rule)
+        if ref == 1:
+            body.put(base * 8 + 4, 4, txn)
+            amounts = base + 1
+        else:
+            body.put(base * 8 + 4, 16, last & 0xFFFF)
+            body.put((base + 2) * 8 + 4, 4, txn)
+            amounts = base + 3
+        body.putb(amounts, (uncapped & 0xFFFF).to_bytes(2, "big"))
+        body.putb(amounts + 2, (day & 0xFFFF).to_bytes(2, "big"))
+        body.putb(amounts + 4, (multi & 0xFFFF).to_bytes(2, "big"))
+        body.putb(amounts + 6, days.to_bytes(2, "big"))
+    data = bytes(body.buf)
+    if ref == 1:
+        data += locations
+    else:
+        for loc, when in locations:
+            data += loc + when.to_bytes(3, "big")
+    data = pad(data, (len(data) + 3) // 4 * 4)
+    head = Bits(2)
+    head.put(0, 6, len(data) // 4)      # VGXLength, in blocks
+    head.put(6, 2, 0)                   # VGXRef bits 9-8: a reference number
+    head.put(8, 8, ref)                 # ...which is this
+    return bytes(head.buf) + data[2:]
 
 
 def purse_tail(value, valc=0, legs=0, cumulative=0, flags=0):
@@ -339,7 +388,8 @@ def naptan(code):
 
 # ---------------------------------------------------------------- Tap records
 def tt_record(txn, when, amount, origin, dest, ipe_ptr, route=None,
-              mop=8, valc=0, vat=0, no_fare=False, format_rev=2):
+              mop=8, valc=0, vat=0, no_fare=False, format_rev=2,
+              companion=False, return_ticket=False, writer=None):
     """A Transient Ticket Record, format revision 1 or 2 (TS 1000-5 table 59).
 
     Groups are written in bitmap order, because that is the order the reader
@@ -353,6 +403,8 @@ def tt_record(txn, when, amount, origin, dest, ipe_ptr, route=None,
     amt.put(0, 4, mop)
     amt.put(4, 4, valc)
     amt.put(8, 16, amount & 0xFFFF)
+    amt.put(24, 1, 1 if companion else 0)               # CompanionTravelled (rev 2)
+    amt.put(25, 1, 1 if return_ticket else 0)           # ReturnTicket (rev 2)
     amt.put(27, 1, 1 if no_fare else 0)                 # NoFareCharged
     amt.put(28, 12, vat)
     groups += bytes(amt.buf)
@@ -369,7 +421,7 @@ def tt_record(txn, when, amount, origin, dest, ipe_ptr, route=None,
         bitmap |= 1 << 5
         groups += route
 
-    return _tt_pack(bitmap, txn, when, groups, format_rev)
+    return _tt_pack(bitmap, txn, when, groups, format_rev, writer)
 
 
 def tt_record_rev4(txn, when, amount, via, dest, ipe_ptr,
@@ -423,8 +475,13 @@ def tt_record_rev4(txn, when, amount, via, dest, ipe_ptr,
     return _tt_pack(bitmap, txn, when, groups, 4)
 
 
-def _tt_pack(bitmap, txn, when, groups, format_rev):
-    """The fixed head of a Transient Ticket Record, and its 48-byte slot."""
+def _tt_pack(bitmap, txn, when, groups, format_rev, writer=None):
+    """The fixed head of a Transient Ticket Record, and its 48-byte slot.
+
+    @p writer, if given, is the ISAM ID of the reader that wrote the record. A
+    record is an Orphan IPE Data Group, so its InstanceID follows the dataset:
+    a key/iteration byte, the ISAM ID, its sequence number, then the seal.
+    """
     total = 7 + len(groups)
     assert total <= 48, f"record is {total} bytes, over a 48-byte slot"
     blocks = (total + 3) // 4
@@ -436,4 +493,7 @@ def _tt_pack(bitmap, txn, when, groups, format_rev):
     r.put(28, 4, txn)       # TTTransactionType
     r.put(32, 24, when)     # DateTimeStamp
     r.putb(7, groups)
+    if writer is not None:
+        assert blocks * 4 + 16 <= 48, "no room for the InstanceID and seal"
+        r.putb(blocks * 4, instance_and_seal(isam_id=writer, isam_seq=0x3D8C))
     return bytes(r.buf)

@@ -140,6 +140,45 @@ typedef enum {
     ItsoCountPoints, /**< TYP 3: loyalty points held. */
 } ItsoCountKind;
 
+/** TYP23Mode: how a journey ticket's rides are counted (TS 1000-5 table 35a). */
+typedef enum {
+    ItsoJourneyModeStoredRides = 0, /**< Each ride uses one. */
+    ItsoJourneyModeStoredJourneys = 1, /**< Each journey uses one, legs within limits. */
+    ItsoJourneyModeSimple = 2, /**< An ordinary ticket, the default. */
+} ItsoJourneyMode;
+
+/** PassDurationCode: the unit PassDuration counts in (TS 1000-5 table 3.30a). */
+typedef enum {
+    ItsoDurationDays = 0, /**< The only unit revisions 1 and 2 have. */
+    ItsoDurationMonths = 1,
+    ItsoDurationQuarters = 2,
+    ItsoDurationYears = 3,
+} ItsoDurationUnit;
+
+/* TYP22Flags, numbered from the least significant bit (TS 1000-5 table 30). The
+ * AM/PM pairs are a second day-of-week filter on top of ValidOnDayCode: rule 7
+ * of clause 2.9.1.4 makes a ticket valid only when both allow today. */
+#define ITSO_T22_TRANSFERABLE    (1u << 0)
+#define ITSO_T22_OFF_PEAK_ONLY   (1u << 8)
+#define ITSO_T22_WEEKDAY_AM      (1u << 9)
+#define ITSO_T22_WEEKDAY_PM      (1u << 10)
+#define ITSO_T22_SATURDAY_AM     (1u << 11)
+#define ITSO_T22_SATURDAY_PM     (1u << 12)
+#define ITSO_T22_SUNDAY_AM       (1u << 13)
+#define ITSO_T22_SUNDAY_PM       (1u << 14)
+#define ITSO_T22_PUBLIC_HOLIDAY  (1u << 15)
+#define ITSO_T22_DAY_MASK        0xFE00u
+
+/* DAYOFWEEK, TS 1000-5 annex A.6: Monday is the most significant bit and the
+ * least significant is "special days", which schemes use for public holidays. */
+#define ITSO_DOW_MONDAY   0x80u
+#define ITSO_DOW_SATURDAY 0x04u
+#define ITSO_DOW_SUNDAY   0x02u
+#define ITSO_DOW_SPECIAL  0x01u
+#define ITSO_DOW_WEEKDAYS 0xF8u
+#define ITSO_DOW_ALL_DAYS 0xFEu
+
+
 /**
  * Which national register @c ItsoLocation::code is a key into.
  *
@@ -194,6 +233,84 @@ typedef struct {
     uint8_t currency; /**< VALC currency bits: 0 local, 1 global, 2/3 tokens. */
     bool valid;
 } ItsoMoney;
+
+/**
+ * The terms a TYP 22 period ticket or TYP 23 journey ticket is sold on (TS
+ * 1000-5 tables 27, 27a, 3.27, 31, 31a and 31b).
+ *
+ * Kept apart from the rest of ItsoProduct because only the two ticket types
+ * fill it. They share most of these elements, at offsets that differ between
+ * the types and again between each type's three revisions.
+ */
+typedef struct {
+    ItsoMoney amount_paid; /**< AmountPaid; not valid when the card records none. */
+    ItsoMoney ride_value; /**< TYP 23 ValueOfRideJourney: nominal value of one ride. */
+    uint32_t photocard; /**< TYP 23 PhotocardNumber; 0 when not recorded. */
+    uint32_t valid_from_dts; /**< Revisions 1 and 2: ValidityStartDTS, 0 if unset. */
+    uint16_t flags; /**< TYP22Flags, ITSO_T22_*. */
+    uint16_t issue_date; /**< IssueDate DATE; 0 when not recorded. */
+    uint16_t expiry_time; /**< ExpiryTime, minutes; 1440 and over is the next day. */
+    uint16_t start_time; /**< Revision 3 ValidityStartTime, minutes. */
+    uint16_t pass_duration; /**< Length of one pass, in @c duration_unit. */
+    uint16_t stock_duration; /**< Revision 3 ExpiryDateSPDuration, days. */
+    uint16_t vat; /**< AmountPaidVATSalesTax in 0.01% steps. */
+    uint8_t valid_days; /**< ValidOnDayCode, ITSO_DOW_*. */
+    uint8_t renew_quantity; /**< AutoRenewQuantity1: passes or days per renewal. */
+    uint8_t travel_class; /**< EN1545 AccommodationClassCode. */
+    uint8_t validity_code; /**< Owner-defined; zero is the null condition. */
+    uint8_t promotion_code; /**< Owner-defined. */
+    uint8_t adults;
+    uint8_t children;
+    uint8_t concessions;
+    uint8_t paid_mop; /**< EN1545 PaymentMeansCode for AmountPaid. */
+    uint8_t duration_unit; /**< ItsoDurationUnit. */
+    uint8_t mode; /**< TYP23Mode, ItsoJourneyMode. */
+    uint8_t max_transfers; /**< TYP 23 MaxTransfers per journey. */
+    uint8_t time_limit; /**< TYP 23 TimeLimit between legs, in 30 second steps. */
+    bool has_mode_group; /**< TYP 23 bitmap bit 3: the four elements above. */
+    bool valid; /**< The fixed part of the dataset was long enough to read. */
+    bool has_start_time;
+    bool has_pass_duration;
+    bool has_stock_duration;
+} ItsoTicketTerms;
+
+#define ITSO_CAP_ACCUMULATORS 4
+
+/** One of the four accumulator sets of a Complex Capping extension. */
+typedef struct {
+    ItsoMoney uncapped; /**< What the fares would have come to without a cap. */
+    ItsoMoney day; /**< Spent towards today's cap. */
+    ItsoMoney multiday; /**< Spent towards the multi-day cap. */
+    ItsoMoney last_fare; /**< LastFarePaid; VGXRef 2 only. */
+    uint32_t cap_dts; /**< When the last cap was applied; VGXRef 2 only, 0 if never. */
+    uint16_t day_count; /**< Days into a multi-day accumulation; 0 for single day. */
+    uint8_t rule; /**< ItsoCapRule. */
+    uint8_t last_txn; /**< EventTypeCode of the last fare paid. */
+    ItsoLocation location; /**< Where the last cap was applied, or zones used. */
+} ItsoCapAccumulator;
+
+/** CapAccumulatorRule (TS 1000-5 tables AD1 and AD2). */
+typedef enum {
+    ItsoCapRuleNone = 0,
+    ItsoCapRuleDay = 1, /**< Day capping only. */
+    ItsoCapRuleShortPeriod = 2, /**< Accumulate for n days, n set by the strategy. */
+    ItsoCapRuleLongPeriod = 3, /**< Accumulate for m days, m set by the strategy. */
+} ItsoCapRule;
+
+/**
+ * A Complex Capping Value Group Extension (TS 1000-5 clause 4.1, VGXRef 1 and
+ * 2): what a pay-as-you-go product has spent towards its fare caps.
+ *
+ * Decoded on demand rather than held in every ItsoProduct: four locations make
+ * it larger than anything else a product carries, and at most one product on a
+ * card has one.
+ */
+typedef struct {
+    bool valid;
+    uint8_t ref; /**< VGXRef: 1 reduced data, 2 full data. */
+    uint16_t strategy; /**< CapStrategyCode: the owner's capping rule set, 0 if unused. */
+    ItsoCapAccumulator acc[ITSO_CAP_ACCUMULATORS];
+} ItsoCapping;
 
 /**
  * One record of a product's Value Record Data Group.
@@ -287,6 +404,17 @@ typedef struct {
     bool has_deposit;
     ItsoMoney deposit;
     uint8_t deposit_mop; /**< EN1545 PaymentMeansCode the deposit was paid by. */
+    uint16_t deposit_vat; /**< DepositVATSalesTax in 0.01% steps. */
+    bool auto_top_up_internal; /**< TYP2ValueFlags bit 2: tops up from another purse. */
+
+    /* Concessionary Pass Issuer Identity, or the owner's cost centre or ticket
+     * subtype: TYP 16, 22 and 23 all carry one, at different offsets. */
+    bool has_cpicc;
+    uint16_t cpicc;
+
+    /* The Value Group Extension a value record group carries, if any (TS 1000-2
+     * clause 7.5). The extension itself is decoded by itso_parse_capping(). */
+    uint8_t vgx_ref; /**< VGXRef, 0 when there is no extension. */
 
     /* TYP 5 charge period (table 15). */
     bool has_charge_period;
@@ -334,6 +462,7 @@ typedef struct {
 
     /* Ticket state flags, gathered from the various TYPnValueFlags. */
     bool ticket_used; /**< TYP23ValueFlags UsedChecked: the ticket has been used. */
+    bool stored_passes; /**< TYP22ValueFlags bit 1: sold as a stock of passes. */
     bool auto_renew;
     bool auto_top_up;
     bool priority_override; /**< This IPE is to be spent before any other. */
@@ -366,6 +495,22 @@ typedef struct {
     uint16_t start; /**< Entitlement or validity start, raw DATE. */
     bool has_sub_expiry;
     uint16_t sub_expiry; /**< Entitlement expiry, distinct from IPE expiry. */
+
+    /* The rest of an ITSO ID (TS 1000-5 tables 22 and 22a). */
+    bool has_holder_id;
+    uint32_t holder_id; /**< HolderID: the issuer's number for the holder or photo. */
+    bool has_secondary_holder;
+    uint32_t secondary_holder_id;
+    uint8_t language; /**< ITSO language code, TS 1000-5 annex A.24; 0 if unset. */
+    uint8_t rounding; /**< ITSO_ROUNDING_* bits. */
+    bool has_half_days;
+    uint16_t half_days; /**< HalfDayOfWeek, annex A.10: two periods per day. */
+    bool has_shell_deposit;
+    ItsoMoney shell_deposit; /**< ShellDeposit: paid for the card itself. */
+    uint8_t shell_deposit_mop;
+    uint16_t shell_deposit_vat;
+
+    ItsoTicketTerms ticket; /**< TYP 22 only. */
 
     ItsoLocation from;
     ItsoLocation to;
@@ -409,6 +554,18 @@ typedef struct {
     uint32_t entry_dts;
     bool has_entry_oid;
     uint16_t entry_oid; /**< Operator whose gate the holder entered through. */
+    uint8_t entry_iin_index; /**< ENTRY_IIN_Index: that operator's network. */
+    uint32_t entry_isam; /**< ENTRY group: ISAM of the check-in record. */
+    uint32_t entry_isam_seq; /**< ...and its sequence number. */
+
+    /* AMT group flags, format revision 2 on (TS 1000-5 table 60). */
+    bool companion; /**< CompanionTravelled. */
+    bool return_ticket; /**< ReturnTicket: the fare was for a return. */
+
+    /* The record's own InstanceID, after its dataset: the ISAM of the POST
+     * that wrote it, which names the operator whose reader took the tap. */
+    bool has_writer;
+    uint32_t writer_isam;
 
     bool latest; /**< Newest record, per the Log Directory Entry record offset. */
 } ItsoTap;
@@ -452,6 +609,12 @@ typedef struct {
     bool dir_valid;
     bool shell_blocked;
     uint8_t dir_sequence;
+    /* Directory InstanceID (TS 1000-2 table 8): the last ISAM to rewrite the
+     * directory is the last device that changed anything on the card. */
+    bool dir_instance_valid;
+    uint8_t dir_kid;
+    uint8_t shell_iteration; /**< INS#: hotlists name a shell by ISRN and this. */
+    uint32_t dir_isam;
 
     /* --- Log Directory Entry (TS 1000-2 clause 8) --- */
     bool log_entry_valid;
@@ -663,6 +826,73 @@ const char* itso_shell_reject_name(ItsoShellReject reject);
 
 /** EN1545 PaymentMeansCode, e.g. "Cash" (TS 1000-5 annex A.12). */
 const char* itso_payment_name(uint8_t code);
+
+/* RoundingFlagsEnable, RoundingFlag and RoundingValueFlag (TS 1000-5 table 22):
+ * how a POST rounds a half or proportional fare for this holder. */
+#define ITSO_ROUNDING_ENABLED 0x01
+#define ITSO_ROUNDING_FLAG    0x02
+#define ITSO_ROUNDING_VALUE   0x04
+
+/**
+ * The operator an ISAM is registered to (TS 1000-2 annex B, tables B3 and B4).
+ *
+ * The top 13 bits of an ISAM ID are the OID; bits 18, 17 and 16 extend it into
+ * the 8192, 24576 and 57344 ranges at the expense of the serial number. Every
+ * ISAM ID on a card - who created a product, who last wrote a value record or
+ * the directory, whose reader took a tap - can be named this way.
+ */
+uint16_t itso_isam_oid(uint32_t isam);
+
+/** ITSO language code (TS 1000-5 annex A.24) as ISO 639-1, e.g. "en". False if unknown. */
+bool itso_language_code(uint8_t code, char out[3]);
+
+/** English name for the languages of the British Isles, else NULL. */
+const char* itso_language_name(uint8_t code);
+
+/**
+ * Decode a Complex Capping Value Group Extension out of a product group - the
+ * same chained IPE and Value Record groups itso_parse_ipe() takes.
+ *
+ * @param valc currency of the amounts, which the extension does not carry: the
+ *             value records' ValueCurrencyCode applies.
+ * @return false when the group has no VGXRef 1 or 2 extension.
+ */
+bool itso_parse_capping(
+    const uint8_t* group,
+    size_t len,
+    uint8_t sector_size,
+    uint8_t valc,
+    ItsoCapping* out);
+
+/** HalfDayOfWeek as a ValidOnDayCode-style day mask: a day counts if either period does. */
+uint8_t itso_half_days_mask(uint16_t half_days);
+
+/** EN1545 AccommodationClassCode, e.g. "Standard". NULL for 0, "unknown". */
+const char* itso_class_name(uint8_t code);
+
+/**
+ * The days a TYP 22 ticket may be used, as a ValidOnDayCode-style mask.
+ *
+ * Rule 7 of TS 1000-5 clause 2.9.1.4 requires ValidOnDayCode and the day's
+ * TYP22Flags to both allow it, so a day either one excludes is dropped. A filter
+ * that is entirely zero is taken as not in use rather than as "never valid": a
+ * ticket nobody could travel on is not a product anyone sells.
+ */
+uint8_t itso_ticket_days(uint8_t valid_on_day, uint16_t flags);
+
+/**
+ * Render a day mask as briefly as it will go: "every day", "Mon-Fri",
+ * "Sat Sun", "Mon Wed Fri". The special-days bit is not rendered; callers say
+ * what they mean by it.
+ */
+void itso_format_days(uint8_t days, char* out, size_t len);
+
+/**
+ * The days in @p days that TYP22Flags allows for only half of, e.g. "Sat PM
+ * only". Empty when there are none, including when the flags do not restrict by
+ * day at all.
+ */
+void itso_format_part_days(uint8_t days, uint16_t flags, char* out, size_t len);
 
 /** Label for a product counter, e.g. "Rides left". NULL for ItsoCountNone. */
 const char* itso_count_name(ItsoCountKind kind);

@@ -50,6 +50,8 @@ void flipso_scene_payg_on_enter(void* context) {
         furi_string_cat_printf(text, "Status: %s\n", itso_status_name(product->status));
 
         flipso_cat_purse_terms(text, product);
+        /* How far this purse is towards its fare caps, where the operator caps. */
+        flipso_cat_capping(text, app, product);
         /* Last, because the terms are what the purse is and the history is what
          * has happened to it: a card that has been read more than once can
          * carry several screenfuls of the latter. */

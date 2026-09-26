@@ -83,6 +83,14 @@ static const FlipsoCaptureBlock*
     return NULL;
 }
 
+const uint8_t*
+    flipso_capture_product_group(const FlipsoCapture* capture, uint8_t dir_index, size_t* len) {
+    const FlipsoCaptureBlock* block = flipso_capture_find(capture, FlipsoBlockProduct, dir_index);
+    if(!block) return NULL;
+    *len = block->len;
+    return capture->bytes + block->offset;
+}
+
 /**
  * Make room for one block and index it.
  * @return where to write @p len bytes, or NULL when the block cannot be kept.

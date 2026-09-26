@@ -227,6 +227,31 @@ void flipso_cat_product(FuriString* out, Flipso* app, const ItsoProduct* product
  */
 void flipso_cat_purse_terms(FuriString* out, const ItsoProduct* product);
 
+/**
+ * Append the terms a period ticket was sold on: the days and times it is good
+ * for, how long each pass lasts, who it covers, and what was paid for it.
+ * Nothing for any other type.
+ */
+void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product);
+
+/**
+ * Append "<label>: <operator>" for the operator an ISAM is registered to, then
+ * the ISAM itself. Nothing for an ISAM of zero, which is an unwritten record.
+ */
+void flipso_cat_isam(FuriString* out, const Flipso* app, const char* label, uint32_t isam);
+
+/**
+ * Append the parts of an ITSO ID beyond name and entitlement: issuer and holder
+ * numbers, language, valid periods, fare rounding and deposits.
+ */
+void flipso_cat_id_details(FuriString* out, const ItsoProduct* product);
+
+/**
+ * Append a product's fare-capping progress, decoded from the capture on demand.
+ * Nothing when the product carries no capping extension.
+ */
+void flipso_cat_capping(FuriString* out, Flipso* app, const ItsoProduct* product);
+
 /** Append what the product's newest value record says the last transaction was. */
 void flipso_cat_last_transaction(FuriString* out, const ItsoProduct* product);
 

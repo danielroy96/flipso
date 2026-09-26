@@ -195,13 +195,13 @@ The Flipper has a **190 KB heap**, and a `.fap` is loaded into it whole before
 `main()` runs, so we have to be a bit careful particularly with the station table.
 
 ```
-dist/flipso.fap       175,712 bytes on disk
+dist/flipso.fap       192,104 bytes on disk
   .fapassets           78,859   ← station table, never mapped into RAM
-  .text                34,344   ← in RAM
-  .rodata               9,585   ← in RAM
-  (symbols, relocs)    52,145   ← not loaded
+  .text                41,976   ← in RAM
+  .rodata              12,617   ← in RAM
+  (symbols, relocs)    58,652   ← not loaded
   ──────────────────────────
-  TOTAL IN RAM         43,929   23% of the heap
+  TOTAL IN RAM         54,593   29% of the heap
 ```
 
 A card being saved costs a little on top of that, and only while a card is on

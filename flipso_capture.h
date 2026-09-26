@@ -197,6 +197,14 @@ bool flipso_capture_card_number(const FlipsoCapture* capture, char* out);
 bool flipso_capture_decode(const FlipsoCapture* capture, ItsoCard* card);
 
 /**
+ * The raw IPE and Value Record groups of the product in directory entry
+ * @p dir_index, as read - for decoding the parts of a product too large to keep
+ * decoded in every ItsoProduct, such as a capping extension. NULL if none.
+ */
+const uint8_t*
+    flipso_capture_product_group(const FlipsoCapture* capture, uint8_t dir_index, size_t* len);
+
+/**
  * Fold the history @p previous holds into @p capture, so that saving over it
  * keeps what it knew.
  *

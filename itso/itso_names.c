@@ -279,3 +279,76 @@ const char* itso_gender_name(uint8_t id_flags) {
         return NULL;
     }
 }
+
+/* EN1545 AccommodationClassCode, reproduced in TS 1000-5 annex A.1. The ticket
+ * stores it in three bits, so only the first eight codes can appear. */
+const char* itso_class_name(uint8_t code) {
+    switch(code & 0x07) {
+    case 1:
+        return "First";
+    case 2:
+        return "Standard";
+    case 3:
+        return "Small";
+    case 4:
+        return "Large";
+    case 5:
+        return "Business";
+    case 6:
+        return "Economy";
+    case 7:
+        return "Club";
+    default:
+        return NULL;
+    }
+}
+
+/* TS 1000-5 annex A.24: ITSO language code n is the (n-1)th pair here, as ISO
+ * 639-1. Transcribed from the 2025-03 edition, where code 70 is printed twice:
+ * Ido and Igbo. Igbo is taken as 71, the only number the sequence leaves free.
+ * Two letters a language rather than a name keeps the table to 374 bytes of
+ * .rodata, which the Flipper loads into RAM. */
+static const char itso_languages[] =
+    "abomaaafaksqamarhyasavaeayazbmbaeubebndzbhbibsbrbgmykmescach"
+    "cenyzhzacucvkwcocrhrcsdanieneoeteefofjfifrfyffgdgilgkadekikl"
+    "gnguhahehzhihohuisigigidiegaitjajvknkrkskkkirwrnswkvkgkokukj"
+    "kylolalvlnltiaiuiklulglbmkmgmsmldvmtgvmimrmhelmomnnanvngnend"
+    "senonbnnocojorospipsfaplptpaqurmrorurwsmsgsascsrshsttnsnsdsi"
+    "skslsonressuswsssvtltytgtatttethbotitotstrtktwugukuruzvevivo"
+    "wacywoxhyiyozu";
+
+bool itso_language_code(uint8_t code, char out[3]) {
+    size_t count = (sizeof(itso_languages) - 1) / 2;
+    if(code == 0 || code > count) return false;
+    out[0] = itso_languages[(code - 1) * 2];
+    out[1] = itso_languages[(code - 1) * 2 + 1];
+    out[2] = '\0';
+    return true;
+}
+
+const char* itso_language_name(uint8_t code) {
+    /* Names only for the languages a UK or Irish card is likely to carry. */
+    switch(code) {
+    case 44:
+        return "English";
+    case 182:
+        return "Welsh";
+    case 54:
+        return "Scottish Gaelic";
+    case 74:
+        return "Irish";
+    case 37:
+        return "Cornish";
+    case 109:
+        return "Manx";
+    default:
+        return NULL;
+    }
+}
+
+uint16_t itso_isam_oid(uint32_t isam) {
+    uint16_t top = (uint16_t)(isam >> 19); /* The 13 bits every OID has. */
+    if(!(isam & (1UL << 18))) return top;
+    if(!(isam & (1UL << 17))) return (uint16_t)(0x2000 | top);
+    return (uint16_t)(((isam & (1UL << 16)) ? 0xE000 : 0x6000) | top);
+}

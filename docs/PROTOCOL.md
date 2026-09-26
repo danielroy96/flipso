@@ -398,14 +398,14 @@ Beyond that:
 
 | Type | Decoded |
 | --- | --- |
-| TYP 2 — Stored Travel Rights | Balance, currency, journey legs and cumulative fare; ceiling, overdraft, auto-top-up threshold/amount/state, deposit and how it was paid |
+| TYP 2 — Stored Travel Rights | Balance, currency, journey legs and cumulative fare; ceiling, overdraft, auto-top-up threshold/amount/state and whether it draws on another purse, deposit with how it was paid and its VAT; Complex Capping extension (below) |
 | TYP 3 — Loyalty type 1 | Points balance (three bytes, so it does not fit a purse's two) |
 | TYP 4 — Charge to account 1 | Amount spent to date, credit limit, deposit, validity window |
 | TYP 5 — Charge to account 2 | Transactions used, allowance per charge period, last reset date |
 | TYP 14 — Entitlement (rev 1, 2) | Entitlement code, class, validity dates, locations, passback, ID flags |
-| TYP 16 — ITSO ID (rev 1, 2) | Holder name, date of birth, gender, companion and photo flags, entitlement, class, validity dates, locations |
-| TYP 22 — Period ticket (rev 1, 2, 3) | Validity start, from/to locations, passes remaining, expiry of the active pass and of the unused stock, auto-renew |
-| TYP 23 — Journey ticket (rev 1, 2, 3) | Origin, destination, rides remaining, transfers made, auto-renew, used flag, stored-ride expiry (rev 3) |
+| TYP 16 — ITSO ID (rev 1, 2) | Holder name, date of birth, gender, companion and photo flags, entitlement, class, validity dates, locations; CPICC (the concessionary pass issuer), HolderID and SecondaryHolderID, language (annex A.24), HalfDayOfWeek, fare rounding rule, deposit and card deposit with payment, VAT and refundability |
+| TYP 22 — Period ticket (rev 1, 2, 3) | Validity start (DTS in rev 1–2, date and time in rev 3), from/to locations — or, when both are absent, that the area is the operator's to define — passes remaining, expiry of the active pass and of the unused stock, auto-renew and what it adds, stored-pass mode; days and AM/PM periods it is valid (ValidOnDayCode and TYP22Flags together), off-peak, transferable, end time, pass length and unit, party size, class, issue date, amount paid with payment and VAT, CPICC, validity and promotion codes |
+| TYP 23 — Journey ticket (rev 1, 2, 3) | Origin, destination, rides remaining, transfers made, auto-renew, used flag, stored-ride expiry (rev 3); issue date, validity start (rev 3), end time, class, party size, amount paid with payment and VAT, photocard number, CPICC, validity and promotion codes, and the mode group — how rides are counted, transfer and time limits, ride value |
 | TYP 24 — Reservation | Journeys remaining |
 | TYP 25 — Voucher | Vouchers remaining, auto-renew |
 | TYP 26 — Tolling | Rides remaining, auto-renew |
@@ -413,6 +413,40 @@ Beyond that:
 Every product carrying a value record also reports its common header (TS 1000-2
 table 15): what the last transaction was, when, how many times the record has
 been written, and the ISAM of the POST that wrote it.
+
+### Whose machine it was
+
+An ISAM ID is not an opaque serial. TS 1000-2 annex B builds it from the OID of
+the operator the ISAM is registered to — the top 13 bits, with bits 18, 17 and
+16 extending it into the 8192, 24576 and 57344 ranges — and a serial number in
+the rest. So every ISAM on a card names an operator, and Flipso shows it:
+
+- the **IPE InstanceID**: who sold or created the product;
+- the **value record** header: whose machine last changed it;
+- the **Directory InstanceID** (TS 1000-2 table 8), after DIRS#: the last
+  device to change anything on the card, which is how a London Freedom Pass
+  turns out to have been used on a Reading bus. Its KID and the shell's
+  iteration number INS# (which hotlists pair with the ISRN) are there too;
+- each **journey record's own InstanceID** — a Transient Ticket Record is an
+  Orphan IPE Data Group, so it carries one after its dataset: whose gate or bus
+  took the tap. SWR's gates report OID 8160, in ITSO's reserved 8001–8191
+  range.
+
+A value record that has never been written holds ISAM zero, which is not
+operator zero and is not shown.
+
+### Fare capping
+
+A value record group may carry a **Value Group Extension** after its records,
+flagged by the LSB of VGBitMap (TS 1000-2 clause 7.5). TS 1000-5 clause 4.1
+defines three; Flipso decodes the two Complex Capping ones, VGXRef 1 (reduced)
+and 2 (full), which SPT's Subway purse carries: a strategy code and four
+accumulator sets, each with its rule (day, n days, m days), what has been spent
+towards the cap, what the fares would have been uncapped, the day count of a
+multi-day cap, the last fare, and where and when the cap was last applied.
+
+It is decoded when a screen asks for it rather than held in every product, since
+four locations make it bigger than anything else a product carries.
 
 A product may also carry a **Value Record Data Group**, a small cyclic store of
 the parts of the product that change as it is used. It is not a purse feature —

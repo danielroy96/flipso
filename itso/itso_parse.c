@@ -224,6 +224,16 @@ bool itso_parse_directory(ItsoCard* card, const uint8_t* data, size_t len) {
 
     card->dir_sequence = data[itso_sct_offset(card) + card->sct_len];
 
+    /* The Directory InstanceID follows DIRS# (TS 1000-2 table 8): key and shell
+     * iteration nibbles, then the ISAM that last sealed the directory. */
+    size_t instance = itso_sct_offset(card) + card->sct_len + 1;
+    if(instance + 5 <= len) {
+        card->dir_kid = data[instance] >> 4;
+        card->shell_iteration = data[instance] & 0x0F;
+        card->dir_isam = itso_bits(data + instance + 1, 0, 32);
+        card->dir_instance_valid = true;
+    }
+
     card->product_count = 0;
     for(uint8_t i = 1; i <= card->dir_entries; i++) {
         const uint8_t* entry = data + 2 + (i - 1) * ITSO_DIR_ENTRY_LEN;
@@ -344,6 +354,31 @@ uint8_t itso_value_records(
 }
 
 /**
+ * The VGXRef of the Value Group Extension a value group carries, or 0.
+ *
+ * @p records_offset is where the value records start, as itso_value_records()
+ * reported it. The extension sits after every record the group supports - not
+ * only the ones written - which is what the VGBitMap count is (TS 1000-2
+ * clause 7.5).
+ */
+static uint8_t itso_vgx_ref(const uint8_t* group, size_t len, size_t records_offset) {
+    const uint8_t* vg = group + records_offset - 2;
+    uint8_t vg_bitmap = itso_bits(vg, 6, 6);
+    if(!(vg_bitmap & 0x01)) return 0;
+
+    uint8_t supported = 0;
+    for(uint8_t bit = 1; bit < 6; bit++) {
+        if(vg_bitmap & (1 << bit)) supported++;
+    }
+    size_t vgx = records_offset + (size_t)supported * ITSO_VALUE_RECORD_LEN;
+    if(vgx + 2 > len) return 0;
+    /* Table 15b: the two top bits of VGXRef say how to read the rest. Only
+     * "reference number 0-255" names an extension TS 1000-5 defines. */
+    if(itso_bits(group + vgx, 6, 2) != 0) return 0xFF;
+    return group[vgx + 1];
+}
+
+/**
  * Decode one value record: the common header, and whichever of a balance or a
  * counter the IPE type keeps in the tail.
  *
@@ -445,6 +480,7 @@ static void itso_parse_value_records(
     size_t offset = 0;
     uint8_t records = itso_value_records(group, len, sector_size, &offset);
     if(records == 0) return;
+    product->vgx_ref = itso_vgx_ref(group, len, offset);
 
     /* Records are written cyclically, so the live one is the newest, and TS# is
      * what orders them. The DTS cannot do that job: it has a resolution of one
@@ -502,6 +538,7 @@ static void itso_parse_value_records(
             uint8_t flags = (uint8_t)itso_bits(newest, 117, 3);
             product->auto_top_up = (flags & 0x01) != 0;
             product->priority_override = (flags & 0x02) != 0;
+            product->auto_top_up_internal = (flags & 0x04) != 0;
         }
         break;
 
@@ -544,6 +581,9 @@ static void itso_parse_value_records(
         {
             uint8_t flags = (uint8_t)itso_bits(newest, 86, 6);
             product->auto_renew = (flags & 0x01) != 0;
+            /* Clear, the ticket is one continuous period and AutoRenewQuantity1
+             * counts days rather than passes (rules 5 and 6 of 2.9.1.4). */
+            product->stored_passes = (flags & 0x02) != 0;
         }
         product->stored_expiry = (uint16_t)itso_bits(newest, 92, 14);
         product->has_stored_expiry = true;
@@ -669,6 +709,7 @@ static void itso_parse_purse_ipe(ItsoProduct* product, const uint8_t* data, size
         product->has_limits = true;
         itso_decode_money(itso_int16(data + 14), (data[20] >> 4) & 0x0F, &product->deposit);
         product->deposit_mop = data[19] & 0x0F;
+        product->deposit_vat = (uint16_t)itso_bits(data, 164, 12);
         product->has_deposit = product->deposit.value != 0;
         /* StartDateAutoTopUp: a DATE at byte 16, two bits into the byte. */
         product->start = (uint16_t)itso_bits(data, 128, 14);
@@ -725,7 +766,12 @@ static void itso_parse_id_optionals(
     bool names) {
     uint8_t bit = 1;
 
-    if(bitmap & (1 << bit)) pos += 4; /* SecondaryHolderID. */
+    if(bitmap & (1 << bit)) {
+        if(pos + 4 > len) return;
+        product->secondary_holder_id = itso_bits(data + pos, 0, 32);
+        product->has_secondary_holder = true;
+        pos += 4;
+    }
     bit++;
 
     if(names) {
@@ -755,7 +801,10 @@ static void itso_parse_id_optionals(
     }
 
     if(bitmap & (1 << bit)) {
-        pos += 2; /* HalfDayOfWeek. */
+        if(pos + 2 > len) return;
+        product->half_days = (uint16_t)((data[pos] << 8) | data[pos + 1]);
+        product->has_half_days = true;
+        pos += 2;
         if(pos >= len) return;
         pos += itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->from);
     }
@@ -852,63 +901,218 @@ static void itso_parse_id_ipe(
     product->concession_class = data[entitlement_offset + 1];
     product->has_entitlement = true;
 
+    if(product->typ == ItsoTypId) {
+        /* Tables 22 and 22a agree up to HolderID; revision 2 then inserts the
+         * two-byte EntitlementStartDate, pushing both deposits along by two. */
+        product->cpicc = (uint16_t)((data[3] << 8) | data[4]);
+        product->has_cpicc = product->cpicc != 0;
+        product->language = data[11];
+        product->holder_id = itso_bits(data, 96, 32);
+        product->has_holder_id = product->holder_id != 0;
+        if(data[6] & 0x80) product->rounding |= ITSO_ROUNDING_ENABLED;
+        if(data[16] & 0x80) product->rounding |= ITSO_ROUNDING_FLAG;
+        if(data[16] & 0x40) product->rounding |= ITSO_ROUNDING_VALUE;
+
+        const size_t d = format_rev >= 2 ? 20 : 18; /* DepositMethodOfPayment. */
+        const uint8_t valcs = data[d + 4];
+        product->deposit_mop = data[d] >> 4;
+        product->deposit_vat = (uint16_t)itso_bits(data, (uint32_t)d * 8 + 4, 12);
+        product->shell_deposit_mop = data[d + 2] >> 4;
+        product->shell_deposit_vat = (uint16_t)itso_bits(data, (uint32_t)(d + 2) * 8 + 4, 12);
+        itso_decode_money(itso_int16(data + d + 5), valcs >> 4, &product->deposit);
+        itso_decode_money(itso_int16(data + d + 7), valcs & 0x0F, &product->shell_deposit);
+        product->has_deposit = product->deposit.value != 0;
+        product->has_shell_deposit = product->shell_deposit.value != 0;
+    }
+
     itso_parse_id_optionals(
         product, data, len, optionals, bitmap, product->typ == ItsoTypId);
 }
 
-/** TYP 22: pre-defined area-based ticket, all three format revisions. */
+/**
+ * TYP 22: pre-defined area-based ticket, all three format revisions.
+ *
+ * Tables 27, 27a and 3.27 agree on everything up to byte 13: flags, passback,
+ * issue date, expiry time, class. After that each revision moves things - a
+ * DTS start in revisions 1 and 2 against a date and a time in 3, a two-byte
+ * AmountPaid in revision 1 against four bytes later - and the optional elements
+ * come in a different order in each.
+ */
 static void itso_parse_period_ipe(
     ItsoProduct* product,
     const uint8_t* data,
     size_t len,
     uint8_t bitmap,
     uint8_t format_rev) {
-    size_t pos;
+    ItsoTicketTerms* t = &product->ticket;
+    /* Where the mandatory part ends, which is where the optional elements start. */
+    const size_t fixed = format_rev >= 3 ? 29 : format_rev == 2 ? 28 : 26;
+    if(format_rev == 0 || len < fixed) return;
 
+    t->flags = (uint16_t)itso_bits(data, 40, 16);
+    product->passback = (uint8_t)itso_bits(data, 58, 6);
+    product->has_passback = true;
+    t->issue_date = (uint16_t)itso_bits(data, 64, 14);
+    t->expiry_time = (uint16_t)itso_bits(data, 78, 11);
+    t->renew_quantity = (uint8_t)itso_bits(data, 90, 6);
+    t->travel_class = (uint8_t)itso_bits(data, 96, 3);
+    t->validity_code = (uint8_t)itso_bits(data, 99, 5);
+
+    /* Everything from ValidityStartDTS on sits one byte later in revision 3,
+     * whose start date and time take four bytes where the DTS took three. */
+    size_t b; /* Byte of PromotionCode. */
     if(format_rev >= 3) {
-        /* TS 1000-5 clause 2.9.3: ValidityStartDate is a DATE at byte 13.25, so
-         * the mandatory part has to reach byte 15 before it can be read. */
-        if(len < 15) return;
-        product->start = (uint16_t)itso_bits(data, 106, 14);
+        product->start = (uint16_t)itso_bits(data, 106, 14); /* ValidityStartDate. */
         product->has_start = true;
-        pos = 31; /* CPICC is mandatory here and ends at byte 31. */
-
-        if(bitmap & (1 << 3)) pos += 4; /* PassDurationCode, PassDuration, ExpiryDateSPDuration. */
-        if(!(bitmap & (1 << 1))) return;
-        pos += 5; /* RouteCode. */
+        t->start_time = (uint16_t)itso_bits(data, 125, 11);
+        t->has_start_time = true;
+        b = 17;
     } else {
-        /* Revisions 1 and 2 store a DTS, not a DATE, at byte 13. */
-        if(len < 16) return;
-        product->start = 0;
-        product->has_start = false;
-
-        if(format_rev == 2) {
-            pos = 28;
-            if(bitmap & (1 << 4)) pos += 2; /* CPICC. */
-            if(bitmap & (1 << 3)) pos += 1; /* PassDuration. */
-            if(!(bitmap & (1 << 1))) return;
-            pos += 5; /* RouteCode. */
-        } else {
-            pos = 26;
-            if(bitmap & (1 << 4)) pos += 2; /* CPICC. */
-            /* Revision 1 flags the two locations independently. */
-            if(bitmap & (1 << 1)) {
-                if(pos >= len) return;
-                pos += itso_parse_location(
-                    data + pos, len - pos, ItsoLocStructLoc1, &product->from);
-            }
-            if(bitmap & (1 << 2)) {
-                if(pos >= len) return;
-                itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->to);
-            }
-            return;
-        }
+        t->valid_from_dts = itso_bits(data, 104, 24);
+        b = 16;
     }
+    t->promotion_code = data[b];
+    t->valid_days = data[b + 1];
+    t->adults = data[b + 2];
+    t->children = data[b + 3];
+    t->concessions = data[b + 4];
+
+    /* Zero in both the amount and its currency is the documented "not used",
+     * and a real zero fare is not worth a line either. */
+    const uint8_t valc = data[b + 5] & 0x0F;
+    int32_t paid;
+    size_t mop_byte;
+    if(format_rev == 1) {
+        paid = itso_int16(data + 22);
+        mop_byte = 24;
+    } else {
+        paid = (int32_t)itso_bits(data, (uint32_t)(b + 6) * 8, 32);
+        mop_byte = b + 10;
+    }
+    if(paid) itso_decode_money(paid, valc, &t->amount_paid);
+    t->paid_mop = data[mop_byte] >> 4;
+    t->vat = (uint16_t)itso_bits(data, (uint32_t)mop_byte * 8 + 4, 12);
+    t->valid = true;
+
+    size_t pos = fixed;
+    if(bitmap & (1 << 4)) {
+        if(pos + 2 > len) return;
+        product->cpicc = (uint16_t)((data[pos] << 8) | data[pos + 1]);
+        product->has_cpicc = true;
+        pos += 2;
+    }
+
+    if(format_rev == 1) {
+        /* Revision 1 flags the two locations independently and puts PassDuration
+         * after them, so it cannot be found without walking both. */
+        if(bitmap & (1 << 1)) {
+            if(pos >= len) return;
+            pos += itso_parse_location(
+                data + pos, len - pos, ItsoLocStructLoc1, &product->from);
+        }
+        if(bitmap & (1 << 2)) {
+            if(pos >= len) return;
+            pos += itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->to);
+        }
+        if((bitmap & (1 << 3)) && pos < len) {
+            t->pass_duration = data[pos];
+            t->has_pass_duration = true;
+        }
+        return;
+    }
+
+    if(bitmap & (1 << 3)) {
+        if(format_rev == 2) {
+            if(pos + 1 > len) return;
+            t->pass_duration = data[pos];
+            pos += 1;
+        } else {
+            /* Table 3.27: a unit code, a 12-bit count of it, then the days the
+             * stock of passes is extended by on auto-renew. */
+            if(pos + 4 > len) return;
+            t->duration_unit = data[pos] >> 4;
+            t->pass_duration = (uint16_t)itso_bits(data, (uint32_t)pos * 8 + 4, 12);
+            t->stock_duration = (uint16_t)((data[pos + 2] << 8) | data[pos + 3]);
+            t->has_stock_duration = true;
+            pos += 4;
+        }
+        t->has_pass_duration = true;
+    }
+
+    if(!(bitmap & (1 << 1))) return;
+    pos += 5; /* RouteCode. */
 
     if(pos >= len) return;
     pos += itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->from);
     if(pos >= len) return;
     itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->to);
+}
+
+/**
+ * The terms of a TYP 23 journey ticket: tables 31, 31a and 31b.
+ *
+ * The same elements as a period ticket's, less the day filters, plus a
+ * photocard number and the optional mode group. Revision 2 widened AmountPaid to
+ * four bytes; revision 3 added a ValidityStartDTS after IssueDate, which pushes
+ * everything from ValidityCode on three bytes later, and widened the ride value.
+ */
+static void itso_parse_journey_terms(
+    ItsoProduct* product,
+    const uint8_t* data,
+    size_t len,
+    uint8_t bitmap,
+    uint8_t format_rev) {
+    ItsoTicketTerms* t = &product->ticket;
+    const size_t fixed = format_rev >= 3 ? 33 : format_rev == 2 ? 29 : 27;
+    if(format_rev == 0 || len < fixed) return;
+
+    if(data[5] & 0x02) product->ticket_used = true; /* TYP23Flags UsedChecked. */
+    product->passback = (uint8_t)itso_bits(data, 50, 6);
+    product->has_passback = true;
+    t->issue_date = (uint16_t)itso_bits(data, 58, 14);
+
+    /* Everything from ValidityCode on moves three bytes in revision 3. */
+    const uint32_t shift = format_rev >= 3 ? 24 : 0;
+    if(format_rev >= 3) t->valid_from_dts = itso_bits(data, 72, 24);
+    t->validity_code = (uint8_t)itso_bits(data, 72 + shift, 5);
+    t->expiry_time = (uint16_t)itso_bits(data, 77 + shift, 11);
+    t->travel_class = (uint8_t)itso_bits(data, 93 + shift, 3);
+
+    const size_t b = 12 + shift / 8; /* PartySizeAdult. */
+    t->adults = data[b];
+    t->children = data[b + 1];
+    t->concessions = data[b + 2];
+    const uint8_t valc = data[b + 3] & 0x0F;
+
+    int32_t paid;
+    size_t mop_byte;
+    if(format_rev == 1) {
+        paid = itso_int16(data + 16);
+        mop_byte = 18;
+    } else {
+        paid = (int32_t)itso_bits(data, (uint32_t)(b + 4) * 8, 32);
+        mop_byte = b + 8;
+    }
+    if(paid) itso_decode_money(paid, valc, &t->amount_paid);
+    t->paid_mop = data[mop_byte] >> 4;
+    t->vat = (uint16_t)itso_bits(data, (uint32_t)mop_byte * 8 + 4, 12);
+    t->photocard = itso_bits(data, (uint32_t)(mop_byte + 2) * 8, 32);
+    t->promotion_code = data[mop_byte + 6];
+    product->cpicc = (uint16_t)((data[mop_byte + 7] << 8) | data[mop_byte + 8]);
+    product->has_cpicc = product->cpicc != 0;
+    if(format_rev >= 3) t->renew_quantity = data[32];
+    t->valid = true;
+
+    /* Bit 3 of every revision: mode, transfer limit, time limit, ride value. */
+    if((bitmap & (1 << 3)) && fixed + (format_rev >= 3 ? 7 : 5) <= len) {
+        t->mode = data[fixed] & 0x0F;
+        t->max_transfers = data[fixed + 1];
+        t->time_limit = data[fixed + 2];
+        int32_t ride = format_rev >= 3 ? (int32_t)itso_bits(data, (uint32_t)(fixed + 3) * 8, 32) :
+                                         itso_int16(data + fixed + 3);
+        if(ride) itso_decode_money(ride, valc, &t->ride_value);
+        t->has_mode_group = true;
+    }
 }
 
 /**
@@ -926,6 +1130,8 @@ static void itso_parse_journey_ipe(
     uint8_t bitmap,
     uint8_t format_rev) {
     size_t pos;
+
+    itso_parse_journey_terms(product, data, len, bitmap, format_rev);
 
     if(format_rev >= 3) {
         /* TS 1000-5 table 31b: AutoRenewQuantity ends the mandatory part. */
@@ -1085,6 +1291,11 @@ static bool itso_parse_tap(ItsoTap* tap, const uint8_t* data, size_t len) {
              * not its LSB: the operator carried the holder and left the fare
              * outstanding against the IPE. */
             tap->no_fare_charged = itso_bits(group, 27, 1) != 0;
+            /* Table 60 put the two flags ahead of it into revision 2's RFU. */
+            if(tap->format_rev >= 2) {
+                tap->companion = itso_bits(group, 24, 1) != 0;
+                tap->return_ticket = itso_bits(group, 25, 1) != 0;
+            }
             tap->vat = (uint16_t)itso_bits(group, 28, 12);
             tap->has_vat = tap->vat != 0;
             break;
@@ -1119,17 +1330,29 @@ static bool itso_parse_tap(ItsoTap* tap, const uint8_t* data, size_t len) {
         case 9:
             /* The check-in record copied forward, so a tap out says where the
              * journey began even though the gate that wrote it did not see it. */
+            tap->entry_isam = itso_bits(group, 0, 32);
+            tap->entry_isam_seq = itso_bits(group, 32, 24);
             tap->entry_dts = itso_bits(group, 56, 24);
             tap->has_entry = true;
             break;
         case 10:
             tap->entry_oid = (uint16_t)((group[0] << 8) | group[1]);
+            tap->entry_iin_index = group[2];
             tap->has_entry_oid = true;
             break;
         default:
             break;
         }
         pos += group_len;
+    }
+
+    /* A record is stored as an Orphan IPE Data Group (TS 1000-5 clause 3.2), so
+     * its InstanceID follows the dataset: key and iteration, then the ISAM of
+     * the reader that wrote it. That names whose gate or bus took the tap. */
+    size_t declared = (size_t)tt_length * ITSO_IPE_BLOCK_LEN;
+    if(declared >= 7 && declared + 5 <= len) {
+        tap->writer_isam = itso_bits(data + declared + 1, 0, 32);
+        tap->has_writer = tap->writer_isam != 0;
     }
 
     tap->present = true;
@@ -1274,4 +1497,75 @@ bool itso_tap_record_newer(const uint8_t* a, const uint8_t* b) {
 
 bool itso_value_record_newer(const uint8_t* a, const uint8_t* b) {
     return itso_ts_newer((uint16_t)itso_bits(a, 4, 12), (uint16_t)itso_bits(b, 4, 12));
+}
+
+bool itso_parse_capping(
+    const uint8_t* group,
+    size_t len,
+    uint8_t sector_size,
+    uint8_t valc,
+    ItsoCapping* out) {
+    memset(out, 0, sizeof(*out));
+
+    size_t offset;
+    if(itso_value_records(group, len, sector_size, &offset) == 0) return false;
+    uint8_t ref = itso_vgx_ref(group, len, offset);
+    if(ref != 1 && ref != 2) return false;
+
+    /* itso_vgx_ref() has already found the extension and bounds-checked its
+     * header; find it again rather than widen that function's contract. */
+    uint8_t vg_bitmap = itso_bits(group + offset - 2, 6, 6);
+    uint8_t supported = 0;
+    for(uint8_t bit = 1; bit < 6; bit++) {
+        if(vg_bitmap & (1 << bit)) supported++;
+    }
+    const uint8_t* v = group + offset + (size_t)supported * ITSO_VALUE_RECORD_LEN;
+    size_t vgx_len = (size_t)itso_bits(v, 0, 6) * ITSO_IPE_BLOCK_LEN;
+    size_t avail = len - (size_t)(v - group);
+    if(vgx_len > avail) vgx_len = avail;
+
+    /* Tables AD1 and AD2: the four accumulator sets are 9 bytes apart in the
+     * reduced form and 11 in the full one, which adds LastFarePaid. Locations
+     * follow them - one for all four in AD1, one per set with a DTS in AD2. */
+    const size_t stride = ref == 1 ? 9 : 11;
+    const size_t locations = 4 + ITSO_CAP_ACCUMULATORS * stride;
+    if(vgx_len < locations) return false;
+
+    out->ref = ref;
+    out->strategy = (uint16_t)((v[2] << 8) | v[3]);
+    for(uint8_t a = 0; a < ITSO_CAP_ACCUMULATORS; a++) {
+        ItsoCapAccumulator* acc = &out->acc[a];
+        const size_t base = 4 + a * stride;
+        acc->rule = v[base] >> 4;
+        size_t amounts;
+        if(ref == 1) {
+            acc->last_txn = v[base] & 0x0F;
+            amounts = base + 1;
+        } else {
+            itso_decode_money(
+                (int16_t)itso_bits(v, (uint32_t)base * 8 + 4, 16), valc, &acc->last_fare);
+            acc->last_txn = v[base + 2] & 0x0F;
+            amounts = base + 3;
+        }
+        itso_decode_money(itso_int16(v + amounts), valc, &acc->uncapped);
+        itso_decode_money(itso_int16(v + amounts + 2), valc, &acc->day);
+        itso_decode_money(itso_int16(v + amounts + 4), valc, &acc->multiday);
+        acc->day_count = (uint16_t)((v[amounts + 6] << 8) | v[amounts + 7]);
+    }
+
+    size_t pos = locations;
+    for(uint8_t a = 0; a < (ref == 1 ? 1 : ITSO_CAP_ACCUMULATORS) && pos < vgx_len; a++) {
+        size_t used = itso_parse_location(
+            v + pos, vgx_len - pos, ItsoLocStructLoc1, &out->acc[a].location);
+        if(used == 0) break;
+        pos += used;
+        if(ref == 2) {
+            if(pos + 3 > vgx_len) break;
+            out->acc[a].cap_dts = itso_bits(v + pos, 0, 24);
+            pos += 3;
+        }
+    }
+
+    out->valid = true;
+    return true;
 }

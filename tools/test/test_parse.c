@@ -200,6 +200,11 @@ static void cmd2_card(void) {
     itso_parse_ipe(id, group, sizeof(cmd2_sector2), card.sector_size);
     check("CMD2 E2 is an ITSO ID", id->typ == 16);
     check("CMD2 E2 holder name", id->has_name && strcmp(id->name, "JO CLYDE") == 0);
+    /* HalfDayOfWeek (annex A.10) sits after the names, then ValidAtOrFrom. */
+    check("CMD2 E2 half days read", id->has_half_days && id->half_days == 0xFFE0);
+    check("CMD2 E2 half days are Monday to Saturday", itso_half_days_mask(id->half_days) == 0xFC);
+    check("CMD2 E2 valid at NLC 5685",
+          id->from.valid && strcmp(id->from.text, "NLC 5685") == 0);
 }
 
 /*
@@ -675,6 +680,144 @@ int main(void) {
                  "2025-12-31 00:00") == 0);
     check("period ticket auto-renews", card.products[2].auto_renew);
 
+    /* The rest of the revision 3 dataset (table 3.27). CPICC is optional here
+     * as in the earlier revisions, gated by bitmap bit 4: the locations above
+     * only land on the right bytes if that is honoured. */
+    {
+        const ItsoProduct* p = &card.products[2];
+        const ItsoTicketTerms* t = &p->ticket;
+        char days[40], part[48];
+        itso_format_days(itso_ticket_days(t->valid_days, t->flags), days, sizeof(days));
+        itso_format_part_days(
+            itso_ticket_days(t->valid_days, t->flags), t->flags, part, sizeof(part));
+        printf("      days %s; %s\n", days, part);
+        check("revision 3 ticket terms read", t->valid);
+        check("revision 3 CPICC read", p->has_cpicc && p->cpicc == 0x0457);
+        check("no duration group when bit 3 is clear", !t->has_pass_duration);
+        check("issued 2024-12-20",
+              strcmp(fmt_unix(itso_date_to_unix(t->issue_date)), "2024-12-20 00:00") == 0);
+        check("ends 04:30 the next day", t->expiry_time == 1440 + 270);
+        check("valid from 09:30", t->has_start_time && t->start_time == 570);
+        check("first class", t->travel_class == 1 && strcmp(itso_class_name(1), "First") == 0);
+        check("one adult and two children", t->adults == 1 && t->children == 2);
+        check("paid GBP 123.45 by card at 20% VAT",
+              t->amount_paid.valid && t->amount_paid.value == 12345 && t->paid_mop == 3 &&
+              t->vat == 2000);
+        check("renews 3 at a time", t->renew_quantity == 3);
+        check("transferable, off-peak only",
+              (t->flags & ITSO_T22_TRANSFERABLE) && (t->flags & ITSO_T22_OFF_PEAK_ONLY));
+        check("passback 20 minutes", p->has_passback && p->passback == 20);
+        /* ValidOnDayCode drops Sunday even though TYP22Flags allows it, and
+         * neither allows public holidays: both must say yes (rule 7). */
+        check("valid Mon-Sat", strcmp(days, "Mon-Sat") == 0);
+        check("Saturday afternoons only", strcmp(part, "Sat PM only") == 0);
+    }
+
+    /* Revision 1, shaped like a Reading Buses monthly pass: no locations, and
+     * PassDuration found after where they would have been. */
+    {
+        uint8_t* buf = malloc(sizeof(period_rev1_group));
+        memcpy(buf, period_rev1_group, sizeof(period_rev1_group));
+        ItsoProduct p;
+        memset(&p, 0, sizeof(p));
+        p.present = true;
+        p.typ = ItsoTypPeriodTicket;
+        p.value_group = true;
+        itso_parse_ipe(&p, buf, sizeof(period_rev1_group), 64);
+        const ItsoTicketTerms* t = &p.ticket;
+        char days[40];
+        itso_format_days(itso_ticket_days(t->valid_days, t->flags), days, sizeof(days));
+        printf("  rev 1 period: %u-day pass, ends %02u:%02u, %s\n", t->pass_duration,
+               t->expiry_time / 60, t->expiry_time % 60, days);
+        check("revision 1 ticket terms read", t->valid);
+        check("revision 1 has no locations", !p.from.valid && !p.to.valid);
+        check("revision 1 PassDuration after the locations",
+              t->has_pass_duration && t->pass_duration == 31 &&
+              t->duration_unit == ItsoDurationDays);
+        check("revision 1 has no CPICC", !p.has_cpicc);
+        check("sold by operator 163", p.has_retailer && p.retailer == 163);
+        check("ends 04:00 on the expiry date", t->expiry_time == 240);
+        check("no issue date recorded", t->issue_date == 0);
+        check("no validity start recorded", t->valid_from_dts == 0 && !p.has_start);
+        check("valid every day", strcmp(days, "every day") == 0);
+        check("public holidays too",
+              itso_ticket_days(t->valid_days, t->flags) & ITSO_DOW_SPECIAL);
+        check("no amount paid recorded", !t->amount_paid.valid);
+        check("one adult", t->adults == 1 && t->children == 0 && t->concessions == 0);
+        check("stored-pass mode", p.stored_passes && !p.auto_renew);
+        check("pass activated, none left", p.value_parsed && p.value_txn == 13 && p.count == 0);
+        check("current pass to 2026-02-05",
+              strcmp(fmt_unix(itso_date_to_unix(p.current_expiry)), "2026-02-05 00:00") == 0);
+        free(buf);
+    }
+
+    /* Revision 2, shaped like a South Western Railway annual season: AmountPaid
+     * is four bytes here where revision 1 had two. */
+    {
+        uint8_t* buf = malloc(sizeof(period_rev2_group));
+        memcpy(buf, period_rev2_group, sizeof(period_rev2_group));
+        ItsoProduct p;
+        memset(&p, 0, sizeof(p));
+        p.present = true;
+        p.typ = ItsoTypPeriodTicket;
+        itso_parse_ipe(&p, buf, sizeof(period_rev2_group), 64);
+        const ItsoTicketTerms* t = &p.ticket;
+        printf("  rev 2 period: paid %ld, from %s to %s\n", (long)t->amount_paid.value,
+               p.from.text, p.to.text);
+        check("revision 2 ticket terms read", t->valid);
+        check("revision 2 paid GBP 4040.00 by card",
+              t->amount_paid.valid && t->amount_paid.value == 404000 &&
+              t->amount_paid.currency == 0 && t->paid_mop == 3);
+        check("revision 2 standard class", t->travel_class == 2);
+        check("revision 2 validity code", t->validity_code == 17);
+        check("revision 2 issued 2018-06-21",
+              strcmp(fmt_unix(itso_date_to_unix(t->issue_date)), "2018-06-21 00:00") == 0);
+        check("revision 2 valid from 2018-06-25 00:00",
+              strcmp(fmt_unix(itso_dts_to_unix(t->valid_from_dts)), "2018-06-25 00:00") == 0);
+        check("revision 2 ends 04:30 the next day", t->expiry_time == 1710);
+        check("revision 2 locations behind RouteCode",
+              p.from.valid && strcmp(p.from.text, "NLC 5685") == 0 && p.to.valid &&
+              strcmp(p.to.text, "NLC 0035") == 0);
+        free(buf);
+    }
+
+    /* Revision 3's duration group, which counts in a unit of its own. */
+    {
+        uint8_t* buf = malloc(sizeof(period_rev3_group));
+        memcpy(buf, period_rev3_group, sizeof(period_rev3_group));
+        ItsoProduct p;
+        memset(&p, 0, sizeof(p));
+        p.present = true;
+        p.typ = ItsoTypPeriodTicket;
+        itso_parse_ipe(&p, buf, sizeof(period_rev3_group), 64);
+        const ItsoTicketTerms* t = &p.ticket;
+        check("revision 3 pass lasts one month",
+              t->has_pass_duration && t->pass_duration == 1 &&
+              t->duration_unit == ItsoDurationMonths);
+        check("revision 3 stock renews for 365 days",
+              t->has_stock_duration && t->stock_duration == 365);
+        check("revision 3 without CPICC reads none", !p.has_cpicc);
+        free(buf);
+    }
+
+    /* The day formatter on its own: ranges, lists and the empty case. */
+    {
+        char s[40];
+        itso_format_days(ITSO_DOW_WEEKDAYS, s, sizeof(s));
+        check("weekdays render as Mon-Fri", strcmp(s, "Mon-Fri") == 0);
+        itso_format_days(ITSO_DOW_SATURDAY | ITSO_DOW_SUNDAY, s, sizeof(s));
+        check("a two-day weekend is listed", strcmp(s, "Sat Sun") == 0);
+        itso_format_days(0xA8, s, sizeof(s));
+        check("scattered days are listed", strcmp(s, "Mon Wed Fri") == 0);
+        itso_format_days(ITSO_DOW_SPECIAL, s, sizeof(s));
+        check("holidays alone are no weekday", strcmp(s, "none") == 0);
+        itso_format_days(ITSO_DOW_ALL_DAYS, s, 4);
+        check("a short buffer truncates safely", strlen(s) < 4);
+        check("unset filters mean every day", itso_ticket_days(0, 0) == 0xFF);
+        itso_format_part_days(0xFF, 0, s, sizeof(s));
+        check("flags that do not restrict say nothing", s[0] == '\0');
+    }
+
     /* E4: a journey ticket at format revision 2, with a value record that counts
      * rides. The chain is sector 4 (the IPE, spilling into a second sector) then
      * sector 10 (the value records). */
@@ -812,6 +955,148 @@ int main(void) {
     shell_reject_reasons();
     oversized_directory();
     robustness();
+
+    /* ------------------------------------------------------------------
+     * Elements added after a review of real cards against TS 1000 (2026-09-26):
+     * each one was on a card and not decoded.
+     * ------------------------------------------------------------------ */
+    printf("\nISAM identities, IDs, journey terms, taps and capping\n");
+
+    /* TS 1000-2 annex B: the OID inside an ISAM ID, in all four ranges. Two of
+     * these are ISAMs read off real cards: Reading Buses and Reading's
+     * concessionary pass issuer. */
+    check("13-bit ISAM OID", itso_isam_oid(0x051844C0) == 163);
+    check("14-bit extended ISAM OID", itso_isam_oid(0x0164000E) == 8236);
+    check("16-bit ISAM OID from 24576", itso_isam_oid((9u << 19) | (0x6u << 16)) == 24585);
+    check("16-bit ISAM OID from 57344", itso_isam_oid((1u << 19) | (0x7u << 16)) == 57345);
+
+    check("directory InstanceID read", card.dir_instance_valid);
+    check("directory last written by operator 109",
+          itso_isam_oid(card.dir_isam) == 109 && card.dir_kid == 1 && card.shell_iteration == 3);
+
+    check("purse deposit VAT 20%", card.products[0].deposit_vat == 2000);
+    check("purse tops up from another purse", card.products[0].auto_top_up_internal);
+
+    {
+        const ItsoProduct* id16 = &card.products[1];
+        char lang[3];
+        check("ID CPICC", id16->has_cpicc && id16->cpicc == 0x9100);
+        check("ID language is Welsh",
+              id16->language == 182 && itso_language_code(182, lang) && strcmp(lang, "cy") == 0 &&
+              strcmp(itso_language_name(182), "Welsh") == 0);
+        check("ITSO language 44 is English",
+              itso_language_code(44, lang) && strcmp(lang, "en") == 0);
+        check("the misprinted language 71 reads as Igbo",
+              itso_language_code(71, lang) && strcmp(lang, "ig") == 0);
+        check("language 0 is not a language", !itso_language_code(0, lang));
+        check("ID holder ID", id16->has_holder_id && id16->holder_id == 4078);
+        check("ID secondary holder",
+              id16->has_secondary_holder && id16->secondary_holder_id == 1234567);
+        check("names still found after the secondary holder",
+              strcmp(id16->name, "ALEX MORGAN") == 0);
+        check("rounding enabled, flag set, value flag clear",
+              id16->rounding == (ITSO_ROUNDING_ENABLED | ITSO_ROUNDING_FLAG));
+        check("ID deposit GBP 5.00 cash",
+              id16->has_deposit && id16->deposit.value == 500 && id16->deposit_mop == 1);
+        check("ID shell deposit GBP 3.00 by card at 20%",
+              id16->has_shell_deposit && id16->shell_deposit.value == 300 &&
+              id16->shell_deposit_mop == 3 && id16->shell_deposit_vat == 2000);
+    }
+
+    {
+        const ItsoProduct* j = &card.products[3];
+        const ItsoTicketTerms* t = &j->ticket;
+        check("journey terms read", t->valid);
+        check("journey issued 2026-09-14",
+              strcmp(fmt_unix(itso_date_to_unix(t->issue_date)), "2026-09-14 00:00") == 0);
+        check("journey validity code and end time",
+              t->validity_code == 25 && t->expiry_time == 1440 + 270);
+        check("journey standard class, adult and child",
+              t->travel_class == 2 && t->adults == 1 && t->children == 1);
+        check("journey paid GBP 5.80 by card",
+              t->amount_paid.valid && t->amount_paid.value == 580 && t->paid_mop == 3);
+        check("journey photocard, promotion and CPICC",
+              t->photocard == 987654 && t->promotion_code == 7 && j->has_cpicc &&
+              j->cpicc == 0x12);
+        check("journey mode group",
+              t->has_mode_group && t->mode == ItsoJourneyModeStoredJourneys &&
+              t->max_transfers == 2 && t->time_limit == 120 && t->ride_value.valid &&
+              t->ride_value.value == 250);
+        check("journey locations still land after the terms",
+              j->from.valid && strcmp(j->from.text, "NLC 5631") == 0);
+    }
+
+    {
+        /* The taps are newest first: [0] the tap out, [1] the tap in. */
+        const ItsoTap* out = &card.taps[0];
+        const ItsoTap* in = NULL;
+        for(uint8_t i = 0; i < card.tap_count; i++) {
+            if(card.taps[i].transaction_type == 11 && card.taps[i].format_rev == 2) in = &card.taps[i];
+        }
+        check("tap out names its reader's operator",
+              out && out->has_writer && itso_isam_oid(out->writer_isam) == 9000);
+        check("tap out was a return with a companion",
+              out && out->companion && out->return_ticket);
+        check("tap in names its reader's operator",
+              in && in->has_writer && itso_isam_oid(in->writer_isam) == 109);
+        check("tap in carried no companion", in && !in->companion && !in->return_ticket);
+    }
+
+    /* Complex capping, both forms. */
+    for(int ref = 1; ref <= 2; ref++) {
+        const uint8_t* src = ref == 1 ? capping1_group : capping2_group;
+        size_t len = ref == 1 ? sizeof(capping1_group) : sizeof(capping2_group);
+        uint8_t* buf = malloc(len);
+        memcpy(buf, src, len);
+        ItsoProduct p;
+        memset(&p, 0, sizeof(p));
+        p.present = true;
+        p.typ = ItsoTypStoredTravelRights;
+        p.value_group = true;
+        itso_parse_ipe(&p, buf, len, 64);
+        ItsoCapping* cap = malloc(sizeof(ItsoCapping));
+        bool ok = itso_parse_capping(buf, len, 64, 0, cap);
+        printf("  VGXRef %d: strategy %u, day %ld, 7-day %ld after %u days\n", ref,
+               cap->strategy, (long)cap->acc[0].day.value, (long)cap->acc[1].multiday.value,
+               cap->acc[1].day_count);
+        check(ref == 1 ? "reduced capping extension flagged" : "full capping extension flagged",
+              p.vgx_ref == ref);
+        check("the extension leaves the balance alone",
+              p.balance.valid && p.balance.value == 1375);
+        check("capping decoded", ok && cap->valid && cap->ref == ref && cap->strategy == 7);
+        check("day cap accumulator",
+              cap->acc[0].rule == ItsoCapRuleDay && cap->acc[0].uncapped.value == 900 &&
+              cap->acc[0].day.value == 700 && cap->acc[0].last_txn == 11);
+        check("multi-day accumulator",
+              cap->acc[1].rule == ItsoCapRuleShortPeriod && cap->acc[1].multiday.value == 2500 &&
+              cap->acc[1].day_count == 3);
+        check("unused accumulators are empty", cap->acc[2].rule == ItsoCapRuleNone);
+        check("where the last cap applied",
+              cap->acc[0].location.valid && strcmp(cap->acc[0].location.text, "NLC 1072") == 0);
+        if(ref == 2) {
+            check("full form keeps the last fare", cap->acc[0].last_fare.value == 185);
+            check("full form keeps when the cap applied",
+                  strcmp(fmt_unix(itso_dts_to_unix(cap->acc[0].cap_dts)), "2026-09-14 08:41") == 0);
+            check("null locations stay absent", !cap->acc[1].location.valid);
+        }
+        /* A group cut short anywhere must fail cleanly, never over-read: each
+         * truncation is its own exactly-sized allocation, so ASan sees any byte
+         * read past the end. */
+        for(size_t cut = 0; cut < len; cut++) {
+            uint8_t* part = malloc(cut ? cut : 1);
+            memcpy(part, buf, cut);
+            itso_parse_capping(part, cut, 64, 0, cap);
+            free(part);
+        }
+        check("capping survives every truncation", true);
+        free(cap);
+        free(buf);
+    }
+    {
+        ItsoCapping cap;
+        check("a purse with no extension has no capping",
+              !itso_parse_capping(capping1_group, 64, 64, 0, &cap) && !cap.valid);
+    }
 
     printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
            failures, failures == 1 ? "" : "s");

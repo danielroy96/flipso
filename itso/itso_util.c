@@ -77,7 +77,12 @@ void itso_decode_money(int32_t raw, uint8_t valc, ItsoMoney* out) {
     static const int32_t scale[4] = {1, 10, 100, 1000};
     out->valid = true;
     out->currency = valc & 0x03;
-    out->value = raw * scale[(valc >> 2) & 0x03];
+    /* A four-byte amount (TYP 22 AmountPaid) times a scale of 1000 can pass
+     * 32 bits, so saturate rather than wrap to a plausible-looking number. */
+    int64_t value = (int64_t)raw * scale[(valc >> 2) & 0x03];
+    if(value > INT32_MAX) value = INT32_MAX;
+    if(value < INT32_MIN) value = INT32_MIN;
+    out->value = (int32_t)value;
 }
 
 void itso_format_money(const ItsoMoney* money, char* out, size_t len) {
@@ -101,6 +106,84 @@ void itso_format_money(const ItsoMoney* money, char* out, size_t len) {
         value = -value;
     }
     snprintf(out, len, "%s%s %ld.%02ld", sign, symbol, (long)(value / 100), (long)(value % 100));
+}
+
+uint8_t itso_ticket_days(uint8_t valid_on_day, uint16_t flags) {
+    uint8_t days = valid_on_day ? valid_on_day : 0xFF;
+    if(!(flags & ITSO_T22_DAY_MASK)) return days;
+
+    if(!(flags & (ITSO_T22_WEEKDAY_AM | ITSO_T22_WEEKDAY_PM))) days &= ~ITSO_DOW_WEEKDAYS;
+    if(!(flags & (ITSO_T22_SATURDAY_AM | ITSO_T22_SATURDAY_PM))) days &= ~ITSO_DOW_SATURDAY;
+    if(!(flags & (ITSO_T22_SUNDAY_AM | ITSO_T22_SUNDAY_PM))) days &= ~ITSO_DOW_SUNDAY;
+    if(!(flags & ITSO_T22_PUBLIC_HOLIDAY)) days &= ~ITSO_DOW_SPECIAL;
+    return days;
+}
+
+void itso_format_days(uint8_t days, char* out, size_t len) {
+    static const char* const names[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+    if(!len) return;
+    out[0] = '\0';
+
+    days &= ITSO_DOW_ALL_DAYS;
+    if(days == ITSO_DOW_ALL_DAYS) {
+        snprintf(out, len, "every day");
+        return;
+    }
+    if(!days) {
+        snprintf(out, len, "none");
+        return;
+    }
+
+    /* A single run of three or more days reads better as a range. */
+    int first = -1, last = -1, count = 0;
+    for(int i = 0; i < 7; i++) {
+        if(days & (ITSO_DOW_MONDAY >> i)) {
+            if(first < 0) first = i;
+            last = i;
+            count++;
+        }
+    }
+    if(count >= 3 && count == last - first + 1) {
+        snprintf(out, len, "%s-%s", names[first], names[last]);
+        return;
+    }
+
+    size_t pos = 0;
+    for(int i = 0; i < 7 && pos + 1 < len; i++) {
+        if(!(days & (ITSO_DOW_MONDAY >> i))) continue;
+        int n = snprintf(out + pos, len - pos, "%s%s", pos ? " " : "", names[i]);
+        if(n < 0 || (size_t)n >= len - pos) break; /* Truncated: stop, still terminated. */
+        pos += (size_t)n;
+    }
+}
+
+void itso_format_part_days(uint8_t days, uint16_t flags, char* out, size_t len) {
+    static const struct {
+        uint8_t days;
+        uint16_t am;
+        uint16_t pm;
+        const char* name;
+    } groups[] = {
+        {ITSO_DOW_WEEKDAYS, ITSO_T22_WEEKDAY_AM, ITSO_T22_WEEKDAY_PM, "Weekdays"},
+        {ITSO_DOW_SATURDAY, ITSO_T22_SATURDAY_AM, ITSO_T22_SATURDAY_PM, "Sat"},
+        {ITSO_DOW_SUNDAY, ITSO_T22_SUNDAY_AM, ITSO_T22_SUNDAY_PM, "Sun"},
+    };
+    if(!len) return;
+    out[0] = '\0';
+    if(!(flags & ITSO_T22_DAY_MASK)) return;
+
+    size_t pos = 0;
+    for(size_t i = 0; i < sizeof(groups) / sizeof(groups[0]); i++) {
+        if(!(days & groups[i].days)) continue;
+        bool am = (flags & groups[i].am) != 0;
+        bool pm = (flags & groups[i].pm) != 0;
+        if(am == pm) continue;
+        int n = snprintf(
+            out + pos, len - pos, "%s%s %s only", pos ? ", " : "", groups[i].name,
+            am ? "AM" : "PM");
+        if(n < 0 || (size_t)n >= len - pos) break;
+        pos += (size_t)n;
+    }
 }
 
 /** SNCODE: four 5-bit characters, right justified and padded with 0x1F spaces. */
@@ -383,4 +466,14 @@ size_t itso_parse_location(
     itso_render_location(
         def_type, body, body_len, out->text, sizeof(out->text), out->code, &out->code_kind);
     return consumed;
+}
+
+uint8_t itso_half_days_mask(uint16_t half_days) {
+    /* Annex A.10 packs a pair of period bits per day, Monday first, special
+     * days last - the same order as a ValidOnDayCode's bits. */
+    uint8_t mask = 0;
+    for(int day = 0; day < 8; day++) {
+        if((half_days >> (14 - 2 * day)) & 0x03) mask |= (uint8_t)(ITSO_DOW_MONDAY >> day);
+    }
+    return mask;
 }

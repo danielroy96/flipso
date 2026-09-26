@@ -83,6 +83,7 @@ void flipso_scene_taps_on_enter(void* context) {
             if(tap->has_entry_oid) {
                 flipso_cat_operator(text, app, "  Entry op", tap->entry_oid);
             }
+            if(tap->has_entry) flipso_cat_isam(text, app, "  Entry by", tap->entry_isam);
 
             flipso_cat_location(text, app, "  From", &tap->origin);
             flipso_cat_location(text, app, "  Via", &tap->route);
@@ -100,6 +101,8 @@ void flipso_scene_taps_on_enter(void* context) {
             if(tap->no_fare_charged) {
                 furi_string_cat(text, "  Fare not collected\n");
             }
+            if(tap->return_ticket) furi_string_cat(text, "  Return fare\n");
+            if(tap->companion) furi_string_cat(text, "  With a companion\n");
             if(tap->has_vat) {
                 /* VAT is a percentage in 0.01 steps. */
                 furi_string_cat_printf(
@@ -110,6 +113,9 @@ void flipso_scene_taps_on_enter(void* context) {
                 furi_string_cat(text, "  ");
                 flipso_cat_product_ref(text, app, tap->ipe_pointer);
             }
+
+            /* The record's own InstanceID: whose reader wrote this tap. */
+            if(tap->has_writer) flipso_cat_isam(text, app, "  Reader", tap->writer_isam);
 
             /* Flags an inspector or a gate set against this journey. */
             if(tap->invalid_travel) {

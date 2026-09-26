@@ -11,7 +11,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from itso_build import (  # noqa: E402
     Bits, bcd, date_stamp, dir_entry, dts, instance_and_seal, journey_tail,
-    log_entry, loyalty_tail, loc2, luhn, pad, period_tail, purse_tail,
+    capping_vgx, isam, log_entry, loc1, loyalty_tail, loc2, luhn, nlc, pad, period_tail, purse_tail,
     put_secrc, tt_record, tt_record_rev4, value_group, value_record)
 
 # ---------------------------------------------------------------- Shell (FID 15)
@@ -65,6 +65,10 @@ sct = {1: 9, 9: 15, 2: 15, 3: 11, 11: 14, 4: 10, 10: 15, 5: 12, 12: 15}
 for sector in range(1, 14):
     d.put(SCT_BASE + (sector - 1) * 4, 4, sct.get(sector, 0))
 d.buf[49] = 0x2A            # DIRS#
+# Directory InstanceID (TS 1000-2 table 8): KID 1, shell iteration 3, and the
+# ISAM of the last device to rewrite the directory - South Western Railway's.
+d.buf[50] = 0x13
+d.putb(51, isam(109, 0x7C77).to_bytes(4, "big"))
 
 # The same directory with the DIRBitMap blocking indicator set. Which of the six
 # bitmap bits it is matters: it sits one below the log-configuration pair, so
@@ -91,49 +95,81 @@ ipe2.putb(14, (500).to_bytes(2, "big"))    # DepositAmount: GBP 5.00
 ipe2.put(128, 14, date_stamp(2024, 1, 1))  # StartDateAutoTopUp
 ipe2.put(156, 4, 1)         # DepositMethodOfPayment: cash
 ipe2.put(160, 4, 0)         # DepositCurrencyCode: sterling
+ipe2.put(164, 12, 2000)     # DepositVATSalesTax: 20.00%
 sector1 = bytes(ipe2.buf) + instance_and_seal()
 
 # E1 sector 9: the value record data group holding the balance
 sector9 = value_group([
     value_record(4, 100, dts(2026, 9, 1, 12, 0), purse_tail(1560, 0)),
     value_record(7, 101, dts(2026, 9, 14, 8, 41),
-                 purse_tail(1234, 0, legs=2, cumulative=265, flags=0b001)),
+                 purse_tail(1234, 0, legs=2, cumulative=265, flags=0b101)),
 ], format_rev=1) + instance_and_seal()
 
 # E2 sector 2: TYP 16 ITSO ID with holder name
 name_fore, name_sur = b"ALEX", b"MORGAN"
-ipe16 = Bits(44)
-ipe16.put(0, 6, 11)         # IPELength = 11 blocks = 44 bytes
-ipe16.put(6, 6, 0b000100)   # IPEBitMap: forename and surname present
+ipe16 = Bits(48)
+ipe16.put(0, 6, 12)         # IPELength = 12 blocks = 48 bytes
+ipe16.put(6, 6, 0b000110)   # IPEBitMap: SecondaryHolderID, forename and surname
 ipe16.put(12, 4, 2)         # IPEFormatRevision = 2
 ipe16.buf[2] = 255          # RemoveDate
 # IDFlags (table 24): personalised, female, companion allowed.
 ipe16.buf[5] = 0b00010101
 ipe16.put(50, 6, 30)        # PassbackTime: 30 minutes
 ipe16.putb(7, bcd("19551103"))   # DateOfBirth, a Datef not a DATE
+ipe16.putb(3, (0x9100).to_bytes(2, "big"))     # CPICC: the pass issuer
+ipe16.put(48, 1, 1)         # RoundingFlagsEnable
+ipe16.buf[11] = 182         # Language: Welsh (TS 1000-5 annex A.24)
+ipe16.putb(12, (4078).to_bytes(4, "big"))      # HolderID
+ipe16.put(128, 1, 1)        # RoundingFlag; RoundingValueFlag left clear
+ipe16.put(20 * 8, 4, 1)     # DepositMethodOfPayment: cash
+ipe16.put(22 * 8, 4, 3)     # ShellDepositMethodOfPayment: card
+ipe16.put(22 * 8 + 4, 12, 2000)                # ShellDepositVATSalesTax: 20.00%
+ipe16.putb(25, (500).to_bytes(2, "big"))       # DepositAmount: GBP 5.00
+ipe16.putb(27, (300).to_bytes(2, "big"))       # ShellDeposit: GBP 3.00
 ipe16.put(130, 14, date_stamp(2024, 4, 1))   # EntitlementStartDate
 ipe16.put(144, 14, date_stamp(2029, 3, 31))  # EntitlementExpiryDate
 ipe16.buf[29] = 2           # EntitlementCode: limited free ride
 ipe16.buf[30] = 4           # ConcessionaryClass: pensioner
-ipe16.buf[31] = len(name_fore)
-ipe16.putb(32, name_fore)
-ipe16.buf[32 + len(name_fore)] = len(name_sur)
-ipe16.putb(33 + len(name_fore), name_sur)
+ipe16.putb(31, (1234567).to_bytes(4, "big"))  # SecondaryHolderID
+ipe16.buf[35] = len(name_fore)
+ipe16.putb(36, name_fore)
+ipe16.buf[36 + len(name_fore)] = len(name_sur)
+ipe16.putb(37 + len(name_fore), name_sur)
 sector2 = bytes(ipe16.buf) + instance_and_seal()
 
-# E3 sector 3: TYP 22 period ticket, revision 3, with NLC origin and destination
+# E3 sector 3: TYP 22 period ticket, revision 3, with NLC origin and destination.
+# CPICC precedes RouteCode and the locations, so they only land where the
+# decoder looks if it honours bitmap bit 4 (table 3.27). The duration group
+# would push the dataset past what one sector holds alongside its InstanceID and
+# seal, so it gets a product of its own below.
+T22_TRANSFERABLE, T22_OFF_PEAK = 1 << 0, 1 << 8
+T22_WD_AM, T22_WD_PM, T22_SAT_AM, T22_SAT_PM = 1 << 9, 1 << 10, 1 << 11, 1 << 12
+T22_SUN_AM, T22_SUN_PM, T22_HOLIDAY = 1 << 13, 1 << 14, 1 << 15
+T22_ALL_DAYS = 0xFE00
 ipe22 = Bits(48)
 ipe22.put(0, 6, 12)         # IPELength = 12 blocks = 48 bytes
-ipe22.put(6, 6, 0b000010)   # IPEBitMap: RouteCode + ValidAtOrFrom + ValidTo present
+ipe22.put(6, 6, 0b010010)   # IPEBitMap: CPICC, RouteCode + locations
 ipe22.put(12, 4, 3)         # IPEFormatRevision = 3
 ipe22.buf[2] = 255
+ipe22.put(40, 16, T22_TRANSFERABLE | T22_OFF_PEAK | T22_WD_AM | T22_WD_PM
+          | T22_SAT_PM | T22_SUN_AM | T22_SUN_PM)   # TYP22Flags: Saturday afternoons only
+ipe22.put(58, 6, 20)        # PassbackTime: 20 minutes
+ipe22.put(64, 14, date_stamp(2024, 12, 20))  # IssueDate
+ipe22.put(78, 11, 1440 + 270)                # ExpiryTime: 04:30 the next day
+ipe22.put(90, 6, 3)         # AutoRenewQuantity1
+ipe22.put(96, 3, 1)         # Class: first
 ipe22.put(106, 14, date_stamp(2025, 1, 1))   # ValidityStartDate
-ipe22.buf[36] = 203         # LocDefType: short rail NLC
-ipe22.buf[37] = 4
-ipe22.putb(38, b"1072")
-ipe22.buf[42] = 203
-ipe22.buf[43] = 4
-ipe22.putb(44, b"1444")
+ipe22.put(125, 11, 9 * 60 + 30)              # ValidityStartTime: 09:30
+ipe22.buf[18] = 0b11111000 | 0b100           # ValidOnDayCode: Monday to Saturday
+ipe22.buf[19] = 1           # PartySizeAdult
+ipe22.buf[20] = 2           # PartySizeChild
+ipe22.putb(23, (12345).to_bytes(4, "big"))   # AmountPaid: GBP 123.45
+ipe22.put(27 * 8, 4, 3)     # AmountPaidMethodOfPayment: card
+ipe22.put(27 * 8 + 4, 12, 2000)              # AmountPaidVATSalesTax: 20.00%
+ipe22.putb(29, (0x0457).to_bytes(2, "big"))  # CPICC
+ipe22.putb(31, b"00000")    # RouteCode
+ipe22.putb(36, loc1(203, nlc("1072")))
+ipe22.putb(42, loc1(203, nlc("1444")))
 sector3 = bytes(ipe22.buf)
 
 # E4 sector 4: TYP 23 journey ticket, revision 2. The mandatory part ends at byte
@@ -144,6 +180,22 @@ ipe23.put(0, 6, 13)         # IPELength = 13 blocks = 52 bytes
 ipe23.put(6, 6, 0b001010)   # IPEBitMap: bit 3 mode group, bit 1 route and locations
 ipe23.put(12, 4, 2)         # IPEFormatRevision = 2
 ipe23.buf[2] = 255
+# The terms, in the shape an SWR single takes (table 31a).
+ipe23.put(58, 14, date_stamp(2026, 9, 14))  # IssueDate
+ipe23.put(72, 5, 25)        # ValidityCode
+ipe23.put(77, 11, 1440 + 270)               # ExpiryTime: 04:30 the next day
+ipe23.put(93, 3, 2)         # Class: standard
+ipe23.buf[12] = 1           # PartySizeAdult
+ipe23.buf[13] = 1           # PartySizeChild
+ipe23.putb(16, (580).to_bytes(4, "big"))    # AmountPaid: GBP 5.80
+ipe23.put(20 * 8, 4, 3)     # AmountPaidMethodOfPayment: card
+ipe23.putb(22, (987654).to_bytes(4, "big")) # PhotocardNumber
+ipe23.buf[26] = 7           # PromotionCode
+ipe23.putb(27, (0x0012).to_bytes(2, "big")) # CPICC
+ipe23.put(29 * 8 + 4, 4, 1) # TYP23Mode: stored journeys
+ipe23.buf[30] = 2           # MaxTransfers
+ipe23.buf[31] = 120         # TimeLimit: 120 x 30 s = one hour
+ipe23.putb(32, (250).to_bytes(2, "big"))    # ValueOfRideJourney: GBP 2.50
 ipe23.putb(35, b"00000")    # RouteCode
 ipe23.buf[40] = 203         # Origin1: short rail NLC
 ipe23.buf[41] = 4
@@ -190,6 +242,96 @@ sector12 = value_group([
     value_record(1, 21, dts(2026, 9, 10, 10, 0), loyalty_tail(74500)),
 ], format_rev=1) + instance_and_seal()
 
+# Period tickets at revisions 1 and 2, as whole product groups rather than as
+# entries on the card above: they are here for their datasets, and the card's
+# directory is already full of assertions about which entry is which.
+#
+# Revision 1 in the shape a Reading Buses monthly pass takes: no location at
+# all, so the ticket is good wherever its owner says that product type is, and
+# only PassDuration among the optional elements - which in this revision sits
+# after where the locations would be (table 27).
+ipe22r1 = Bits(28)
+ipe22r1.put(0, 6, 7)        # IPELength = 7 blocks = 28 bytes
+ipe22r1.put(6, 6, 0b001000) # IPEBitMap: PassDuration only
+ipe22r1.put(12, 4, 1)       # IPEFormatRevision = 1
+ipe22r1.putb(3, (163).to_bytes(2, "big"))   # ProductRetailer
+ipe22r1.put(40, 16, T22_ALL_DAYS | 0b01100000)  # every day; print ticket and receipt
+ipe22r1.put(78, 11, 4 * 60)                 # ExpiryTime: 04:00 on the expiry date
+ipe22r1.buf[17] = 0xFF      # ValidOnDayCode: every day and special days
+ipe22r1.buf[18] = 1         # PartySizeAdult
+ipe22r1.buf[26] = 31        # PassDuration: 31 days
+ACTIVATED = dts(2026, 1, 6, 17, 16)
+period_rev1_group = (
+    pad(bytes(ipe22r1.buf) + instance_and_seal(), 64) +
+    pad(value_group([
+        value_record(1, 64, ACTIVATED, period_tail(
+            1, 0b10, date_stamp(2027, 11, 21), date_stamp(2025, 12, 17))),
+        value_record(13, 65, ACTIVATED, period_tail(
+            0, 0b10, date_stamp(2027, 11, 21), date_stamp(2026, 2, 5))),
+    ], format_rev=1) + instance_and_seal(), 64))
+
+# Revision 2 in the shape of a South Western Railway annual season: a four-byte
+# AmountPaid, an ExpiryTime past midnight, and locations behind RouteCode.
+ipe22r2 = Bits(48)
+ipe22r2.put(0, 6, 12)       # IPELength = 12 blocks = 48 bytes
+ipe22r2.put(6, 6, 0b000010) # IPEBitMap: RouteCode + locations
+ipe22r2.put(12, 4, 2)       # IPEFormatRevision = 2
+ipe22r2.buf[2] = 1
+ipe22r2.put(40, 16, T22_ALL_DAYS)
+ipe22r2.put(64, 14, date_stamp(2018, 6, 21))    # IssueDate
+ipe22r2.put(78, 11, 1440 + 270)                 # ExpiryTime: 04:30 the next day
+ipe22r2.put(96, 3, 2)       # Class: standard
+ipe22r2.put(99, 5, 17)      # ValidityCode
+ipe22r2.put(104, 24, dts(2018, 6, 25, 0, 0))    # ValidityStartDTS
+ipe22r2.buf[17] = 0xFF
+ipe22r2.buf[18] = 1
+ipe22r2.putb(22, (404000).to_bytes(4, "big"))   # AmountPaid: GBP 4040.00
+ipe22r2.put(26 * 8, 4, 3)   # AmountPaidMethodOfPayment: card
+ipe22r2.putb(28, b"00000")  # RouteCode
+ipe22r2.putb(33, loc1(203, nlc("5685")))
+ipe22r2.putb(39, loc1(203, nlc("0035")))
+period_rev2_group = bytes(ipe22r2.buf) + instance_and_seal()
+
+# Revision 3's duration group: a unit code in front of a 12-bit count, and the
+# days the stock of passes is extended by on renewal (table 3.27).
+ipe22r3 = Bits(36)
+ipe22r3.put(0, 6, 9)        # IPELength = 9 blocks = 36 bytes
+ipe22r3.put(6, 6, 0b001000) # IPEBitMap: duration group only
+ipe22r3.put(12, 4, 3)       # IPEFormatRevision = 3
+ipe22r3.put(40, 16, T22_ALL_DAYS)
+ipe22r3.buf[18] = 0xFF
+ipe22r3.put(29 * 8, 4, 1)   # PassDurationCode: months
+ipe22r3.put(29 * 8 + 4, 12, 1)              # PassDuration: one month
+ipe22r3.putb(31, (365).to_bytes(2, "big"))  # ExpiryDateSPDuration
+period_rev3_group = bytes(ipe22r3.buf) + instance_and_seal()
+
+# A pay-as-you-go product with a Complex Capping extension, in the shape SPT
+# issues its Subway purse (TS 1000-5 clause 4.1): the extension rides on the
+# value record group, after both records. The reduced form (VGXRef 1) has one
+# location for all four sets; the full form (VGXRef 2) a location and a time for
+# each, and the fare last paid.
+CAP_SETS = [
+    (1, 11, 185, 900, 700, 0, 0),       # day cap: GBP 9.00 of fares, GBP 7.00 counted
+    (2, 11, 185, 3000, 0, 2500, 3),     # 7-day cap: three days in
+    (0, 0, 0, 0, 0, 0, 0),
+    (0, 0, 0, 0, 0, 0, 0),
+]
+CAP_WHEN = dts(2026, 9, 14, 8, 41)
+def capping_group(ref):
+    if ref == 1:
+        locations = loc1(203, nlc("1072"))
+    else:
+        locations = [(loc1(203, nlc("1072")), CAP_WHEN), (loc1(255, b""), 0),
+                     (loc1(255, b""), 0), (loc1(255, b""), 0)]
+    return (pad(bytes(ipe2.buf) + instance_and_seal(), 64) +
+            value_group([
+                value_record(4, 1, dts(2026, 9, 1, 12, 0), purse_tail(1560, 0)),
+                value_record(7, 2, CAP_WHEN, purse_tail(1375, 0)),
+            ], format_rev=1, extension=capping_vgx(ref, 7, CAP_SETS, locations)) +
+            instance_and_seal())
+capping1_group = capping_group(1)
+capping2_group = capping_group(2)
+
 # ---------------------------------------------------------------- Cyclic log (FID 1)
 log = bytearray(192)
 NLC_1072, NLC_1444, NLC_5685 = (loc2(203, n) for n in (b"1072", b"1444", b"5685"))
@@ -197,8 +339,13 @@ NLC_1072, NLC_1444, NLC_5685 = (loc2(203, n) for n in (b"1072", b"1444", b"5685"
 # keypad of TS 1000-1 table 28 and packed into four bytes of BCD.
 STOP_A, STOP_B = loc2(206, bcd("00062624")), loc2(206, bcd("62697956"))
 
-log[0:48] = tt_record(11, dts(2026, 9, 13, 17, 22), 0, NLC_1072, None, 1)      # tap in
-log[48:96] = tt_record(12, dts(2026, 9, 14, 8, 41), 265, NLC_1072, NLC_1444, 1)  # tap out
+# Each record's InstanceID names the reader that wrote it: an SWR gate for the
+# tap in, and one registered in the extended OID range for the tap out.
+log[0:48] = tt_record(11, dts(2026, 9, 13, 17, 22), 0, NLC_1072, None, 1,
+                      writer=isam(109, 0x123))                           # tap in
+log[48:96] = tt_record(12, dts(2026, 9, 14, 8, 41), 265, NLC_1072, NLC_1444, 1,
+                       companion=True, return_ticket=True,
+                       writer=isam(9000, 0x42))                          # tap out
 # A third record on the newer revision, so the decoder is exercised on both.
 log[96:144] = tt_record_rev4(
     12, dts(2026, 9, 12, 18, 5), 480, NLC_1444, NLC_5685, 1,
@@ -284,9 +431,9 @@ cmd2_sector18 = pad(
 
 # E2 sector 2: an ITSO ID carrying a name.
 cmd2_name_fore, cmd2_name_sur = b"JO", b"CLYDE"
-cmd2_ipe16 = Bits(44)
-cmd2_ipe16.put(0, 6, 11)
-cmd2_ipe16.put(6, 6, 0b000100)          # forename and surname present
+cmd2_ipe16 = Bits(48)
+cmd2_ipe16.put(0, 6, 12)
+cmd2_ipe16.put(6, 6, 0b001100)          # names, HalfDayOfWeek and ValidAtOrFrom
 cmd2_ipe16.put(12, 4, 2)
 cmd2_ipe16.buf[2] = 255
 cmd2_ipe16.put(130, 14, date_stamp(2025, 4, 16))
@@ -297,6 +444,9 @@ cmd2_ipe16.buf[31] = len(cmd2_name_fore)
 cmd2_ipe16.putb(32, cmd2_name_fore)
 cmd2_ipe16.buf[32 + len(cmd2_name_fore)] = len(cmd2_name_sur)
 cmd2_ipe16.putb(33 + len(cmd2_name_fore), cmd2_name_sur)
+# Both periods Monday to Friday and Saturday morning (annex A.10), then a place.
+cmd2_ipe16.putb(40, (0b1111111111100000).to_bytes(2, "big"))
+cmd2_ipe16.putb(42, loc1(203, nlc("5685")))
 cmd2_sector2 = pad(bytes(cmd2_ipe16.buf) + instance_and_seal(), CMD2_B)
 
 # ---------------------------------------------------------------- emit
@@ -320,6 +470,11 @@ with open("card_data.h", "w") as f:
     f.write(carr("card_sector11", sector11))
     f.write(carr("card_sector12", sector12))
     f.write(carr("card_log", log))
+    f.write(carr("period_rev1_group", period_rev1_group))
+    f.write(carr("period_rev2_group", period_rev2_group))
+    f.write(carr("period_rev3_group", period_rev3_group))
+    f.write(carr("capping1_group", capping1_group))
+    f.write(carr("capping2_group", capping2_group))
     f.write("\n/* Synthetic ITSO CMD2 card. */\n")
     f.write(f'#define EXPECT_CMD2_ISRN "{CMD2_ISRN}"\n')
     f.write(carr("cmd2_shell", cmd2_shell.buf))
