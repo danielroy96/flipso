@@ -474,6 +474,15 @@ static void merge_history(void) {
         }
         latest == 1;
     }));
+    check("only the journey the file remembered is marked as from past reads", ({
+        uint8_t past = 0;
+        bool oldest_is_past = false;
+        for(uint8_t i = 0; i < merged.tap_count; i++) {
+            if(!merged.taps[i].on_card) past++;
+            if(merged.taps[i].dts == oldest_dts) oldest_is_past = !merged.taps[i].on_card;
+        }
+        past == 1 && oldest_is_past;
+    }));
 
     /* The balance series: three transactions where the card holds two, which is
      * the whole point of keeping the file's records. */
@@ -503,6 +512,9 @@ static void merge_history(void) {
     flipso_capture_decode(now, &twice);
     check("merging the same record twice changes nothing",
           memcmp(&twice, &merged, sizeof(ItsoCard)) == 0);
+    /* The save screen merges before it asks, so backing out and asking again
+     * does exactly this - and has to report what it did the first time. */
+    check("and reports the same counts", memcmp(&again, &diff, sizeof(diff)) == 0);
 
     /* The file: new keys, same Version, so a build that predates them loses the
      * history and reads the rest. */
@@ -569,6 +581,16 @@ static void merge_replaced_product(void) {
     /* Its records are not the new product's, but the product itself is still
      * one the card used to carry, so it is kept beside the one in its slot. */
     check("but the product itself is kept", diff.kept_products == 1);
+    {
+        /* Asking twice, as the save screen does after a Cancel, still reports
+         * the product rather than finding its slot already taken. */
+        FlipsoCaptureDiff again;
+        flipso_capture_merge_history(now, previous, &again);
+        check("a second merge still reports the kept product", again.kept_products == 1);
+        ItsoCard twice;
+        flipso_capture_decode(now, &twice);
+        check("and still decodes to six products", twice.product_count == 6);
+    }
     check("as a sixth product the card does not list",
           merged.product_count == 6 && !merged.products[5].on_card &&
               merged.products[5].dir_index == 1);

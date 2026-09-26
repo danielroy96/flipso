@@ -3,6 +3,7 @@
  * @brief Drawing and input for the icon list.
  */
 #include "flipso_menu_view.h"
+#include "flipso_glyphs.h"
 
 #include <furi.h>
 #include <gui/elements.h>
@@ -22,9 +23,12 @@
 #define FLIPSO_MENU_ICON_X 4
 #define FLIPSO_MENU_TEXT_X 18
 #define FLIPSO_MENU_TEXT_RIGHT 120
+/* Between a label and the tag at the end of its row. */
+#define FLIPSO_MENU_TAG_GAP 4
 
 typedef struct {
     char label[FLIPSO_MENU_LABEL_LEN];
+    char tag[FLIPSO_MENU_TAG_LEN]; /**< Empty for none. */
     const Icon* icon;
     uint32_t id;
 } FlipsoMenuItem;
@@ -93,15 +97,20 @@ static void flipso_menu_fit(
     memcpy(out, label, len);
     out[len] = '\0';
 
-    if(canvas_string_width(canvas, out) <= width) return;
+    while(len && flipso_glyphs_is_continuation(out[len])) {
+        out[--len] = '\0';
+    }
+    if(flipso_glyphs_width(canvas, out) <= width) return;
 
     /* Drop characters until the text and its ellipsis fit between the icon and
      * the scrollbar. The ellipsis is written in place, which the length cap
-     * above has already left room for. */
+     * above has already left room for; the cut steps back over a whole UTF-8
+     * sequence, so it never leaves half a currency symbol. */
     while(len > 0) {
         len--;
+        while(len && flipso_glyphs_is_continuation(out[len])) len--;
         memcpy(out + len, "...", 4);
-        if(canvas_string_width(canvas, out) <= width) return;
+        if(flipso_glyphs_width(canvas, out) <= width) return;
         out[len] = '\0';
     }
 }
@@ -133,7 +142,7 @@ static void flipso_menu_view_draw(Canvas* canvas, void* model) {
         /* The icon and the text are centred as one group, so the header stays
          * balanced rather than the text sitting centred with an icon hung off
          * its left edge. */
-        uint16_t text_w = canvas_string_width(canvas, fitted);
+        uint16_t text_w = flipso_glyphs_width(canvas, fitted);
         uint16_t group_w = (uint16_t)(icon_w + text_w);
         uint8_t group_x = (uint8_t)((FLIPSO_MENU_SCREEN_W - group_w) / 2);
 
@@ -182,9 +191,17 @@ static void flipso_menu_view_draw(Canvas* canvas, void* model) {
         }
 
         canvas_set_font(canvas, FontSecondary);
+        uint16_t label_width = text_width;
+        if(item->tag[0]) {
+            uint16_t tag_w = flipso_glyphs_width(canvas, item->tag);
+            flipso_glyphs_draw(canvas, FLIPSO_MENU_TEXT_RIGHT - 2 - tag_w, y + 12, item->tag);
+            label_width = tag_w + FLIPSO_MENU_TAG_GAP + 2 < text_width ?
+                              (uint16_t)(text_width - tag_w - FLIPSO_MENU_TAG_GAP - 2) :
+                              0;
+        }
         char fitted[FLIPSO_MENU_LABEL_LEN + 4];
-        flipso_menu_fit(canvas, item->label, text_width, fitted, sizeof(fitted));
-        canvas_draw_str(canvas, FLIPSO_MENU_TEXT_X, y + 12, fitted);
+        flipso_menu_fit(canvas, item->label, label_width, fitted, sizeof(fitted));
+        flipso_glyphs_draw(canvas, FLIPSO_MENU_TEXT_X, y + 12, fitted);
 
         canvas_set_color(canvas, ColorBlack);
     }
@@ -324,6 +341,15 @@ void flipso_menu_view_add_item(
     const char* label,
     const Icon* icon,
     uint32_t id) {
+    flipso_menu_view_add_tagged_item(instance, label, NULL, icon, id);
+}
+
+void flipso_menu_view_add_tagged_item(
+    FlipsoMenuView* instance,
+    const char* label,
+    const char* tag,
+    const Icon* icon,
+    uint32_t id) {
     furi_assert(instance);
     furi_assert(label);
     with_view_model(
@@ -333,6 +359,7 @@ void flipso_menu_view_add_item(
             if(model->count < FLIPSO_MENU_MAX_ITEMS) {
                 FlipsoMenuItem* item = &model->items[model->count++];
                 snprintf(item->label, sizeof(item->label), "%s", label);
+                snprintf(item->tag, sizeof(item->tag), "%s", tag ? tag : "");
                 item->icon = icon;
                 item->id = id;
             }

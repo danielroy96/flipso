@@ -17,7 +17,8 @@ void flipso_scene_saved_on_enter(void* context) {
     Flipso* app = context;
 
     FuriString* path = furi_string_alloc();
-    bool picked = flipso_saved_pick(path);
+    /* A card still named here is the one the user has just backed out of. */
+    bool picked = flipso_saved_pick(path, app->loaded_path);
     bool loaded = false;
 
     if(picked) {
@@ -29,7 +30,7 @@ void flipso_scene_saved_on_enter(void* context) {
 
         if(loaded) {
             furi_string_set(app->loaded_path, path);
-            app->selected_product = 0;
+            flipso_reset_card_menus(app);
             /* The detail scenes read this to decide a card was read at all. */
             app->status = FlipsoReaderStatusSuccess;
         } else {

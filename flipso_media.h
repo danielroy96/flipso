@@ -145,6 +145,14 @@ uint32_t flipso_media_storage_bytes(uint8_t code, bool* exact);
 /** True when the file can be read with no key, per its access rights. */
 bool flipso_media_file_free_read(const FlipsoMediaFile* file);
 
+/**
+ * Append the few lines of chip description worth showing beside a decoded ITSO
+ * card: what chip it is, its UID, storage and when it was made. The full
+ * description is flipso_media_cat()'s, for a card there is nothing else to say
+ * about.
+ */
+void flipso_media_cat_chip_summary(FuriString* out, const FlipsoMedia* media);
+
 /** Append everything known about the card, in sections, ready to be scrolled. */
 void flipso_media_cat(FuriString* out, const FlipsoMedia* media);
 

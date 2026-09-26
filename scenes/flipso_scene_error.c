@@ -6,9 +6,9 @@
  * one thing the user does not want: the card is still in their hand. OK now
  * returns to the scan screen and starts a scan straight away.
  *
- * A recognised card that Flipso will not decode - an Oyster - is the exception.
- * Scanning it again would say the same thing, so OK there opens what the card
- * did tell us instead.
+ * A card Flipso will not decode but that described itself - an Oyster, or any
+ * other DESFire - is the exception. Scanning it again would say the same
+ * thing, so OK there opens what the card did tell us instead.
  */
 #include "../flipso.h"
 #include "flipso_icons.h"
@@ -45,12 +45,13 @@ void flipso_scene_error_on_enter(void* context) {
         title = "TfL Oyster Card";
         /* Lines are kept to what fits across 128px, as the other details are:
          * the scroll element wraps, but wrapping mid-sentence reads badly. */
-        detail = "TfL Oyster is an encrypted\n"
-                 "MIFARE DESFire card\n"
-                 "running a proprietary\n"
-                 "Oyster function.\n\n"
-                 "It is not compatible with\n"
-                 "ITSO or Flipso :(\n";
+        detail = "Oyster uses Transport for\n"
+                 "London's own encrypted\n"
+                 "system, not ITSO, so its\n"
+                 "balance and journeys\n"
+                 "cannot be read.\n\n"
+                 "Card details shows what\n"
+                 "the chip says about itself.\n";
         /* Rescanning would reach the same conclusion; the card details are the
          * only thing left worth pressing a button for. */
         button = "Card details";
@@ -60,27 +61,44 @@ void flipso_scene_error_on_enter(void* context) {
         icon = &I_not_itso_14px;
         title = "Not an ITSO card";
         detail = "This card has no ITSO\n"
-                 "application on it.\n\n"
+                 "travel data on it.\n\n"
                  "ITSO smartcards are used\n"
                  "for bus and rail travel\n"
                  "across the UK.";
+        /* A DESFire still says what it is, and that is worth offering rather
+         * than a scan that will say the same thing again. */
+        if(app->media.valid) {
+            button = "Card details";
+            action = FlipsoErrorEventDetails;
+        }
+        break;
+    case FlipsoReaderStatusUnsupported:
+        icon = &I_not_itso_14px;
+        title = "Unsupported card";
+        detail = "This card cannot be read\n"
+                 "by Flipso. It may be a\n"
+                 "MIFARE Classic, a hotel\n"
+                 "or building key, or an\n"
+                 "older kind of ITSO card.\n\n"
+                 "Flipso reads DESFire and\n"
+                 "ISO 7816 ITSO cards.";
         break;
     case FlipsoReaderStatusBadShell:
         icon = &I_bad_shell_14px;
-        title = "Unreadable shell";
+        title = "Card not readable";
         /* Built rather than fixed, because the two causes want opposite advice:
          * bytes that fail their own checksum mean the read was at fault and
          * tapping again is worth doing, while bytes that verify mean the card
          * is laid out in a way Flipso does not understand and tapping again
          * will say exactly the same thing. */
         built = furi_string_alloc_set(
-            "The ITSO application is\n"
-            "present but its shell\n"
-            "could not be decoded.\n\n");
+            "This is an ITSO card, but\n"
+            "its main record could not\n"
+            "be decoded.\n\n");
         if(app->card.secrc_checked && !app->card.secrc_valid) {
             furi_string_cat(
                 built,
-                "The shell failed its own\n"
+                "The record failed its own\n"
                 "checksum, so the read did\n"
                 "not come through cleanly.\n"
                 "Hold the card still and\n"
@@ -88,21 +106,21 @@ void flipso_scene_error_on_enter(void* context) {
         } else if(app->card.secrc_checked) {
             furi_string_cat(
                 built,
-                "The shell passed its own\n"
+                "The record passed its own\n"
                 "checksum, so the card may\n"
-                "use a media definition\n"
+                "be laid out in a way\n"
                 "Flipso does not know\n"
-                "about.\n\n");
+                "about yet.\n\n");
         } else {
             furi_string_cat(
                 built,
-                "The card may use a media\n"
-                "definition Flipso does\n"
-                "not know about.\n\n");
+                "The card may be laid out\n"
+                "in a way Flipso does not\n"
+                "know about yet.\n\n");
         }
         /* The reason itself goes last: it is for a bug report, not for the user. */
         furi_string_cat_printf(
-            built, "Reason: %s", itso_shell_reject_name(app->card.shell_reject));
+            built, "Reason: %s\n", itso_shell_reject_name(app->card.shell_reject));
         detail = furi_string_get_cstr(built);
         break;
     default:

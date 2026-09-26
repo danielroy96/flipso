@@ -204,7 +204,7 @@ static void cmd2_card(void) {
     check("CMD2 E2 half days read", id->has_half_days && id->half_days == 0xFFE0);
     check("CMD2 E2 half days are Monday to Saturday", itso_half_days_mask(id->half_days) == 0xFC);
     check("CMD2 E2 valid at NLC 5685",
-          id->from.valid && strcmp(id->from.text, "NLC 5685") == 0);
+          id->from.valid && strcmp(id->from.text, "Station 5685") == 0);
 }
 
 /*
@@ -303,11 +303,11 @@ static void bus_stop_locations(void) {
     static const uint8_t service_stop[] = {216, 9,    0x00, 0x01, 0xFF, 0xF1,
                                            0x02, 0x00, 0x06, 0x26, 0x24};
     check_location("216 service number and NaptanCode", service_stop, sizeof(service_stop),
-                   ItsoLocStructLoc1, "Svc 42@00062624", "00062624", ItsoLocCodeNaptan);
+                   ItsoLocStructLoc1, "Route 42@00062624", "00062624", ItsoLocCodeNaptan);
 
     /* Rail codes keep working, and now say which register they belong to. */
     static const uint8_t nlc[] = {203, 4, '1', '4', '4', '4'};
-    check_location("203 rail NLC", nlc, sizeof(nlc), ItsoLocStructLoc1, "NLC 1444",
+    check_location("203 rail NLC", nlc, sizeof(nlc), ItsoLocStructLoc1, "Station 1444",
                    "1444", ItsoLocCodeNlc);
 
     /* Types that name no code at all must offer none, whatever they render. */
@@ -528,7 +528,7 @@ int main(void) {
     itso_format_money(&card.products[0].balance, money, sizeof(money));
     printf("  E1 %s: balance %s at %s\n", itso_typ_name(card.products[0].typ), money,
            fmt_unix(itso_dts_to_unix(card.products[0].value_dts)));
-    check("balance is GBP 12.34", strcmp(money, "GBP 12.34") == 0);
+    check("balance is GBP 12.34", strcmp(money, "\xC2\xA3" "12.34") == 0);
     check("purse value record read", card.products[0].value_parsed);
     check("balance timestamp is newest record",
           strcmp(fmt_unix(itso_dts_to_unix(card.products[0].value_dts)), "2026-09-14 08:41") == 0);
@@ -552,13 +552,13 @@ int main(void) {
           purse->value_history[0].ts == purse->value_ts &&
           purse->value_history[0].dts == purse->value_dts);
     itso_format_money(&purse->value_history[0].amount, money, sizeof(money));
-    check("history[0] balance is GBP 12.34", strcmp(money, "GBP 12.34") == 0);
+    check("history[0] balance is GBP 12.34", strcmp(money, "\xC2\xA3" "12.34") == 0);
     itso_format_money(&purse->value_history[1].amount, money, sizeof(money));
     printf("      previously %s at %s (TS# %u, %s)\n", money,
            fmt_unix(itso_dts_to_unix(purse->value_history[1].dts)),
            purse->value_history[1].ts,
            itso_transaction_name(purse->value_history[1].txn));
-    check("history[1] is the earlier balance of GBP 15.60", strcmp(money, "GBP 15.60") == 0);
+    check("history[1] is the earlier balance of GBP 15.60", strcmp(money, "\xC2\xA3" "15.60") == 0);
     check("history[1] keeps its own timestamp",
           strcmp(fmt_unix(itso_dts_to_unix(purse->value_history[1].dts)),
                  "2026-09-01 12:00") == 0);
@@ -570,18 +570,18 @@ int main(void) {
     /* The IPE dataset: the commercial terms of the purse. */
     itso_format_money(&card.products[0].max_value, money, sizeof(money));
     check("purse ceiling is GBP 90.00",
-          card.products[0].has_limits && strcmp(money, "GBP 90.00") == 0);
+          card.products[0].has_limits && strcmp(money, "\xC2\xA3" "90.00") == 0);
     itso_format_money(&card.products[0].max_negative, money, sizeof(money));
-    check("overdraft is GBP 2.00", strcmp(money, "GBP 2.00") == 0);
+    check("overdraft is GBP 2.00", strcmp(money, "\xC2\xA3" "2.00") == 0);
     itso_format_money(&card.products[0].top_up_amount, money, sizeof(money));
     check("auto top-up adds GBP 10.00",
-          card.products[0].has_top_up && strcmp(money, "GBP 10.00") == 0);
+          card.products[0].has_top_up && strcmp(money, "\xC2\xA3" "10.00") == 0);
     itso_format_money(&card.products[0].top_up_threshold, money, sizeof(money));
-    check("auto top-up triggers below GBP 5.00", strcmp(money, "GBP 5.00") == 0);
+    check("auto top-up triggers below GBP 5.00", strcmp(money, "\xC2\xA3" "5.00") == 0);
     check("auto top-up is enabled in the value record", card.products[0].auto_top_up);
     itso_format_money(&card.products[0].deposit, money, sizeof(money));
     check("deposit is GBP 5.00",
-          card.products[0].has_deposit && strcmp(money, "GBP 5.00") == 0);
+          card.products[0].has_deposit && strcmp(money, "\xC2\xA3" "5.00") == 0);
     check("deposit was paid in cash", card.products[0].deposit_mop == 1);
     check("retailer is not the owner",
           card.products[0].has_retailer && card.products[0].retailer == 247);
@@ -595,7 +595,7 @@ int main(void) {
     itso_format_money(&card.products[0].cumulative_fare, money, sizeof(money));
     check("two journey legs so far",
           card.products[0].has_journey && card.products[0].journey_legs == 2);
-    check("cumulative fare is GBP 2.65", strcmp(money, "GBP 2.65") == 0);
+    check("cumulative fare is GBP 2.65", strcmp(money, "\xC2\xA3" "2.65") == 0);
 
     /* The IPE InstanceID, the only unique identity a product has. */
     check("instance id decoded",
@@ -649,9 +649,9 @@ int main(void) {
     dump_location("from", &card.products[2].from);
     dump_location("to", &card.products[2].to);
     check("period ticket from NLC 1072",
-          card.products[2].from.valid && strcmp(card.products[2].from.text, "NLC 1072") == 0);
+          card.products[2].from.valid && strcmp(card.products[2].from.text, "Station 1072") == 0);
     check("period ticket to NLC 1444",
-          card.products[2].to.valid && strcmp(card.products[2].to.text, "NLC 1444") == 0);
+          card.products[2].to.valid && strcmp(card.products[2].to.text, "Station 1444") == 0);
     check("validity start 2025-01-01",
           card.products[2].has_start &&
           strcmp(fmt_unix(itso_date_to_unix(card.products[2].start)), "2025-01-01 00:00") == 0);
@@ -739,7 +739,7 @@ int main(void) {
         check("ends 04:00 on the expiry date", t->expiry_time == 240);
         check("no issue date recorded", t->issue_date == 0);
         check("no validity start recorded", t->valid_from_dts == 0 && !p.has_start);
-        check("valid every day", strcmp(days, "every day") == 0);
+        check("valid every day", strcmp(days, "Every day") == 0);
         check("public holidays too",
               itso_ticket_days(t->valid_days, t->flags) & ITSO_DOW_SPECIAL);
         check("no amount paid recorded", !t->amount_paid.valid);
@@ -776,8 +776,8 @@ int main(void) {
               strcmp(fmt_unix(itso_dts_to_unix(t->valid_from_dts)), "2018-06-25 00:00") == 0);
         check("revision 2 ends 04:30 the next day", t->expiry_time == 1710);
         check("revision 2 locations behind RouteCode",
-              p.from.valid && strcmp(p.from.text, "NLC 5685") == 0 && p.to.valid &&
-              strcmp(p.to.text, "NLC 0035") == 0);
+              p.from.valid && strcmp(p.from.text, "Station 5685") == 0 && p.to.valid &&
+              strcmp(p.to.text, "Station 0035") == 0);
         free(buf);
     }
 
@@ -810,7 +810,7 @@ int main(void) {
         itso_format_days(0xA8, s, sizeof(s));
         check("scattered days are listed", strcmp(s, "Mon Wed Fri") == 0);
         itso_format_days(ITSO_DOW_SPECIAL, s, sizeof(s));
-        check("holidays alone are no weekday", strcmp(s, "none") == 0);
+        check("holidays alone are no weekday", strcmp(s, "None") == 0);
         itso_format_days(ITSO_DOW_ALL_DAYS, s, 4);
         check("a short buffer truncates safely", strlen(s) < 4);
         check("unset filters mean every day", itso_ticket_days(0, 0) == 0xFF);
@@ -834,9 +834,9 @@ int main(void) {
     check("journey ticket is revision 2", card.products[3].format_rev == 2);
     check("journey ticket from NLC 5631",
           card.products[3].from.valid &&
-          strcmp(card.products[3].from.text, "NLC 5631") == 0);
+          strcmp(card.products[3].from.text, "Station 5631") == 0);
     check("journey ticket to NLC 5685",
-          card.products[3].to.valid && strcmp(card.products[3].to.text, "NLC 5685") == 0);
+          card.products[3].to.valid && strcmp(card.products[3].to.text, "Station 5685") == 0);
 
     /* Both value records carry the same DTS, so only TS# distinguishes them. The
      * live one is the later of the two: the ride has been spent. */
@@ -895,11 +895,11 @@ int main(void) {
     check("newest tap first is tap out", card.taps[0].transaction_type == 12);
     check("newest tap flagged latest", card.taps[0].latest);
     check("tap out origin", card.taps[0].origin.valid &&
-          strcmp(card.taps[0].origin.text, "NLC 1072") == 0);
+          strcmp(card.taps[0].origin.text, "Station 1072") == 0);
     check("tap out destination", card.taps[0].destination.valid &&
-          strcmp(card.taps[0].destination.text, "NLC 1444") == 0);
+          strcmp(card.taps[0].destination.text, "Station 1444") == 0);
     itso_format_money(&card.taps[0].amount, money, sizeof(money));
-    check("tap out fare GBP 2.65", strcmp(money, "GBP 2.65") == 0);
+    check("tap out fare GBP 2.65", strcmp(money, "\xC2\xA3" "2.65") == 0);
     check("older tap is tap in", card.taps[1].transaction_type == 11);
 
     /* The third record is on format revision 4, which a check-in/check-out
@@ -926,11 +926,11 @@ int main(void) {
            fmt_unix(itso_dts_to_unix(rev4->entry_dts)), rev4->entry_oid);
     check("third record is format revision 4", rev4->format_rev == 4);
     check("routing code is NLC 1444",
-          rev4->route.valid && strcmp(rev4->route.text, "NLC 1444") == 0);
+          rev4->route.valid && strcmp(rev4->route.text, "Station 1444") == 0);
     check("destination survives the routing group",
-          rev4->destination.valid && strcmp(rev4->destination.text, "NLC 5685") == 0);
+          rev4->destination.valid && strcmp(rev4->destination.text, "Station 5685") == 0);
     itso_format_money(&rev4->amount, money, sizeof(money));
-    check("rev 4 fare GBP 4.80", strcmp(money, "GBP 4.80") == 0);
+    check("rev 4 fare GBP 4.80", strcmp(money, "\xC2\xA3" "4.80") == 0);
     check("fare was paid in cash", rev4->has_mop && rev4->mop == 1);
     check("fare was collected", !rev4->no_fare_charged);
     check("VAT is 20%", rev4->has_vat && rev4->vat == 2000);
@@ -1023,7 +1023,7 @@ int main(void) {
               t->max_transfers == 2 && t->time_limit == 120 && t->ride_value.valid &&
               t->ride_value.value == 250);
         check("journey locations still land after the terms",
-              j->from.valid && strcmp(j->from.text, "NLC 5631") == 0);
+              j->from.valid && strcmp(j->from.text, "Station 5631") == 0);
     }
 
     {
@@ -1072,7 +1072,7 @@ int main(void) {
               cap->acc[1].day_count == 3);
         check("unused accumulators are empty", cap->acc[2].rule == ItsoCapRuleNone);
         check("where the last cap applied",
-              cap->acc[0].location.valid && strcmp(cap->acc[0].location.text, "NLC 1072") == 0);
+              cap->acc[0].location.valid && strcmp(cap->acc[0].location.text, "Station 1072") == 0);
         if(ref == 2) {
             check("full form keeps the last fare", cap->acc[0].last_fare.value == 185);
             check("full form keeps when the cap applied",

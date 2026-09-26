@@ -144,6 +144,10 @@ void flipso_operators_free(FlipsoOperators* instance) {
     free(instance);
 }
 
+uint16_t flipso_operators_user_count(const FlipsoOperators* instance) {
+    return instance ? instance->count : 0;
+}
+
 /** The user's entry for this OID, or NULL when they did not name it. */
 static const FlipsoOperatorEntry*
     flipso_operators_entry(const FlipsoOperators* instance, uint16_t oid) {

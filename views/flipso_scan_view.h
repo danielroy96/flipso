@@ -12,7 +12,7 @@ extern "C" {
 
 typedef struct FlipsoScanView FlipsoScanView;
 
-/** Invoked when the user presses a button on the idle prompt. */
+/** Invoked when the user presses one of the idle prompt's buttons. */
 typedef void (*FlipsoScanViewCallback)(void* context);
 
 FlipsoScanView* flipso_scan_view_alloc(void);
@@ -25,11 +25,13 @@ View* flipso_scan_view_get_view(FlipsoScanView* instance);
  * @param scan  OK: start reading a card.
  * @param saved Left: open the cards already saved. Whether that button is on
  *              the screen at all is flipso_scan_view_set_has_saved()'s job.
+ * @param about Right: what the app is, and what it has to work with.
  */
 void flipso_scan_view_set_callback(
     FlipsoScanView* instance,
     FlipsoScanViewCallback scan,
     FlipsoScanViewCallback saved,
+    FlipsoScanViewCallback about,
     void* context);
 
 /**
@@ -41,11 +43,11 @@ void flipso_scan_view_set_callback(
  */
 void flipso_scan_view_set_has_saved(FlipsoScanView* instance, bool has_saved);
 
-/** Switch between the idle prompt (false) and the active reader (true). */
+/**
+ * Switch between the idle prompt (false) and the active reader (true). The
+ * view animates itself while scanning, and is still while it is not.
+ */
 void flipso_scan_view_set_scanning(FlipsoScanView* instance, bool scanning);
-
-/** Advance the animation by one frame. Call from the scene tick handler. */
-void flipso_scan_view_tick(FlipsoScanView* instance);
 
 #ifdef __cplusplus
 }

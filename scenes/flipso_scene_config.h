@@ -4,6 +4,7 @@
  */
 ADD_SCENE(flipso, scan, Scan)
 ADD_SCENE(flipso, menu, Menu)
+ADD_SCENE(flipso, summary, Summary)
 ADD_SCENE(flipso, card, Card)
 ADD_SCENE(flipso, payg, Payg)
 ADD_SCENE(flipso, id, Id)
@@ -16,3 +17,4 @@ ADD_SCENE(flipso, saved, Saved)
 ADD_SCENE(flipso, save, Save)
 ADD_SCENE(flipso, rename, Rename)
 ADD_SCENE(flipso, delete, Delete)
+ADD_SCENE(flipso, about, About)

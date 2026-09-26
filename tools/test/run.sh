@@ -75,6 +75,22 @@ ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
 ./test_operators
 
 echo
+echo "Screen text"
+# Every screen of the synthetic card and of every demo card, held to the house
+# style in flipso_format.h: capitalised values, labelled detail lines, pounds.
+DEMO=$(mktemp -d)
+python3 "$ROOT/tools/demo/build_demo_cards.py" "$DEMO" >/dev/null
+${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
+  -fsanitize=address,undefined \
+  -I"$ROOT" -I"$ROOT/itso" -I. -Istub \
+  test_format.c "$ROOT/flipso_format.c" "$ROOT/flipso_capture.c" "$ROOT/flipso_media.c" \
+  "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
+  "$ROOT/itso/itso_operators.c" \
+  -o test_format
+./test_format "$DEMO"
+rm -rf "$DEMO"
+
+echo
 echo "Card media"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
@@ -88,7 +104,7 @@ echo "Icon list view"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT/views" -Istub \
-  test_menu_view.c "$ROOT/views/flipso_menu_view.c" \
+  test_menu_view.c "$ROOT/views/flipso_menu_view.c" "$ROOT/views/flipso_glyphs.c" \
   -o test_menu_view
 ./test_menu_view
 
@@ -97,6 +113,6 @@ echo "Scrolling text view"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT/views" -Istub \
-  test_text_view.c "$ROOT/views/flipso_text_view.c" \
+  test_text_view.c "$ROOT/views/flipso_text_view.c" "$ROOT/views/flipso_glyphs.c" \
   -o test_text_view
 ./test_text_view

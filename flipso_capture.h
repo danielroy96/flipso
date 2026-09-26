@@ -227,6 +227,9 @@ const uint8_t*
  * whole group goes into a history slot of its own, so the card still shows the
  * season ticket that ran out last month - marked as one it no longer carries.
  *
+ * Merging is idempotent: history a previous merge added to @p capture is
+ * replaced rather than added to.
+ *
  * @param[out] diff what was found, for telling the user. May be NULL.
  */
 void flipso_capture_merge_history(

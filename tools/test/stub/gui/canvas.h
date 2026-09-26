@@ -29,6 +29,7 @@ typedef struct {
     /* Every string drawn this frame, kept verbatim: reading them back out of
      * the framebuffer would lose the spaces inside a label. */
     char texts[STUB_MAX_TEXTS][STUB_MAX_TEXT_LEN];
+    int text_x[STUB_MAX_TEXTS]; /* Where each one started, for indents. */
     int text_count;
 } Canvas;
 
@@ -71,12 +72,28 @@ static inline void canvas_draw_icon(Canvas* c, int x, int y, const Icon* icon) {
         for(int i = 0; i < icon->width; i++) stub_put(c, x + i, y + j, icon->mark);
 }
 
+/* Bitmaps are drawn pixel for pixel, LSB leftmost as XBM is, in their own mark
+ * so a test can tell a hand-drawn glyph from text. */
+static inline void canvas_draw_xbm(
+    Canvas* c,
+    int x,
+    int y,
+    size_t w,
+    size_t h,
+    const uint8_t* bits) {
+    size_t stride = (w + 7) / 8;
+    for(size_t j = 0; j < h; j++)
+        for(size_t i = 0; i < w; i++)
+            if(bits[j * stride + i / 8] & (1 << (i % 8))) stub_put(c, x + (int)i, y + (int)j, '%');
+}
+
 /* Text lands one character per glyph cell so the render stays readable, and is
  * recorded verbatim so tests can match on it. */
 static inline void stub_text(Canvas* c, int x, int y, const char* s) {
     size_t w = (c->font == FontPrimary) ? STUB_GLYPH_PRIMARY_W : STUB_GLYPH_W;
     for(size_t i = 0; s[i]; i++) stub_put(c, x + (int)(i * w), y, s[i]);
     if(c->text_count < STUB_MAX_TEXTS) {
+        c->text_x[c->text_count] = x;
         snprintf(c->texts[c->text_count++], STUB_MAX_TEXT_LEN, "%s", s);
     }
 }

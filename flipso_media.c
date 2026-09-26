@@ -141,13 +141,13 @@ static const char* flipso_media_file_type_name(uint8_t type) {
 static const char* flipso_media_comm_name(uint8_t comm) {
     switch(comm) {
     case 0:
-        return "Plain";
+        return "None";
     case 1:
-        return "MACed";
+        return "Signed";
     case 3:
-        return "Enciphered";
+        return "Encrypted";
     default:
-        return "Unknown mode";
+        return "Unknown";
     }
 }
 
@@ -162,28 +162,26 @@ static uint8_t flipso_media_bcd(uint8_t value) {
     return (uint8_t)(((value >> 4) & 0x0F) * 10 + (value & 0x0F));
 }
 
-/** "free", "never" or "key 3": who may do a thing to a file. */
+/** "Anyone", "Nobody" or "Key 3": who may do a thing to a file. */
 static void flipso_media_cat_right(FuriString* out, const char* label, uint8_t key) {
     if(key == FLIPSO_ACCESS_FREE) {
-        furi_string_cat_printf(out, "%s: free\n", label);
+        furi_string_cat_printf(out, "%s: Anyone\n", label);
     } else if(key == FLIPSO_ACCESS_NEVER) {
-        furi_string_cat_printf(out, "%s: never\n", label);
+        furi_string_cat_printf(out, "%s: Nobody\n", label);
     } else {
-        furi_string_cat_printf(out, "%s: key %u\n", label, key);
+        furi_string_cat_printf(out, "%s: Key %u\n", label, key);
     }
 }
 
-static void flipso_media_cat_chip(FuriString* out, const FlipsoMedia* media) {
-    furi_string_cat(out, "\e#Chip\n");
-
+void flipso_media_cat_chip_summary(FuriString* out, const FlipsoMedia* media) {
     const char* name = flipso_media_chip_name(media->chip);
     if(name) {
-        furi_string_cat_printf(out, "%s\n", name);
+        furi_string_cat_printf(out, "Chip: %s\n", name);
     } else {
         /* An unrecognised generation still has a readable version number, and
          * that is what would identify it. */
         furi_string_cat_printf(
-            out, "Unknown type %02X.%02X\n", media->hw_type, media->hw_major);
+            out, "Chip: Unknown (%02X.%02X)\n", media->hw_type, media->hw_major);
     }
 
     bool exact = true;
@@ -193,7 +191,7 @@ static void flipso_media_cat_chip(FuriString* out, const FlipsoMedia* media) {
             out, "Storage: %s%lu bytes\n", exact ? "" : "up to ", (unsigned long)bytes);
     }
     if(media->free_memory_valid) {
-        furi_string_cat_printf(out, "Free: %lu bytes\n", (unsigned long)media->free_memory);
+        furi_string_cat_printf(out, "Free space: %lu bytes\n", (unsigned long)media->free_memory);
     }
 
     furi_string_cat(out, "UID: ");
@@ -204,8 +202,13 @@ static void flipso_media_cat_chip(FuriString* out, const FlipsoMedia* media) {
     uint8_t week = flipso_media_bcd(media->prod_week);
     if(week >= 1 && week <= 53) {
         furi_string_cat_printf(
-            out, "Made: week %u of 20%02u\n", week, flipso_media_bcd(media->prod_year));
+            out, "Made: Week %u of 20%02u\n", week, flipso_media_bcd(media->prod_year));
     }
+}
+
+static void flipso_media_cat_chip(FuriString* out, const FlipsoMedia* media) {
+    furi_string_cat(out, "\e#Chip\n");
+    flipso_media_cat_chip_summary(out, media);
 
     furi_string_cat(out, "Batch: ");
     flipso_media_cat_hex(out, media->batch, sizeof(media->batch));
@@ -216,7 +219,7 @@ static void flipso_media_cat_chip(FuriString* out, const FlipsoMedia* media) {
      * reader to make something of a number that does not mean anything. */
     furi_string_cat_printf(
         out,
-        "Hardware: %02X.%02X\nSoftware: %02X.%02X\nVendor: %02X, proto %02X\n",
+        "Hardware: %02X.%02X\nSoftware: %02X.%02X\nVendor code: %02X\nProtocol: %02X\n",
         media->hw_major,
         media->hw_minor,
         media->sw_major,
@@ -257,7 +260,7 @@ static void flipso_media_cat_file(FuriString* out, const FlipsoMedia* media, con
     furi_string_cat_printf(out, "\nFile %u", file->id);
 
     if(!file->settings_valid) {
-        furi_string_cat(out, "\nSettings need a key\n");
+        furi_string_cat(out, "\nSettings: Locked\n");
         return;
     }
 
@@ -268,7 +271,7 @@ static void flipso_media_cat_file(FuriString* out, const FlipsoMedia* media, con
     case 4: /* Cyclic record. */
         furi_string_cat_printf(
             out,
-            "%lu of %lu x %lu bytes\n",
+            "Records: %lu of %lu, %lu bytes each\n",
             (unsigned long)file->record.cur,
             (unsigned long)file->record.max,
             (unsigned long)file->record.size);
@@ -278,7 +281,7 @@ static void flipso_media_cat_file(FuriString* out, const FlipsoMedia* media, con
          * will say about it without a key is the range it is kept within. */
         furi_string_cat_printf(
             out,
-            "Range %ld to %ld\n",
+            "Range: %ld to %ld\n",
             (long)(int32_t)file->value.lo_limit,
             (long)(int32_t)file->value.hi_limit);
         break;
@@ -286,12 +289,12 @@ static void flipso_media_cat_file(FuriString* out, const FlipsoMedia* media, con
         /* A transaction MAC file has no length of its own to report. */
         break;
     default:
-        furi_string_cat_printf(out, "%lu bytes\n", (unsigned long)file->data.size);
+        furi_string_cat_printf(out, "Size: %lu bytes\n", (unsigned long)file->data.size);
         break;
     }
 
-    furi_string_cat_printf(
-        out, "%s, rights %04X\n", flipso_media_comm_name(file->comm), file->access);
+    furi_string_cat_printf(out, "Encryption: %s\n", flipso_media_comm_name(file->comm));
+    furi_string_cat_printf(out, "Access rights: %04X\n", file->access);
     flipso_media_cat_right(out, "  Read", FLIPSO_ACCESS_READ(file->access));
     flipso_media_cat_right(out, "  Write", FLIPSO_ACCESS_WRITE(file->access));
 
@@ -308,9 +311,9 @@ static void flipso_media_cat_file(FuriString* out, const FlipsoMedia* media, con
     } else if(flipso_media_file_free_read(file)) {
         /* The rights said anyone could read it and the read still failed, which
          * is worth distinguishing from a file that is simply locked. */
-        furi_string_cat(out, "Read failed\n");
+        furi_string_cat(out, "Contents: Could not be read\n");
     } else {
-        furi_string_cat(out, "Locked: needs a key\n");
+        furi_string_cat(out, "Contents: Locked\n");
     }
 }
 

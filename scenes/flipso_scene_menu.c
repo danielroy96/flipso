@@ -3,9 +3,13 @@
  * @brief Top-level menu for a card that has been read.
  *
  * Sections that the card does not carry are left out entirely rather than shown
- * as empty rows, so a plain pay-as-you-go card gets a two-item menu. Each row
- * carries an icon, because on a 128x64 screen the icon is what makes a row
- * recognisable before it is read.
+ * as empty rows. Each row carries an icon, because on a 128x64 screen the icon
+ * is what makes a row recognisable before it is read, and the rows that have a
+ * single answer - the balance, the product count - show it at the end of the
+ * row, so the menu is itself a summary of the card.
+ *
+ * Summary is first and is where the highlight starts: it is what most people
+ * tap a card to find out.
  *
  * The header is the card's branding where the shell owner is one we can name a
  * card for, because "Freedom Pass" is what is printed on the card in the user's
@@ -19,6 +23,7 @@
 #include "flipso_icons.h"
 
 typedef enum {
+    FlipsoMenuItemSummary,
     FlipsoMenuItemCard,
     FlipsoMenuItemPayg,
     FlipsoMenuItemId,
@@ -49,20 +54,27 @@ void flipso_scene_menu_on_enter(void* context) {
     const char* brand = flipso_operators_brand(app->operators, app->card.oid);
     flipso_menu_view_set_header(
         menu, app->card.shell_blocked ? "Blocked Card" : (brand ? brand : "ITSO Card"));
-    flipso_menu_view_set_header_icon(menu, app->card.shell_blocked ? &I_warning_10px : NULL);
+    flipso_menu_view_set_header_icon(
+        menu, app->card.shell_blocked ? &I_warning_10px : &I_card_10px);
 
+    flipso_menu_view_add_item(menu, "Summary", &I_info_10px, FlipsoMenuItemSummary);
     flipso_menu_view_add_item(menu, "Card", &I_card_10px, FlipsoMenuItemCard);
 
-    if(flipso_find_product(app, ItsoTypStoredTravelRights)) {
-        flipso_menu_view_add_item(menu, "Pay as you go", &I_purse_10px, FlipsoMenuItemPayg);
+    const ItsoProduct* purse = flipso_find_product(&app->card, ItsoTypStoredTravelRights);
+    if(purse) {
+        char balance[24] = "";
+        if(purse->balance.valid) itso_format_money(&purse->balance, balance, sizeof(balance));
+        flipso_menu_view_add_tagged_item(
+            menu, "Pay as you go", balance, &I_purse_10px, FlipsoMenuItemPayg);
     }
 
-    if(flipso_find_product(app, ItsoTypId) || flipso_find_product(app, ItsoTypEntitlement)) {
+    if(flipso_find_product(&app->card, ItsoTypId) ||
+       flipso_find_product(&app->card, ItsoTypEntitlement)) {
         flipso_menu_view_add_item(menu, "ID & entitlement", &I_id_10px, FlipsoMenuItemId);
     }
 
     if(app->card.log_entry_valid || app->card.tap_count) {
-        flipso_menu_view_add_item(menu, "Last taps", &I_taps_10px, FlipsoMenuItemTaps);
+        flipso_menu_view_add_item(menu, "Journeys", &I_taps_10px, FlipsoMenuItemTaps);
     }
 
     if(app->card.product_count) {
@@ -76,13 +88,14 @@ void flipso_scene_menu_on_enter(void* context) {
         }
         uint8_t past = (uint8_t)(app->card.product_count - on_card);
 
-        char label[FLIPSO_MENU_LABEL_LEN];
+        char count[FLIPSO_MENU_TAG_LEN];
         if(past) {
-            snprintf(label, sizeof(label), "Products (%u, %u past)", on_card, past);
+            snprintf(count, sizeof(count), "%u + %u old", (unsigned)(on_card % 100), (unsigned)(past % 100));
         } else {
-            snprintf(label, sizeof(label), "Products (%u)", on_card);
+            snprintf(count, sizeof(count), "%u", on_card);
         }
-        flipso_menu_view_add_item(menu, label, &I_products_10px, FlipsoMenuItemProducts);
+        flipso_menu_view_add_tagged_item(
+            menu, "Products", count, &I_products_10px, FlipsoMenuItemProducts);
     }
 
     if(furi_string_empty(app->loaded_path)) {
@@ -124,6 +137,9 @@ bool flipso_scene_menu_on_event(void* context, SceneManagerEvent event) {
 
     FlipsoScene next;
     switch(event.event) {
+    case FlipsoMenuItemSummary:
+        next = FlipsoSceneSummary;
+        break;
     case FlipsoMenuItemCard:
         next = FlipsoSceneCard;
         break;

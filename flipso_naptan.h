@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,6 +37,9 @@ void flipso_naptan_free(FlipsoNaptan* instance);
 
 /** True when a usable stop table was found. */
 bool flipso_naptan_available(const FlipsoNaptan* instance);
+
+/** Stops the table names by NaptanCode; 0 when there is no table. */
+uint32_t flipso_naptan_count(const FlipsoNaptan* instance);
 
 /**
  * Look up a NaptanCode, as the digits an ITSO card stores.

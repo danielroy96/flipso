@@ -10,7 +10,11 @@
 #include <furi.h>
 #include <gui/elements.h>
 
-/** Frames per wave step. The scene ticks at 100 ms, so a wave every ~300 ms. */
+/* The animation's own clock. It only runs while scanning, so an app left on the
+ * idle screen is not woken ten times a second to draw a frame that never
+ * changes. */
+#define FLIPSO_FRAME_MS 100
+/** Frames per wave step: a wave every ~300 ms. */
 #define FLIPSO_WAVE_PERIOD 3
 #define FLIPSO_WAVE_COUNT  3
 
@@ -31,8 +35,10 @@ typedef struct {
 
 struct FlipsoScanView {
     View* view;
+    FuriTimer* timer;
     FlipsoScanViewCallback scan_callback;
     FlipsoScanViewCallback saved_callback;
+    FlipsoScanViewCallback about_callback;
     void* context;
 };
 
@@ -82,6 +88,7 @@ static void flipso_scan_view_draw(Canvas* canvas, void* model) {
          * here, and a menu in front of the scan screen would put a keypress
          * between the user and the thing the app is for. */
         if(m->has_saved) elements_button_left(canvas, "Saved");
+        elements_button_right(canvas, "About");
     }
 }
 
@@ -89,7 +96,9 @@ static bool flipso_scan_view_input(InputEvent* event, void* context) {
     FlipsoScanView* instance = context;
 
     if(event->type != InputTypeShort) return false;
-    if(event->key != InputKeyOk && event->key != InputKeyLeft) return false;
+    if(event->key != InputKeyOk && event->key != InputKeyLeft && event->key != InputKeyRight) {
+        return false;
+    }
 
     bool scanning = false;
     bool has_saved = false;
@@ -107,13 +116,21 @@ static bool flipso_scan_view_input(InputEvent* event, void* context) {
      * off the screen with a card half read. */
     if(scanning) return false;
 
-    FlipsoScanViewCallback callback = (event->key == InputKeyOk) ?
-                                          instance->scan_callback :
-                                          (has_saved ? instance->saved_callback : NULL);
+    FlipsoScanViewCallback callback = NULL;
+    if(event->key == InputKeyOk) callback = instance->scan_callback;
+    if(event->key == InputKeyLeft && has_saved) callback = instance->saved_callback;
+    if(event->key == InputKeyRight) callback = instance->about_callback;
     if(!callback) return false;
 
     callback(instance->context);
     return true;
+}
+
+/* Runs on the timer thread; the model lock is what makes that safe. */
+static void flipso_scan_view_timer(void* context) {
+    FlipsoScanView* instance = context;
+    with_view_model(
+        instance->view, FlipsoScanModel * model, { model->frame++; }, true);
 }
 
 FlipsoScanView* flipso_scan_view_alloc(void) {
@@ -125,11 +142,15 @@ FlipsoScanView* flipso_scan_view_alloc(void) {
     view_set_context(instance->view, instance);
     view_set_draw_callback(instance->view, flipso_scan_view_draw);
     view_set_input_callback(instance->view, flipso_scan_view_input);
+    instance->timer =
+        furi_timer_alloc(flipso_scan_view_timer, FuriTimerTypePeriodic, instance);
     return instance;
 }
 
 void flipso_scan_view_free(FlipsoScanView* instance) {
     furi_assert(instance);
+    furi_timer_stop(instance->timer);
+    furi_timer_free(instance->timer);
     view_free(instance->view);
     free(instance);
 }
@@ -143,10 +164,12 @@ void flipso_scan_view_set_callback(
     FlipsoScanView* instance,
     FlipsoScanViewCallback scan,
     FlipsoScanViewCallback saved,
+    FlipsoScanViewCallback about,
     void* context) {
     furi_assert(instance);
     instance->scan_callback = scan;
     instance->saved_callback = saved;
+    instance->about_callback = about;
     instance->context = context;
 }
 
@@ -166,10 +189,9 @@ void flipso_scan_view_set_scanning(FlipsoScanView* instance, bool scanning) {
             model->frame = 0;
         },
         true);
-}
-
-void flipso_scan_view_tick(FlipsoScanView* instance) {
-    furi_assert(instance);
-    with_view_model(
-        instance->view, FlipsoScanModel * model, { model->frame++; }, true);
+    if(scanning) {
+        furi_timer_start(instance->timer, furi_ms_to_ticks(FLIPSO_FRAME_MS));
+    } else {
+        furi_timer_stop(instance->timer);
+    }
 }

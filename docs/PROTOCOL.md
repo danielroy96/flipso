@@ -31,6 +31,16 @@ Information we can read:
 - every application on the card
 - every file in the Oyster application (although these are all encrypted)
 
+Any other DESFire that has no ITSO application gets the same description of the
+chip and its applications, offered as **Card details** from the "Not an ITSO
+card" screen. And an ITSO DESFire read ends by asking the same questions, so
+its Card screen names the chip, its UID and when it was made.
+
+A card that answers the ISO 14443-3 wake-up but will not activate as ISO
+14443-4 - a MIFARE Classic or Ultralight, a building key - can never answer an
+ITSO read. After about a second of that the scan stops and says **Unsupported
+card**, rather than waiting on it for ever.
+
 ## Operator names and card branding
 
 ITSO operator IDs/names aren't published anywhere. I've made a start using 
@@ -210,6 +220,14 @@ the shell, and the file name belongs to the user rather than to the card. Only
 each candidate's header is read to find it, as far as its `Shell` key, because
 nothing after that says which card the file holds.
 
+Rewriting is the risky moment, because the old file may hold journeys that
+exist nowhere else any more. So the new file is written whole to
+`<name>.flipso.tmp` first and renamed over the old one only once it is complete;
+a write that fails - a full SD card - fails before the record is touched, and
+removes its temporary file. Renames guard the same way: firmware 1.4's rename
+replaces whatever holds the destination name, so Flipso refuses one that would
+land on another card, and changes only the case of a name by way of a free one.
+
 `tools/test/replay.py` reads these files, so a saved card is also a decoder test
 case that needs neither the Flipper nor the card.
 
@@ -334,7 +352,8 @@ different places.
 
 A **product** is blocked when its Sector Chain Table terminator is S-2 rather
 than S-1 (TS 1000-2 clause 5.1.4). That retires one ticket and leaves the rest
-of the card working, and it shows as `[blocked]` beside the product.
+of the card working, and it shows as **Blocked** at the end of the product's
+row.
 
 A **shell** is blocked by the low bit of `DIRBitMap` in the Directory Data Group
 (TS 1000-2 clause 5.1.2), immediately below the two log-configuration bits. That
@@ -475,7 +494,9 @@ keeps them all rather than only the newest: the balance as it was, what changed
 it, and when. A card holds no statement anywhere else, so those few records are
 the only history it carries.
 
-They are shown under **Earlier** on the Pay as you go and product screens. Each
+They are shown under **Earlier on card** on the Pay as you go and product
+screens, and the ones only a saved file remembers under **From past reads**. The
+journey log is split the same way. Each
 record contributes whichever of a balance or a counter its IPE type keeps in the
 tail — the same field the screen shows above as the current value, decoded in one
 place rather than two, because a history that disagreed with the balance above it
@@ -498,7 +519,8 @@ numbers. Rail codes are resolved to station names and bus stop codes to stop
 names, from the tables described above.
 
 LocDefType 216 carries a service number as well as a stop, so a resolved one
-reads `Svc 42 @ High Street (adj), Hulme`: the table names only the stop half.
+reads `Route 42 at High Street (adj), Hulme`: the table names only the stop
+half, and without the table it reads `Route 42, stop 28632832`.
 LocDefType 212 carries several stops and names the first, counting the rest.
 
 
@@ -509,6 +531,8 @@ LocDefType 212 carries several stops and names the first, counting the rest.
   definitions are not supported, nor is CMD11, which replaces the file system
   with a proprietary command set.
 - Oyster cards are recognised and described, but the data is encrypted
+- MIFARE Classic, Ultralight and other cards that are not ISO 14443-4 are
+  reported as unsupported
 - Seals are not verified, so Flipso cannot tell you whether a card has been
   tampered with - only the shell's own checksum is checked. See
   [Integrity](#integrity).

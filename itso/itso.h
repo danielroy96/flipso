@@ -568,6 +568,10 @@ typedef struct {
     uint32_t writer_isam;
 
     bool latest; /**< Newest record, per the Log Directory Entry record offset. */
+    /* False for a record that came out of a saved file rather than out of the
+     * log the card just offered, as ItsoValueRecord::on_card is. The log keeps
+     * four; anything older survives only because a file remembered it. */
+    bool on_card;
 } ItsoTap;
 
 /** Everything Flipso knows about one card. */
@@ -910,7 +914,10 @@ static inline bool itso_id_companion(uint8_t id_flags) {
     return (id_flags & 0x10) != 0;
 }
 
-/** Render an amount, e.g. "GBP 12.34". Writes at most @p len bytes. */
+/**
+ * Render an amount, e.g. "£12.34", with the symbol in UTF-8. Writes at most
+ * @p len bytes; 16 holds any amount.
+ */
 void itso_format_money(const ItsoMoney* money, char* out, size_t len);
 
 #ifdef __cplusplus

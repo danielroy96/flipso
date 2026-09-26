@@ -1412,6 +1412,7 @@ void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len) {
         }
 
         tap.latest = card->log_entry_valid && card->log_normal_mode && (i == newest_slot);
+        tap.on_card = true;
         itso_add_tap(card, &tap);
     }
 
@@ -1420,7 +1421,9 @@ void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len) {
 
 void itso_parse_log_history(ItsoCard* card, const uint8_t* data, size_t len) {
     /* No latest flag on any of these: the record the card itself calls its
-     * newest is in the live log, which has already been parsed. */
+     * newest is in the live log, which has already been parsed. And on_card
+     * stays false, because only the file has them - a record still on the card
+     * was added from the live log first, and the duplicate is dropped. */
     for(size_t offset = 0; offset + ITSO_TAP_RECORD_LEN <= len;
         offset += ITSO_TAP_RECORD_LEN) {
         ItsoTap tap;

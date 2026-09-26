@@ -17,12 +17,18 @@ _Static_assert(
     FLIPSO_MENU_MAX_ITEMS >= ITSO_MAX_CARD_PRODUCTS,
     "the product list must hold every product the decoder can keep");
 
-/* Longest of the status suffixes below, " [off card]", plus its terminator. */
-#define FLIPSO_PRODUCT_SUFFIX_MAX 12
-
 static void flipso_scene_products_callback(void* context, uint32_t index) {
     Flipso* app = context;
     view_dispatcher_send_custom_event(app->view_dispatcher, index);
+}
+
+/** True when another row of the list will carry the same name as @p index. */
+static bool flipso_scene_products_shares_name(const ItsoCard* card, uint8_t index) {
+    const char* title = flipso_product_title(&card->products[index]);
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        if(i != index && strcmp(flipso_product_title(&card->products[i]), title) == 0) return true;
+    }
+    return false;
 }
 
 void flipso_scene_products_on_enter(void* context) {
@@ -33,41 +39,33 @@ void flipso_scene_products_on_enter(void* context) {
     flipso_menu_view_reset(menu);
     flipso_menu_view_set_callback(menu, flipso_scene_products_callback, app);
     flipso_menu_view_set_header(menu, "Products");
+    flipso_menu_view_set_header_icon(menu, &I_products_10px);
 
+    FuriString* tag = furi_string_alloc();
     for(uint8_t i = 0; i < app->card.product_count; i++) {
         const ItsoProduct* product = &app->card.products[i];
 
-        /* Flag expired and blocked products in the list so the user does not
-         * have to open each one to find the live ticket. */
-        char title[FLIPSO_MENU_LABEL_LEN];
-        /* Sized so the name plus the longest suffix still fits the row label;
-         * no product name is anywhere near this long. */
-        char name[FLIPSO_MENU_LABEL_LEN - FLIPSO_PRODUCT_SUFFIX_MAX];
-        flipso_product_title(product, name, sizeof(name));
-
-        const char* suffix = "";
-        if(!product->on_card) {
-            /* Said before anything else about it, because it is the one thing
-             * that is not true of the card in front of you: this product was on
-             * it when the record was written and is not on it now. Whether it
-             * was blocked or expired when it left is the detail screen's to
-             * tell - it is history either way. */
-            suffix = " [off card]";
-        } else if(product->status == ItsoProductStatusBlocked) {
-            suffix = " [blocked]";
-        } else if(itso_date_expired(product->expiry, now)) {
-            suffix = " [expired]";
-        } else if(product->status == ItsoProductStatusUnused) {
-            suffix = " [unused]";
+        /* Expired, blocked and dropped products are flagged in the list so
+         * the user does not have to open each one to find the live ticket.
+         * With nothing to flag, two products of one type - two season tickets
+         * - are told apart by when they run to. */
+        furi_string_reset(tag);
+        const char* status = flipso_product_tag(product, now);
+        if(status) {
+            furi_string_set(tag, status);
+        } else if(product->expiry && flipso_scene_products_shares_name(&app->card, i)) {
+            flipso_cat_short_date(tag, product->expiry);
         }
 
-        snprintf(title, sizeof(title), "%s%s", name, suffix);
-        /* A clock rather than the product's own icon: the label already names
-         * the type, so the icon is what makes the two groups tell apart at a
-         * glance down the list. */
-        const Icon* icon = product->on_card ? flipso_product_icon(product) : &I_past_10px;
-        flipso_menu_view_add_item(menu, title, icon, i);
+        /* A clock rather than the product's own icon for a dropped product:
+         * the label already names the type, so the icon is what makes the two
+         * groups tell apart at a glance down the list. */
+        const Icon* icon = product->on_card ? flipso_icon(flipso_product_icon(product)) :
+                                              &I_past_10px;
+        flipso_menu_view_add_tagged_item(
+            menu, flipso_product_title(product), furi_string_get_cstr(tag), icon, i);
     }
+    furi_string_free(tag);
 
     flipso_menu_view_set_selected(
         menu, scene_manager_get_scene_state(app->scene_manager, FlipsoSceneProducts));

@@ -10,7 +10,6 @@
  */
 #include "../flipso.h"
 
-#include <gui/modules/validators.h>
 
 /* Distinct from the app-wide events so a stray one cannot be mistaken for it. */
 #define FlipsoRenameEventCommit 320
@@ -39,11 +38,11 @@ void flipso_scene_rename_on_enter(void* context) {
         sizeof(app->save_name), false);
     text_input_set_minimum_length(app->text_input, 1);
 
-    /* Its own name is passed as the current one, so keeping it is allowed while
-     * another card's name is still refused. */
-    ValidatorIsFile* validator = validator_is_file_alloc_init(
-        FLIPSO_SAVED_FOLDER, FLIPSO_SAVED_EXTENSION, furi_string_get_cstr(name));
-    text_input_set_validator(app->text_input, flipso_name_validator, validator);
+    /* Its own name is passed as the current one, so keeping it - or changing
+     * only its case - is allowed while another card's name is still refused. */
+    text_input_set_validator(
+        app->text_input, flipso_name_validator,
+        flipso_name_validator_alloc(furi_string_get_cstr(name)));
 
     furi_string_free(name);
 
@@ -77,9 +76,9 @@ void flipso_scene_rename_on_exit(void* context) {
     Flipso* app = context;
 
     /* The validator is allocated per visit, and the text input does not own it. */
-    void* validator = text_input_get_validator_callback_context(app->text_input);
+    FlipsoNameValidator* validator = text_input_get_validator_callback_context(app->text_input);
     text_input_set_validator(app->text_input, NULL, NULL);
-    if(validator) validator_is_file_free(validator);
+    flipso_name_validator_free(validator);
 
     text_input_reset(app->text_input);
 }

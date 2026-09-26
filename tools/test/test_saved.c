@@ -65,8 +65,16 @@ void storage_file_close(File* file) {
     file->handle = NULL;
 }
 
+/* Bytes a write may still put down before the "SD card" is full; negative for
+ * a card with room. How a test makes a save fail part way through. */
+static long stub_write_budget = -1;
+
 uint16_t storage_file_write(File* file, const void* buffer, uint16_t size) {
     if(!file->handle) return 0;
+    if(stub_write_budget >= 0) {
+        if((long)size > stub_write_budget) size = (uint16_t)stub_write_budget;
+        stub_write_budget -= size;
+    }
     return (uint16_t)fwrite(buffer, 1, size, file->handle);
 }
 
@@ -124,13 +132,16 @@ bool storage_simply_remove(Storage* storage, const char* path) {
     return remove(path) == 0;
 }
 
+bool storage_common_exists(Storage* storage, const char* path) {
+    (void)storage;
+    return access(path, F_OK) == 0;
+}
+
 FS_Error storage_common_rename(Storage* storage, const char* old_path, const char* new_path) {
     (void)storage;
-    /* The firmware refuses to rename onto a name that is taken rather than
-     * silently replacing it, which is what the text input's check is there to
-     * head off - so the stub has to refuse too, or the test would not notice
-     * the check going missing. */
-    if(access(new_path, F_OK) == 0) return FSE_EXIST;
+    /* Firmware 1.4 replaces a destination that exists, as rename(2) does, so
+     * the stub does too: refusing a taken name is flipso_saved_rename()'s job,
+     * and a stub that did it for it would hide the check going missing. */
     return rename(old_path, new_path) == 0 ? FSE_OK : FSE_NOT_EXIST;
 }
 
@@ -409,7 +420,7 @@ static void bad_files(void) {
     /* The browser has nobody in front of it, so it says no; the alert is the
      * only other thing that reaches a person, and it must not crash. */
     FuriString* picked = furi_string_alloc();
-    check("a browser nobody answers picks nothing", !flipso_saved_pick(picked));
+    check("a browser nobody answers picks nothing", !flipso_saved_pick(picked, NULL));
     furi_string_free(picked);
 
     flipso_saved_alert("Cannot save card", "Check the SD card.");
@@ -502,6 +513,27 @@ static void finding(void) {
     flipso_saved_find(mine, found, &read_at);
     check("the record now carries the newer read", read_at == 3000);
 
+    /* An update that runs out of room part way must leave the record it was
+     * replacing alone: that file is the only copy of what has rolled off the
+     * card since, and losing it to a full SD card loses it for good. */
+    flipso_capture_set_time(mine, 4000);
+    stub_write_budget = 100;
+    check("an update that runs out of room fails",
+          !flipso_saved_write(mine, furi_string_get_cstr(found)));
+    stub_write_budget = -1;
+    flipso_saved_find(mine, found, &read_at);
+    check("and the record it was replacing is untouched", read_at == 3000);
+    FlipsoCapture* reread = flipso_capture_alloc();
+    check("and still loads", flipso_saved_read(reread, furi_string_get_cstr(found)));
+    flipso_capture_free(reread);
+    check("and nothing is left beside it", count_files() == before);
+    {
+        FuriString* temp = furi_string_alloc();
+        furi_string_printf(temp, "%s.tmp", furi_string_get_cstr(found));
+        check("not even the half-written file", access(furi_string_get_cstr(temp), F_OK) != 0);
+        furi_string_free(temp);
+    }
+
     /* A capture with nothing in it cannot match anything, and must not be
      * answered with somebody else's file. */
     FlipsoCapture* empty = flipso_capture_alloc();
@@ -556,6 +588,22 @@ static void renaming(void) {
         !flipso_saved_rename(furi_string_get_cstr(to), furi_string_get_cstr(from)));
     check("the card stays where it was", access(furi_string_get_cstr(to), F_OK) == 0);
     check("and the card in the way is untouched", access(furi_string_get_cstr(from), F_OK) == 0);
+    {
+        /* Only the case of the name changing. The SD card, like this host's
+         * disk, ignores case, so this is a rename onto a name that "exists" -
+         * the card's own - and must neither be refused nor lose the card. */
+        FuriString* lower = furi_string_alloc();
+        flipso_saved_path(lower, "after");
+        check(
+            "changing only the case of a name works",
+            flipso_saved_rename(furi_string_get_cstr(to), furi_string_get_cstr(lower)));
+        check("and the card is still there", access(furi_string_get_cstr(lower), F_OK) == 0);
+        FuriString* where = furi_string_alloc();
+        check("and still found by its number", flipso_saved_find(card, where, NULL));
+        flipso_saved_rename(furi_string_get_cstr(lower), furi_string_get_cstr(to));
+        furi_string_free(where);
+        furi_string_free(lower);
+    }
 
     FuriString* missing = furi_string_alloc();
     flipso_saved_path(missing, "Never existed");

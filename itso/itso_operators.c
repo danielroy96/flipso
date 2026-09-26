@@ -101,7 +101,9 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * correctly; the brand is what is printed on the card. */
     {289, "Southeastern", "The Key"},
     {1136, "SEFT", NULL}, /* RSPS3002 appendix D.1, South East Flexible Ticketing */
-    {8000, "ITSO STR (National Rail)", NULL},
+    /* ITSO's own National Rail stored travel rights scheme - STR is the TS 1000
+     * name for a purse - named for what a holder would call it. */
+    {8000, "National Rail purse", NULL},
     /* No provenance was ever recorded for this entry, and the Freedom Pass it
      * claimed is OID 226 above, read from the card. Unverified rather than
      * deleted, because an OID this far into the range is unlikely to have been

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,6 +32,9 @@ void flipso_stations_free(FlipsoStations* instance);
 
 /** True when a usable station table was found. */
 bool flipso_stations_available(const FlipsoStations* instance);
+
+/** Stations the table names; 0 when there is no table. */
+uint32_t flipso_stations_count(const FlipsoStations* instance);
 
 /**
  * Look up a four-character NLC.

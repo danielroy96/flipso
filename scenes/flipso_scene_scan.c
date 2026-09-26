@@ -42,6 +42,12 @@ static void flipso_scene_scan_saved_callback(void* context) {
     view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventOpenSaved);
 }
 
+/* And Right, for the About screen. */
+static void flipso_scene_scan_about_callback(void* context) {
+    Flipso* app = context;
+    view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventOpenAbout);
+}
+
 /* Begin a read with whichever transport the reader is currently on. */
 static void flipso_scene_scan_start_reader(Flipso* app) {
     flipso_reader_start(
@@ -66,7 +72,7 @@ void flipso_scene_scan_on_enter(void* context) {
     /* Whatever was on screen is gone, so the card is nobody's saved card now. */
     furi_string_reset(app->loaded_path);
     app->status = FlipsoReaderStatusIdle;
-    app->selected_product = 0;
+    flipso_reset_card_menus(app);
     app->card_error_retries = 0;
     app->card_dropped = false;
     flipso_reader_reset_transport(app->reader);
@@ -77,7 +83,8 @@ void flipso_scene_scan_on_enter(void* context) {
      * last saved card, or saved the first one, and come straight back here. */
     flipso_scan_view_set_has_saved(app->scan_view, flipso_saved_any());
     flipso_scan_view_set_callback(
-        app->scan_view, flipso_scene_scan_ok_callback, flipso_scene_scan_saved_callback, app);
+        app->scan_view, flipso_scene_scan_ok_callback, flipso_scene_scan_saved_callback,
+        flipso_scene_scan_about_callback, app);
 
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipsoViewScan);
 }
@@ -85,11 +92,6 @@ void flipso_scene_scan_on_enter(void* context) {
 bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
     Flipso* app = context;
     FlipsoScanState state = scene_manager_get_scene_state(app->scene_manager, FlipsoSceneScan);
-
-    if(event.type == SceneManagerEventTypeTick) {
-        if(state == FlipsoScanStateScanning) flipso_scan_view_tick(app->scan_view);
-        return true;
-    }
 
     if(event.type == SceneManagerEventTypeBack) {
         /* Back stops an in-progress scan rather than leaving the app, so the
@@ -106,6 +108,12 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
     if(event.event == FlipsoCustomEventOpenSaved) {
         if(state == FlipsoScanStateScanning) return true;
         scene_manager_next_scene(app->scene_manager, FlipsoSceneSaved);
+        return true;
+    }
+
+    if(event.event == FlipsoCustomEventOpenAbout) {
+        if(state == FlipsoScanStateScanning) return true;
+        scene_manager_next_scene(app->scene_manager, FlipsoSceneAbout);
         return true;
     }
 
@@ -135,6 +143,13 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
 
         /* Stop polling from the UI thread: the poller cannot stop itself. */
         flipso_reader_stop(app->reader);
+
+        /* The detect stage found a card that speaks ISO 14443-4: on to the
+         * transports, with the card still on the reader. */
+        if(app->status == FlipsoReaderStatusFound && flipso_reader_next_transport(app->reader)) {
+            flipso_scene_scan_start_reader(app);
+            return true;
+        }
 
         if(app->status == FlipsoReaderStatusCardError ||
            app->status == FlipsoReaderStatusCardLost) {
@@ -212,5 +227,5 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
 void flipso_scene_scan_on_exit(void* context) {
     Flipso* app = context;
     flipso_scene_scan_stop(app);
-    flipso_scan_view_set_callback(app->scan_view, NULL, NULL, NULL);
+    flipso_scan_view_set_callback(app->scan_view, NULL, NULL, NULL, NULL);
 }

@@ -44,6 +44,14 @@ so Flipso needs no special keys to work.
 
 ## What it shows you
 
+A card opens on its **Summary**: whether it is active, what each product is
+worth or runs until, the holder, and where it was last tapped. The rows below it
+say the balance and the number of products at a glance, and each opens the
+detail. Every screen is written the same way — `Label: Value`, a detail of the
+line above indented beneath it, amounts in pounds — and Left and Right page a
+long one a screen at a time. **About**, on the scan screen, gives the version and
+says whether the station and bus stop tables are installed.
+
 Flipso reads the full ITSO Shell and is implemented to follow the ITSO 
 specification.
 
@@ -55,12 +63,12 @@ specification.
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/entitlement.png" width="250" alt="Entitlement screen showing Limited free ride and class Disabled"><br><b>ID &amp; entitlement</b><br><sub>Holder details, entitlement type, concessionary class, validity dates and area, companion and photo flags</sub></td>
-    <td align="center"><img src="docs/screenshots/journey-log.png" width="250" alt="Journey log showing tap out from Feltham to Woking"><br><b>Last taps</b><br><sub>Tap in/out state and time, the product used, passback, and the journey log with origin, destination and fare</sub></td>
+    <td align="center"><img src="docs/screenshots/journey-log.png" width="250" alt="Journey log showing tap out from Feltham to Woking"><br><b>Journeys</b><br><sub>Whether you are inside ticket gates, the product used, and the journey log with origin, destination, fare and journey time</sub></td>
     <td align="center"><img src="docs/screenshots/products.png" width="250" alt="Products list with per-type icons and status flags"><br><b>Products</b><br><sub>Every product in the directory, flagged expired / blocked / unused, each with an icon from its ITSO type — and, on a saved card, the ones it no longer carries</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/product-detail.png" width="250" alt="Period ticket detail showing operator, status, expiry and from station"><br><b>Product detail</b><br><sub>Operator, validity window, from/to stations, counters, and the instance identity of that one ticket</sub></td>
-    <td align="center"><img src="docs/screenshots/oyster.png" width="250" alt="TfL Oyster Card recognition screen"><br><b>Oyster recognition</b><br><sub>Not an ITSO card. Flipso says so and explains why, rather than reporting an unreadable card</sub></td>
+    <td align="center"><img src="docs/screenshots/oyster.png" width="250" alt="TfL Oyster Card recognition screen"><br><b>Oyster recognition</b><br><sub>Not an ITSO card. Flipso says so and explains why, rather than reporting an unreadable card - and any other DESFire card gets the same chip description</sub></td>
     <td align="center"><img src="docs/screenshots/media-chip.png" width="250" alt="Card media screen showing DESFire EV1 chip details and UID"><br><b>Card media</b><br><sub>What any card will say about itself with no key involved: chip, UID, storage, manufacture date, applications and files</sub></td>
   </tr>
 </table>
@@ -100,13 +108,16 @@ Whole products are kept the same way. A directory entry is freed when a ticket
 expires and is removed, and reused when the next one is sold, so the card's
 account of what it carries is only ever the present tense. A record that saw the
 ticket keeps it, and the product list shows it below the ones the card still
-holds — with a clock for an icon instead of its own, **[off card]** after its
-name, and the date of the last read that found it on the card at the top of its
+holds — with a clock for an icon instead of its own, **Off card** at the end of
+its row, and the date of the last read that found it on the card at the top of its
 detail screen. The same distinction runs through a product's transactions: what
 is still in its value records is listed under **Earlier on card**, and what only
 the file remembers under **From past reads**. The screens that describe the card
 as it is — the purse, the ID, the product count on the card's own menu — count
 only what is on it.
+
+Saving writes the new file alongside the old one and swaps it in only once it is
+complete, so a full SD card never costs you a record you already had.
 
 Each of the three outcomes has its own chirp, because they happen seconds apart
 and you are usually looking at the card rather than the screen: a card **read**
@@ -195,13 +206,13 @@ The Flipper has a **190 KB heap**, and a `.fap` is loaded into it whole before
 `main()` runs, so we have to be a bit careful particularly with the station table.
 
 ```
-dist/flipso.fap       192,104 bytes on disk
+dist/flipso.fap       203,544 bytes on disk
   .fapassets           78,859   ← station table, never mapped into RAM
-  .text                41,976   ← in RAM
-  .rodata              12,617   ← in RAM
-  (symbols, relocs)    58,652   ← not loaded
+  .text                45,864   ← in RAM
+  .rodata              13,871   ← in RAM
+  (symbols, relocs)    64,950   ← not loaded
   ──────────────────────────
-  TOTAL IN RAM         54,593   29% of the heap
+  TOTAL IN RAM         59,735   31% of the heap
 ```
 
 A card being saved costs a little on top of that, and only while a card is on
@@ -223,15 +234,16 @@ where the file lives, not of what it costs to read.
 tools/test/run.sh
 ```
 
-Nine binaries are built and run under **ASan and UBSan**, plus a Python test for
+Ten binaries are built and run under **ASan and UBSan**, plus a Python test for
 `flipctl`'s serial recovery that needs no Flipper: the decoder against
 spec-accurate synthetic CMD7 and CMD2 cards, the save/load round trip against
 the same cards and against deliberately broken files, the station table reader
 against tables the builder wrote, the stop table reader against both of its
 indexes, the operator table and the user's operators file, the card media screen
-against a captured Oyster, and the icon list and scrolling text views against an
-ASCII framebuffer — which is how their layout, wrapping and scrolling are checked
-without a device.
+against a captured Oyster, the text of every screen of every demo card against
+the house style (capitalised values, labelled detail lines, amounts in pounds),
+and the icon list and scrolling text views against an ASCII framebuffer — which
+is how their layout, wrapping and scrolling are checked without a device.
 
 ## Contributing
 

@@ -93,19 +93,24 @@ void itso_format_money(const ItsoMoney* money, char* out, size_t len) {
 
     if(money->currency > 1) {
         /* Tokens have no minor unit and no symbol we can rely on. */
-        snprintf(out, len, "%ld tokens", (long)money->value);
+        snprintf(out, len, "%ld token%s", (long)money->value, money->value == 1 ? "" : "s");
         return;
     }
 
-    /* Local (GBP) and global (EUR) currencies both use a base unit of 0.01. */
-    const char* symbol = (money->currency == 0) ? "GBP" : "EUR";
+    /* VALC's currency bits name the scheme's local currency (0) or its global
+     * one (1), TS 1000-5 annex A.21. For a UK scheme those are sterling and the
+     * euro, and it is the card that decides which rather than the Flipper's
+     * locale: a balance is in whatever money the card holds it in. Both have a
+     * base unit of 0.01. The symbols are UTF-8; the view draws them by hand,
+     * because the Flipper's fonts do not have them. */
+    const char* symbol = (money->currency == 0) ? "\xC2\xA3" : "\xE2\x82\xAC";
     int32_t value = money->value;
     const char* sign = "";
     if(value < 0) {
         sign = "-";
         value = -value;
     }
-    snprintf(out, len, "%s%s %ld.%02ld", sign, symbol, (long)(value / 100), (long)(value % 100));
+    snprintf(out, len, "%s%s%ld.%02ld", sign, symbol, (long)(value / 100), (long)(value % 100));
 }
 
 uint8_t itso_ticket_days(uint8_t valid_on_day, uint16_t flags) {
@@ -126,11 +131,11 @@ void itso_format_days(uint8_t days, char* out, size_t len) {
 
     days &= ITSO_DOW_ALL_DAYS;
     if(days == ITSO_DOW_ALL_DAYS) {
-        snprintf(out, len, "every day");
+        snprintf(out, len, "Every day");
         return;
     }
     if(!days) {
-        snprintf(out, len, "none");
+        snprintf(out, len, "None");
         return;
     }
 
@@ -295,13 +300,16 @@ static void itso_render_location(
 
     switch(def_type) {
     case 202: /* Bus fare stage type 1: 3-byte machine number, 1-byte stage. */
-        if(n >= 4) snprintf(out, len, "Stage %u/%lu", body[3], (unsigned long)itso_bits(body, 0, 24));
+        if(n >= 4) {
+            snprintf(
+                out, len, "Fare stage %u (%lu)", body[3], (unsigned long)itso_bits(body, 0, 24));
+        }
         break;
 
     case 203: /* Short rail NLC: four ASCII characters. */
         if(n >= 4) {
             itso_copy_ascii(body, 4, scratch, sizeof(scratch));
-            snprintf(out, len, "NLC %s", scratch);
+            snprintf(out, len, "Station %s", scratch);
             itso_note_code(code, code_kind, ItsoLocCodeNlc, scratch);
         }
         break;
@@ -310,7 +318,11 @@ static void itso_render_location(
     case 205: /* Zonal bit map, valid zone to zone. */
         if(n >= 3) {
             itso_decode_zones(body, 3, scratch, sizeof(scratch));
-            snprintf(out, len, "Zones %s", scratch);
+            if(strcmp(scratch, "none") == 0) {
+                snprintf(out, len, "No zones");
+            } else {
+                snprintf(out, len, "Zones %s", scratch);
+            }
         }
         break;
 
@@ -341,11 +353,11 @@ static void itso_render_location(
             char country_digits[4];
             itso_bcd(body, 4, 3, country_digits);
             if(country == 0x070) {
-                snprintf(out, len, "NLC %s", scratch);
+                snprintf(out, len, "Station %s", scratch);
                 /* Only UK codes index the station table. */
                 itso_note_code(code, code_kind, ItsoLocCodeNlc, scratch);
             } else {
-                snprintf(out, len, "%s %s", country_digits, scratch);
+                snprintf(out, len, "Station %.4s (country %.3s)", scratch, country_digits);
             }
         }
         break;
@@ -353,14 +365,14 @@ static void itso_render_location(
     case 209: /* Bus fare stage type 2: OID, SNCODE service, stage. */
         if(n >= 6) {
             itso_decode_service(itso_bits(body, 16, 20), service, sizeof(service));
-            snprintf(out, len, "Svc %s stg %u", service, body[5]);
+            snprintf(out, len, "Route %s, stage %u", service, body[5]);
         }
         break;
 
     case 210: /* One or more SNCODE service numbers. */
         if(n >= 3) {
             itso_decode_service(itso_bits(body, 0, 20), service, sizeof(service));
-            snprintf(out, len, "Svc %s", service);
+            snprintf(out, len, "Route %s", service);
         }
         break;
 
@@ -396,10 +408,10 @@ static void itso_render_location(
             itso_decode_service2(body + 2, service, sizeof(service));
             char stop[9];
             itso_bcd(body, 40, 8, stop);
-            /* The '@' is what flipso_cat_location splits on to keep the service
+            /* The '@' is what flipso_format.c splits on to keep the route
              * number in front of a stop name the table resolves, so everything
              * before it has to read correctly on its own. */
-            snprintf(out, len, "Svc %s@%s", service, stop);
+            snprintf(out, len, "Route %s@%s", service, stop);
             if(itso_all_digits(stop)) {
                 itso_note_code(code, code_kind, ItsoLocCodeNaptan, stop);
             }
@@ -409,14 +421,14 @@ static void itso_render_location(
     case 217: /* Bus fare stage type 3. */
         if(n >= 6) {
             itso_decode_service2(body + 2, service, sizeof(service));
-            snprintf(out, len, "Svc %s stg %u", service, body[5]);
+            snprintf(out, len, "Route %s, stage %u", service, body[5]);
         }
         break;
 
     case 218: /* Extended service numbers. */
         if(n >= 3) {
             itso_decode_service2(body, service, sizeof(service));
-            snprintf(out, len, "Svc %s", service);
+            snprintf(out, len, "Route %s", service);
         }
         break;
 
@@ -428,7 +440,7 @@ static void itso_render_location(
         break;
     }
 
-    if(out[0] == '\0') snprintf(out, len, "Loc type %u", def_type);
+    if(out[0] == '\0') snprintf(out, len, "Unknown location (type %u)", def_type);
 }
 
 size_t itso_parse_location(

@@ -10,7 +10,14 @@
 #include <toolbox/path.h>
 #include <toolbox/stream/file_stream.h>
 
+#include <strings.h>
+
 #define TAG "Flipso"
+
+/* Beside the record it will replace, so the rename that puts it there is a
+ * rename within one folder. Not a card extension, so the browser never lists
+ * one left behind by a power cut. */
+#define FLIPSO_SAVED_TEMP_SUFFIX ".tmp"
 
 void flipso_saved_mkdir(void) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
@@ -91,13 +98,8 @@ void flipso_saved_suggest_name(
     out[pos] = '\0';
 }
 
-bool flipso_saved_write(const FlipsoCapture* capture, const char* path) {
-    furi_assert(capture);
-    furi_assert(path);
-
-    flipso_saved_mkdir();
-
-    Storage* storage = furi_record_open(RECORD_STORAGE);
+/** Write every line of @p capture to @p path, replacing anything there. */
+static bool flipso_saved_write_file(Storage* storage, const FlipsoCapture* capture, const char* path) {
     File* file = storage_file_alloc(storage);
     char* line = malloc(FLIPSO_CAPTURE_LINE_MAX);
     bool ok = storage_file_open(file, path, FSAM_WRITE, FSOM_CREATE_ALWAYS);
@@ -115,14 +117,45 @@ bool flipso_saved_write(const FlipsoCapture* capture, const char* path) {
     storage_file_close(file);
     storage_file_free(file);
     free(line);
+    return ok;
+}
+
+bool flipso_saved_write(const FlipsoCapture* capture, const char* path) {
+    furi_assert(capture);
+    furi_assert(path);
+
+    flipso_saved_mkdir();
+
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    FuriString* temp = furi_string_alloc();
+    furi_string_printf(temp, "%s%s", path, FLIPSO_SAVED_TEMP_SUFFIX);
+    const char* temp_path = furi_string_get_cstr(temp);
+
+    /* The whole file goes to one side first. Updating a card writes over the
+     * only copy of the journeys that have rolled off it since, so a write that
+     * fails part way - a full SD card - must fail before the old record is
+     * touched, not after it has been truncated. */
+    bool ok = flipso_saved_write_file(storage, capture, temp_path);
+    if(ok) {
+        ok = storage_common_rename(storage, temp_path, path) == FSE_OK;
+        if(!ok) {
+            /* Firmware that will not rename onto a name in use. The new file
+             * is complete by now, so this is the one moment the old record can
+             * go without anything being lost with it. */
+            storage_simply_remove(storage, path);
+            ok = storage_common_rename(storage, temp_path, path) == FSE_OK;
+        }
+    }
 
     if(!ok) {
         /* Everything downstream treats a file that is there as a card that can
-         * be loaded, so a partial write must not leave one behind. */
+         * be loaded, so a partial write must not leave one behind. The record
+         * being replaced, if there was one, is still as it was. */
         FURI_LOG_E(TAG, "Failed to write %s", path);
-        storage_simply_remove(storage, path);
+        storage_simply_remove(storage, temp_path);
     }
 
+    furi_string_free(temp);
     furi_record_close(RECORD_STORAGE);
     return ok;
 }
@@ -252,7 +285,7 @@ bool flipso_saved_find(const FlipsoCapture* capture, FuriString* path, uint32_t*
     return found;
 }
 
-bool flipso_saved_pick(FuriString* path) {
+bool flipso_saved_pick(FuriString* path, const FuriString* select) {
     furi_assert(path);
 
     /* The browser opens on the folder, so it has to exist even before the first
@@ -268,7 +301,10 @@ bool flipso_saved_pick(FuriString* path) {
      * characters that tell two cards apart. */
     options.hide_ext = true;
 
+    /* The browser opens on the file its start path names, so coming back from
+     * a card lands on that card rather than on the top of the list. */
     FuriString* start = furi_string_alloc_set(FLIPSO_SAVED_FOLDER);
+    if(select && !furi_string_empty(select)) furi_string_set_str(start, furi_string_get_cstr(select));
     bool picked = dialog_file_browser_show(dialogs, path, start, &options);
     furi_string_free(start);
 
@@ -286,7 +322,30 @@ bool flipso_saved_rename(const char* from, const char* to) {
     if(strcmp(from, to) == 0) return true;
 
     Storage* storage = furi_record_open(RECORD_STORAGE);
-    FS_Error error = storage_common_rename(storage, from, to);
+    FS_Error error;
+
+    if(strcasecmp(from, to) == 0) {
+        /* Only the case changes. FAT names ignore case, so to the file system
+         * the destination is the card itself, and a rename that clears its
+         * destination first would delete it. Going by way of a name that is
+         * certainly free keeps each step an ordinary move. */
+        FuriString* step = furi_string_alloc();
+        furi_string_printf(step, "%s%s", from, FLIPSO_SAVED_TEMP_SUFFIX);
+        error = storage_common_rename(storage, from, furi_string_get_cstr(step));
+        if(error == FSE_OK) {
+            error = storage_common_rename(storage, furi_string_get_cstr(step), to);
+            if(error != FSE_OK) storage_common_rename(storage, furi_string_get_cstr(step), from);
+        }
+        furi_string_free(step);
+    } else if(storage_common_exists(storage, to)) {
+        /* The firmware overwrites a destination that exists, and that would be
+         * somebody else's card. The name screen refuses a taken name already;
+         * this is the check that does not depend on it. */
+        error = FSE_EXIST;
+    } else {
+        error = storage_common_rename(storage, from, to);
+    }
+
     furi_record_close(RECORD_STORAGE);
 
     if(error != FSE_OK) FURI_LOG_E(TAG, "Could not rename %s to %s", from, to);

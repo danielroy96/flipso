@@ -44,7 +44,8 @@ behaviours is there because a past session lost time to it.
 ## Layout
 
 ```
-flipso.c              app entry, shared formatting helpers used by the scenes
+flipso.c              app entry, the icon table, the name validator
+flipso_format.c       the text of every detail screen; host-tested by test_format.c
 flipso_reader.c       card reading: DESFire (CMD7/CMD12) and the retry logic
 flipso_cmd2.c         ISO 7816 transport for CMD2 media
 flipso_media.c        what a non-ITSO card says about itself (incl. Oyster)
@@ -55,7 +56,8 @@ flipso_stations.c     NLC -> station name, binary search over the SD card table
 flipso_naptan.c       NaptanCode/AtcoCode -> bus stop name, same design
 itso/                 the decoder: pure C, no firmware dependency, host-testable
 scenes/               one file per screen; scene list in flipso_scene_config.h
-views/                custom views (the icon list, the scan screen)
+views/                custom views (the icon list, the text panel, the scan screen),
+                      and the hand-drawn £ and € the fonts lack
 tools/flipper/        flipctl: the device driver described above
 tools/ide/            compile_commands.json, so CLion and clangd index the tree
 tools/test/           host test suite, synthetic card builder, card replay
@@ -90,11 +92,11 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-about 55 KB of the 192 KB file as of 2026-09-26, because the 79 KB station
+about 60 KB of the 204 KB file as of 2026-09-26, because the 79 KB station
 table lives in `.fapassets`, which the firmware unpacks to the SD card and never
 maps. Anything added as a `const` array *does* reach RAM. Flipso costs about
-65 KB of heap all told while running (measured 2026-09-26 with `flipctl mem
---cost`), of which that 55 KB is the image and the rest is what it allocates -
+75 KB of heap all told while running (measured 2026-09-26 with `flipctl mem
+--cost`), of which that 60 KB is the image and the rest is what it allocates -
 about 15 KB of that is `ItsoCard`, twenty products and twelve taps. Measure it
 as the difference between `flipctl mem` with the app up and with the desktop
 showing, which is the only honest way to read it.
@@ -114,8 +116,11 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
   one (`TS 1000-2 table 11`). Do not narrate what the code already says.
 - New sources must be listed explicitly in `application.fam`. A bare `*.c` is
   matched recursively and would pull in the host-side tests under `tools/`.
-- Scenes get their data from `Flipso*` in `flipso.h` and format it with the
-  `flipso_cat_*` helpers, so wording and date formats stay consistent.
+- Screen text is built in `flipso_format.c`, never in a scene, and follows the
+  house style its header sets out: `Label: Value` with the value capitalised, a
+  detail indented two spaces and itself labelled, money as `£`. `test_format.c`
+  holds every screen of every demo card to that, so a line that breaks it fails
+  the host tests.
 - Every decoder change needs a case in `tools/test/` — usually a new synthetic
   product in `tools/test/build_card.py`. The suite runs under ASan and UBSan;
   make the test buffer exactly as long as the data claims to be, or an over-read

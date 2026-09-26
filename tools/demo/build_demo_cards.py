@@ -196,12 +196,14 @@ def card_the_key():
     period = Bits(48)
     period.put(0, 6, 12)
     period.put(6, 6, 0b000010)                   # RouteCode and both locations
+    # No CPICC (bit 4), so RouteCode follows the 29 fixed bytes directly and the
+    # locations start at 29 + 5 = 34 (TS 1000-5 table 3.27).
     period.put(12, 4, 3)
     period.buf[2] = 255
     period.putb(3, (289).to_bytes(2, "big"))
     period.put(106, 14, date_stamp(2026, 9, 1))  # ValidityStartDate
-    period.putb(36, loc1(203, b"5148"))          # London Bridge
-    period.putb(42, loc1(203, b"5018"))          # Margate
+    period.putb(34, loc1(203, b"5148"))          # London Bridge
+    period.putb(40, loc1(203, b"5018"))          # Margate
     period_values = value_group([
         value_record(1, 21, dts(2026, 9, 1, 7, 40),
                      period_tail(6, 0b01, date_stamp(2027, 1, 31), date_stamp(2026, 9, 30))),
@@ -553,6 +555,8 @@ def card_cmd2():
     period = Bits(48)
     period.put(0, 6, 12)
     period.put(6, 6, 0b000010)                   # RouteCode and both locations
+    # No CPICC (bit 4), so RouteCode follows the 29 fixed bytes directly and the
+    # locations start at 29 + 5 = 34 (TS 1000-5 table 3.27).
     period.put(12, 4, 2)
     period.buf[2] = 255
     period.putb(3, (196).to_bytes(2, "big"))
@@ -737,8 +741,8 @@ def card_history():
     gone_period.buf[2] = 255
     gone_period.putb(3, (109).to_bytes(2, "big"))
     gone_period.put(106, 14, date_stamp(2025, 9, 1))
-    gone_period.putb(36, loc1(203, b"5685"))     # Woking
-    gone_period.putb(42, loc1(203, b"1575"))     # Waterloo International
+    gone_period.putb(34, loc1(203, b"5685"))     # Woking
+    gone_period.putb(40, loc1(203, b"1575"))     # Waterloo International
     gone_period_values = value_group([
         value_record(1, 60, dts(2026, 1, 5, 7, 30),
                      period_tail(3, 0b01, date_stamp(2026, 3, 31), date_stamp(2026, 2, 4))),

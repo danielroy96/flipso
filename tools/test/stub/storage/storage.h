@@ -54,4 +54,5 @@ typedef enum {
     FSE_INTERNAL,
 } FS_Error;
 
+bool storage_common_exists(Storage* storage, const char* path);
 FS_Error storage_common_rename(Storage* storage, const char* old_path, const char* new_path);

@@ -10,6 +10,7 @@
 #include "flipso_operators.h"
 #include "flipso_stations.h"
 #include "flipso_naptan.h"
+#include "flipso_format.h"
 #include "itso/itso.h"
 #include "views/flipso_menu_view.h"
 #include "views/flipso_scan_view.h"
@@ -43,6 +44,8 @@ typedef enum {
     FlipsoCustomEventReaderDone,
     /* Posted from the scan view when the user asks for the saved cards. */
     FlipsoCustomEventOpenSaved,
+    /* Posted from the scan view when the user asks about the app. */
+    FlipsoCustomEventOpenAbout,
     /* Posted by the saved-card scene once the file browser has closed. */
     FlipsoCustomEventSavedPicked,
     FlipsoCustomEventSavedCancelled,
@@ -146,125 +149,39 @@ extern const NotificationSequence flipso_sequence_deleted;
  * callback because a text input holds only one, and catching a bad character
  * here rather than at the write is the difference between saying what is wrong
  * and reporting a failure the user cannot explain.
- *
- * @param context a ValidatorIsFile, as validator_is_file_callback expects. Its
- *                current_name is what makes renaming a card to the name it
- *                already has allowed rather than a clash with itself.
  */
-bool flipso_name_validator(const char* text, FuriString* error, void* context);
-
-/* ------------------------------------------------------------------ */
-/* Formatting helpers shared by the detail scenes                      */
-/* ------------------------------------------------------------------ */
-
-/** Append "dd/mm/yyyy" for an ITSO DATE. */
-void flipso_cat_date(FuriString* out, uint16_t date);
+typedef struct FlipsoNameValidator FlipsoNameValidator;
 
 /**
- * Append a complete expiry line, including the trailing newline.
- *
- * The label switches to @p past_label once the date has gone by. Appending a
- * marker instead would overflow the 128px screen and wrap mid-word.
+ * @param current_name the card's name when renaming it, or "" when naming a new
+ *                     one. Keeping that name is allowed, and so is changing
+ *                     only its case, which the SD card's file system would
+ *                     otherwise report as a clash with the card itself.
  */
-void flipso_cat_expiry(
-    FuriString* out,
-    const char* label,
-    const char* past_label,
-    uint16_t date,
-    uint32_t now);
+FlipsoNameValidator* flipso_name_validator_alloc(const char* current_name);
+void flipso_name_validator_free(FlipsoNameValidator* validator);
 
-/** Append "dd/mm/yyyy hh:mm" for an ITSO DTS. */
-void flipso_cat_datetime(FuriString* out, uint32_t dts);
-
-/** Append "dd/mm/yyyy hh:mm" for a Unix timestamp. */
-void flipso_cat_time(FuriString* out, uint32_t timestamp);
+/** The TextInputValidatorCallback; @p context is a FlipsoNameValidator. */
+bool flipso_name_validator(const char* text, FuriString* error, void* context);
 
 /** Current time as a Unix timestamp, from the Flipper's RTC. */
 uint32_t flipso_now(void);
 
-/**
- * Append "<label>: <operator>", naming the operator where we can and falling
- * back to its ITSO operator number where we cannot.
- */
-void flipso_cat_operator(FuriString* out, const Flipso* app, const char* label, uint16_t oid);
+/** The lookup tables and the time, for the screen builders in flipso_format.h. */
+FlipsoFormat flipso_format_context(const Flipso* app);
+
+/** The image for one of flipso_format.h's icon numbers; NULL for none. */
+const Icon* flipso_icon(FlipsoIcon icon);
 
 /**
- * Append a location line "Label: place", or nothing when the location is absent.
- * Rail location codes are resolved to station names and bus stop codes to stop
- * names, where the tables that hold them are on the card; anything else falls
- * back to the code the card carries.
+ * Forget where the card's menus were left, for a card that is not the one they
+ * were left on: a new card starts on its Summary, not on whichever row the last
+ * one was closed from.
  */
-void flipso_cat_location(
-    FuriString* out,
-    Flipso* app,
-    const char* label,
-    const ItsoLocation* location);
+void flipso_reset_card_menus(Flipso* app);
 
-/** First product of the given IPE type, or NULL when the card carries none. */
-const ItsoProduct* flipso_find_product(const Flipso* app, uint8_t typ);
-
-/** Human label for a product, e.g. "Pay as you go". */
-void flipso_product_title(const ItsoProduct* product, char* out, size_t len);
-
-/**
- * Row icon for a product, chosen from its IPE type so that a list of products
- * can be read at a glance. Never NULL: unrecognised types get a generic tag.
- */
-const Icon* flipso_product_icon(const ItsoProduct* product);
-
-/** Append the 18-digit card number grouped as 6-4-4-4. */
-void flipso_cat_card_number(FuriString* out, const char* isrn);
-
-/** Append "<label>: GBP 1.23", or nothing when the amount was not decoded. */
-void flipso_cat_money(FuriString* out, const char* label, const ItsoMoney* money);
-
-/** Append the shared detail block for one product (operator, dates, locations). */
-void flipso_cat_product(FuriString* out, Flipso* app, const ItsoProduct* product, uint32_t now);
-
-/**
- * Append the commercial terms of a purse or charge-to-account product: its
- * ceiling, any overdraft, the auto-top-up rule and the deposit paid for it.
- */
-void flipso_cat_purse_terms(FuriString* out, const ItsoProduct* product);
-
-/**
- * Append the terms a period ticket was sold on: the days and times it is good
- * for, how long each pass lasts, who it covers, and what was paid for it.
- * Nothing for any other type.
- */
-void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product);
-
-/**
- * Append "<label>: <operator>" for the operator an ISAM is registered to, then
- * the ISAM itself. Nothing for an ISAM of zero, which is an unwritten record.
- */
-void flipso_cat_isam(FuriString* out, const Flipso* app, const char* label, uint32_t isam);
-
-/**
- * Append the parts of an ITSO ID beyond name and entitlement: issuer and holder
- * numbers, language, valid periods, fare rounding and deposits.
- */
-void flipso_cat_id_details(FuriString* out, const ItsoProduct* product);
-
-/**
- * Append a product's fare-capping progress, decoded from the capture on demand.
- * Nothing when the product carries no capping extension.
- */
-void flipso_cat_capping(FuriString* out, Flipso* app, const ItsoProduct* product);
-
-/** Append what the product's newest value record says the last transaction was. */
-void flipso_cat_last_transaction(FuriString* out, const ItsoProduct* product);
-
-/**
- * Append the transactions before the live one, newest first.
- *
- * The value record group is a small cyclic store, so a product carries the last
- * few transactions as well as its current state - the balance as it was, and
- * when it changed. Nothing at all is appended when the product holds only the
- * one record, which is what an unused product and most of a fresh card look
- * like.
- */
-void flipso_cat_value_history(FuriString* out, const ItsoProduct* product);
+/** Put a screen built by flipso_format.h on the text view and show it. */
+void flipso_show_text(Flipso* app, const FuriString* text);
 
 #ifdef __cplusplus
 }

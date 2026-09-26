@@ -110,20 +110,20 @@ int main(void) {
 
     shows(text, "MIFARE DESFire EV1");
     shows(text, "Storage: 2048 bytes");
-    shows(text, "Free: 1248 bytes");
+    shows(text, "Free space: 1248 bytes");
     shows(text, "UID: 048B1FF1AD2680");
-    shows(text, "Made: week 42 of 2008");
+    shows(text, "Made: Week 42 of 2008");
     shows(text, "4F5931  Oyster");
     shows(text, "Files in Oyster");
     shows(text, "File 0: Standard");
-    shows(text, "8 bytes");
-    shows(text, "Enciphered, rights 1111");
-    shows(text, "Read: key 1");
-    shows(text, "Locked: needs a key");
+    shows(text, "Size: 8 bytes");
+    shows(text, "Encryption: Encrypted\nAccess rights: 1111");
+    shows(text, "Read: Key 1");
+    shows(text, "Contents: Locked");
     shows(text, "File 7");
     /* Nothing came off this card, so nothing may be shown as having done. */
-    hides(text, "Contents:");
-    hides(text, "Read failed");
+    hides(text, "Contents:\n");
+    hides(text, "Could not be read");
 
     /* A card that keeps its directory to itself, and files that are not locked. */
     flipso_media_reset(&media);
@@ -179,13 +179,13 @@ int main(void) {
     shows(text, "Card will not list them.");
     shows(text, "ABCDEF\n");
     shows(text, "Contents:\nDEADBEEF");
-    shows(text, "Range 0 to 5000");
-    shows(text, "2 of 4 x 16 bytes");
-    shows(text, "Read failed");
-    shows(text, "Settings need a key");
-    shows(text, "Write: never");
+    shows(text, "Range: 0 to 5000");
+    shows(text, "Records: 2 of 4, 16 bytes each");
+    shows(text, "Contents: Could not be read");
+    shows(text, "Settings: Locked");
+    shows(text, "Write: Nobody");
     /* No free memory was reported, so no line may claim any. */
-    hides(text, "Free:");
+    hides(text, "Free space:");
 
     /* Storage codes: a power of two in the top seven bits, the bottom bit
      * meaning "somewhere between this and the next". */

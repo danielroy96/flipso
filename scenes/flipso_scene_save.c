@@ -16,7 +16,6 @@
 #include "../flipso.h"
 #include "flipso_icons.h"
 
-#include <gui/modules/validators.h>
 
 /* Distinct from the app-wide events so a stray one cannot be mistaken for it.
  * Which of the two screens is up does not need recording anywhere: only that
@@ -122,9 +121,8 @@ static void flipso_scene_save_ask_name(Flipso* app) {
 
     /* Warns before overwriting a card already saved under this name, which by
      * now can only be a different card someone gave the same name to. */
-    ValidatorIsFile* validator =
-        validator_is_file_alloc_init(FLIPSO_SAVED_FOLDER, FLIPSO_SAVED_EXTENSION, "");
-    text_input_set_validator(app->text_input, flipso_name_validator, validator);
+    text_input_set_validator(
+        app->text_input, flipso_name_validator, flipso_name_validator_alloc(""));
 
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipsoViewTextInput);
 }
@@ -210,9 +208,9 @@ void flipso_scene_save_on_exit(void* context) {
 
     /* Only one of the two screens was built, but tearing down both is cheaper
      * than remembering which, and neither minds being reset unused. */
-    void* validator = text_input_get_validator_callback_context(app->text_input);
+    FlipsoNameValidator* validator = text_input_get_validator_callback_context(app->text_input);
     text_input_set_validator(app->text_input, NULL, NULL);
-    if(validator) validator_is_file_free(validator);
+    flipso_name_validator_free(validator);
 
     text_input_reset(app->text_input);
     widget_reset(app->widget);

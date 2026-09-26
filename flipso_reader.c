@@ -27,6 +27,7 @@
 #include <furi.h>
 #include <nfc/nfc.h>
 #include <nfc/nfc_poller.h>
+#include <nfc/nfc_scanner.h>
 #include <nfc/protocols/mf_desfire/mf_desfire.h>
 #include <nfc/protocols/mf_desfire/mf_desfire_poller.h>
 #include <nfc/protocols/iso14443_4a/iso14443_4a_poller.h>
@@ -70,8 +71,17 @@ static const SimpleArrayConfig flipso_app_id_array_config = {
  * chain cannot spin or blow the buffer. */
 #define FLIPSO_MAX_CHAIN_HOPS    6
 
+
 /** The command sets the reader knows, tried in this order. */
 typedef enum {
+    /**
+     * Not a command set: the firmware's scanner, which waits for a card and
+     * says which protocols it answers. A poller cannot do that job - with no
+     * card present it reports the same timeout a card that will not activate
+     * does - and a scan needs it done, or a MIFARE Classic on the reader is a
+     * scan that never ends.
+     */
+    FlipsoTransportDetect,
     FlipsoTransportDesfire, /**< CMD7 and CMD12: native DESFire commands. */
     FlipsoTransportIso7816, /**< CMD2: an ISO 7816-4 file system. */
     FlipsoTransportCount,
@@ -80,6 +90,9 @@ typedef enum {
 struct FlipsoReader {
     Nfc* nfc;
     NfcPoller* poller;
+    NfcScanner* scanner; /**< Running instead of a poller in the detect stage. */
+    /** The scanner has reported its card; it repeats itself until stopped. */
+    bool detected;
     bool running;
     FlipsoTransport transport;
 
@@ -539,25 +552,29 @@ static void flipso_read_media_app(
 }
 
 /**
- * Identify a DESFire card that carries no ITSO application.
+ * Describe a DESFire card that carries no ITSO application.
  *
  * Only one such card is recognised by name: the Oyster. Its data is TfL's own
  * scheme under TfL's own keys, so there is nothing for the ITSO decoder to do
  * with it - but saying "not an ITSO card" of a card that is plainly a transport
  * card, and one this app is often pointed at, is a poor answer. Naming it and
- * showing what the card will say about itself is a better one.
+ * showing what the card will say about itself is a better one, and any other
+ * DESFire gets the second half of that too: what chip it is and what
+ * applications it holds, which no key is needed for.
  *
  * Selecting the application is the test, rather than looking for it in the
  * application list, because a card is free to keep that list behind its master
  * key while still answering a select.
  */
 static FlipsoReaderStatus flipso_read_other_card(FlipsoReader* reader, MfDesfirePoller* poller) {
+    flipso_media_reset(reader->media);
+
     if(mf_desfire_poller_select_application(poller, &flipso_oyster_aid) != MfDesfireErrorNone) {
+        flipso_read_media_picc(reader, poller);
         return FlipsoReaderStatusNotItso;
     }
 
     FURI_LOG_D(TAG, "Oyster application present");
-    flipso_media_reset(reader->media);
     flipso_read_media_picc(reader, poller);
     /* The select above proved it is there, whatever the listing said. */
     flipso_media_add_app(reader->media, FLIPSO_AID_OYSTER);
@@ -566,10 +583,100 @@ static FlipsoReaderStatus flipso_read_other_card(FlipsoReader* reader, MfDesfire
     return FlipsoReaderStatusOyster;
 }
 
+/* ------------------------------------------------------------------ */
+/* Products and the log, for either transport                          */
+/* ------------------------------------------------------------------ */
+
+FlipsoReaderStatus flipso_reader_read_groups(
+    ItsoCard* card,
+    FlipsoCapture* capture,
+    const FlipsoGroupSource* source) {
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        ItsoProduct* product = &card->products[i];
+        const uint8_t* group = NULL;
+        size_t len = source->read_group(source->context, product->dir_index, &group);
+        bool lost = source->lost(source->context);
+        if(len && !lost) {
+            flipso_capture_add(capture, FlipsoBlockProduct, product->dir_index, group, len);
+            itso_parse_ipe(product, group, len, card->sector_size);
+        }
+
+        FURI_LOG_D(
+            TAG,
+            "E%u: TYP %u.%u, %u bytes, rev %u, bitmap 0x%02X",
+            product->dir_index,
+            product->typ,
+            product->ptyp,
+            (unsigned)len,
+            product->format_rev,
+            product->bitmap);
+
+        /* A product that could not be read is not a product the card does not
+         * have. Carrying on would finish the scan with entries the directory
+         * names and nothing behind them, chirp success and show the user a card
+         * that looks read and is empty - so stop, and let the scan retry the
+         * way it does for a card that drops out anywhere else. Stopping at the
+         * first one also saves the timeout on each remaining read. */
+        if(lost) {
+            FURI_LOG_W(TAG, "Card left the field at entry %u of %u", i + 1, card->product_count);
+            return FlipsoReaderStatusCardLost;
+        }
+    }
+
+    if(card->log_dir_index) {
+        const uint8_t* log = NULL;
+        size_t len = source->read_log(source->context, &log);
+        /* The journey list is the last thing read and the same argument
+         * applies to it: a card showing three of its taps because the fourth
+         * did not arrive is worse than being asked to tap again. */
+        if(source->lost(source->context)) {
+            FURI_LOG_W(TAG, "Card left the field reading the journey log");
+            return FlipsoReaderStatusCardLost;
+        }
+        if(len) {
+            flipso_capture_add(capture, FlipsoBlockLog, 0, log, len);
+            itso_parse_log(card, log, len);
+        }
+    }
+
+    return FlipsoReaderStatusSuccess;
+}
+
+/* The DESFire side of a FlipsoGroupSource. */
+typedef struct {
+    FlipsoReader* reader;
+    MfDesfirePoller* poller;
+} FlipsoDesfireSource;
+
+static size_t flipso_desfire_read_group(void* context, uint8_t sector, const uint8_t** data) {
+    FlipsoDesfireSource* source = context;
+    *data = source->reader->group;
+    return flipso_read_product_group(source->reader, source->poller, sector);
+}
+
+static size_t flipso_desfire_read_log(void* context, const uint8_t** data) {
+    FlipsoDesfireSource* source = context;
+    FlipsoReader* reader = source->reader;
+    /* CMD7 reserves sector S-2 for the log: one cyclic file, not a chain. */
+    uint8_t log_fid = flipso_sector_to_fid(reader, reader->card->sector_count - 2);
+    *data = reader->log;
+    return flipso_reader_read_file(reader, source->poller, log_fid, reader->log, FLIPSO_LOG_BUF);
+}
+
+static bool flipso_desfire_lost(void* context) {
+    FlipsoDesfireSource* source = context;
+    return source->reader->lost_card;
+}
+
 /** The whole read sequence, run on the NFC worker thread once a card responds. */
 static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller* poller) {
     ItsoCard* card = reader->card;
     itso_card_reset(card);
+    /* What the chip says about itself is collected at the end of an ITSO read,
+     * and instead of one for any other DESFire. The CMD2 transport leaves it
+     * alone, so a card that DESFire could describe and CMD2 then turned out
+     * not to hold ITSO either still has its description at the end. */
+    flipso_media_reset(reader->media);
     /* Each attempt starts clean: a transport that got half a card before losing
      * it must not leave those blocks for the next one to save. */
     flipso_capture_reset(reader->capture);
@@ -619,63 +726,51 @@ static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller
         FURI_LOG_W(TAG, "Directory read or parse failed (file %u)", dir_fid);
         /* The shell alone still gives the card number and expiry, so report
          * success and let the UI show what we have. */
+        flipso_read_media_picc(reader, poller);
         return FlipsoReaderStatusSuccess;
     }
 
-    for(uint8_t i = 0; i < card->product_count; i++) {
-        ItsoProduct* product = &card->products[i];
-        size_t len = flipso_read_product_group(reader, poller, product->dir_index);
-        if(len && !reader->lost_card) {
-            flipso_capture_add(
-                reader->capture, FlipsoBlockProduct, product->dir_index, reader->group, len);
-            itso_parse_ipe(product, reader->group, len, card->sector_size);
-        }
-
-        FURI_LOG_D(
-            TAG,
-            "E%u: TYP %u.%u, %u bytes, rev %u, bitmap 0x%02X",
-            product->dir_index,
-            product->typ,
-            product->ptyp,
-            (unsigned)len,
-            product->format_rev,
-            product->bitmap);
-
-        /* A product that could not be read is not a product the card does not
-         * have. Carrying on would finish the scan with entries the directory
-         * names and nothing behind them, chirp success and show the user a card
-         * that looks read and is empty - so stop, and let the scan retry the
-         * way it does for a card that drops out anywhere else. Stopping at the
-         * first one also saves the timeout on each remaining file, which is
-         * most of the second the failed read takes. */
-        if(reader->lost_card) {
-            FURI_LOG_W(TAG, "Card left the field at entry %u of %u", i + 1, card->product_count);
-            return FlipsoReaderStatusCardLost;
-        }
-    }
-
-    if(card->log_dir_index) {
-        uint8_t log_fid = flipso_sector_to_fid(reader, card->sector_count - 2);
-        size_t len = flipso_reader_read_file(reader, poller, log_fid, reader->log, FLIPSO_LOG_BUF);
-        /* The journey list is the last thing read and the same argument applies
-         * to it: a card showing four of its taps because the fifth did not
-         * arrive is worse than being asked to tap again. */
-        if(reader->lost_card) {
-            FURI_LOG_W(TAG, "Card left the field reading the journey log");
-            return FlipsoReaderStatusCardLost;
-        }
-        if(len) {
-            flipso_capture_add(reader->capture, FlipsoBlockLog, 0, reader->log, len);
-            itso_parse_log(card, reader->log, len);
-        }
-    }
-
-    return FlipsoReaderStatusSuccess;
+    FlipsoDesfireSource desfire = {reader, poller};
+    const FlipsoGroupSource source = {
+        .read_group = flipso_desfire_read_group,
+        .read_log = flipso_desfire_read_log,
+        .lost = flipso_desfire_lost,
+        .context = &desfire,
+    };
+    FlipsoReaderStatus status = flipso_reader_read_groups(card, reader->capture, &source);
+    if(status == FlipsoReaderStatusSuccess) flipso_read_media_picc(reader, poller);
+    return status;
 }
 
 /* ------------------------------------------------------------------ */
 /* Poller callbacks                                                    */
 /* ------------------------------------------------------------------ */
+
+/**
+ * The detect stage: report whether the card on the reader speaks ISO 14443-4,
+ * which both transports need. Runs on the scanner's thread, and only ever
+ * reports once - the scanner repeats itself for as long as it runs.
+ */
+static void flipso_reader_scanner_callback(NfcScannerEvent event, void* context) {
+    FlipsoReader* reader = context;
+    if(event.type != NfcScannerEventTypeDetected || reader->detected) return;
+    reader->detected = true;
+
+    bool iso4 = false;
+    for(size_t i = 0; i < event.data.protocol_num; i++) {
+        NfcProtocol protocol = event.data.protocols[i];
+        if(protocol == NfcProtocolIso14443_4a ||
+           nfc_protocol_has_parent(protocol, NfcProtocolIso14443_4a)) {
+            iso4 = true;
+        }
+    }
+    FURI_LOG_I(
+        TAG, "Card detected: %u protocol(s), %s ISO 14443-4", (unsigned)event.data.protocol_num,
+        iso4 ? "speaks" : "does not speak");
+
+    reader->status = iso4 ? FlipsoReaderStatusFound : FlipsoReaderStatusUnsupported;
+    reader->callback(reader->status, reader->context);
+}
 
 /**
  * DESFire transport. Started in extended mode, so the events arriving here come
@@ -725,7 +820,7 @@ FlipsoReader* flipso_reader_alloc(void) {
     memset(reader, 0, sizeof(FlipsoReader));
     reader->nfc = nfc_alloc();
     reader->status = FlipsoReaderStatusIdle;
-    reader->transport = FlipsoTransportDesfire;
+    reader->transport = FlipsoTransportDetect;
     return reader;
 }
 
@@ -746,14 +841,14 @@ bool flipso_reader_next_transport(FlipsoReader* reader) {
         return true;
     }
 
-    reader->transport = FlipsoTransportDesfire;
+    reader->transport = FlipsoTransportDetect;
     return false;
 }
 
 void flipso_reader_reset_transport(FlipsoReader* reader) {
     furi_assert(reader);
     furi_assert(!reader->running);
-    reader->transport = FlipsoTransportDesfire;
+    reader->transport = FlipsoTransportDetect;
 }
 
 void flipso_reader_start(
@@ -779,7 +874,11 @@ void flipso_reader_start(
     reader->shell_fid = FLIPSO_SHELL_FID_DEFAULT;
     reader->descending = true;
 
-    if(reader->transport == FlipsoTransportIso7816) {
+    if(reader->transport == FlipsoTransportDetect) {
+        reader->detected = false;
+        reader->scanner = nfc_scanner_alloc(reader->nfc);
+        nfc_scanner_start(reader->scanner, flipso_reader_scanner_callback, reader);
+    } else if(reader->transport == FlipsoTransportIso7816) {
         /* Only cards that are not DESFire get this far, so the buffers it owns
          * are worth allocating late rather than for every read. */
         if(!reader->cmd2) reader->cmd2 = flipso_cmd2_alloc();
@@ -796,8 +895,14 @@ void flipso_reader_stop(FlipsoReader* reader) {
     furi_assert(reader);
     if(!reader->running) return;
 
-    nfc_poller_stop(reader->poller);
-    nfc_poller_free(reader->poller);
-    reader->poller = NULL;
+    if(reader->scanner) {
+        nfc_scanner_stop(reader->scanner);
+        nfc_scanner_free(reader->scanner);
+        reader->scanner = NULL;
+    } else {
+        nfc_poller_stop(reader->poller);
+        nfc_poller_free(reader->poller);
+        reader->poller = NULL;
+    }
     reader->running = false;
 }

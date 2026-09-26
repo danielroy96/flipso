@@ -15,3 +15,4 @@ test_menu_view
 *.dSYM/
 naptan.dat
 test_naptan
+test_format

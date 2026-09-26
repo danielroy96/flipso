@@ -66,6 +66,14 @@ static bool on_screen(const char* needle) {
     return false;
 }
 
+/** True when some string drawn on the last frame is exactly @p want. */
+static bool line_drawn(const char* want) {
+    for(int i = 0; i < canvas.text_count; i++) {
+        if(strcmp(canvas.texts[i], want) == 0) return true;
+    }
+    return false;
+}
+
 /**
  * Leftmost pixel of the header row, or -1 when nothing was drawn on it.
  *
@@ -170,6 +178,25 @@ int main(void) {
     InputEvent left = {.key = InputKeyLeft, .type = InputTypeShort};
     check("back is not consumed", !view->input(&back, view->context));
     check("left is not consumed", !view->input(&left, view->context));
+
+    /* --- Tags, which keep a product's status readable however long its name. */
+    flipso_menu_view_reset(menu);
+    flipso_menu_view_add_tagged_item(menu, "Reserved journey ticket", "Expired", &icon_a, 30);
+    flipso_menu_view_add_tagged_item(menu, "Card", "", &icon_a, 31);
+    render(menu);
+    show("a long label with a tag");
+    check("the tag is drawn whole", line_drawn("Expired"));
+    check("the label gives way to it", on_screen("...") && !on_screen("ticket"));
+    int label_end = -1, tag_start = -1;
+    for(int i = 0; i < canvas.text_count; i++) {
+        size_t len = strlen(canvas.texts[i]);
+        if(strncmp(canvas.texts[i], "Reserved", 8) == 0)
+            label_end = canvas.text_x[i] + (int)len * STUB_GLYPH_W;
+        if(strcmp(canvas.texts[i], "Expired") == 0) tag_start = canvas.text_x[i];
+    }
+    check("the label stops short of the tag", label_end >= 0 && label_end < tag_start);
+    check("the tag ends inside the text column", tag_start + 7 * STUB_GLYPH_W <= 120);
+    check("an empty tag draws nothing", line_drawn("Card"));
 
     /* --- Headers, which now carry a card's branding. --- */
     /* The title was the fixed string "ITSO Card" until the menu started showing

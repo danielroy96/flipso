@@ -20,31 +20,34 @@ OUT = os.path.join(os.path.dirname(__file__), "..", "..", "images")
 
 ICONS = {}
 
+# A card on its side, as a card is held: a chip and a line of print.
 ICONS["card_10px"] = """
 ..........
-.########.
-.#......#.
-.#.##...#.
-.#.##..##.
-.#.....##.
-.#..#####.
-.#......#.
-.########.
+##########
+#........#
+#.##.....#
+#.##.....#
+#........#
+#.####.#.#
+#........#
+##########
 ..........
 """
 
-# A coin: the purse holds money, and a coin reads at 10px where a "£" does not.
+# A pound sign: the purse holds money, and the sign is what money looks like on
+# a UK card. Drawn to a text face's proportions - about as wide as a digit, the
+# foot no wider than the bowl above it - so it reads as the sign, not a logo.
 ICONS["purse_10px"] = """
-..######..
-.##....##.
-##..##..##
-#..####..#
-#....##..#
-#..######.
-#....##..#
-##..##..##
-.##....##.
-..######..
+....###...
+...#...#..
+...#......
+...#......
+.#####....
+...#......
+...#......
+..#.......
+.#######..
+..........
 """
 
 # Head and shoulders: the ITSO ID and entitlement products name a person.
@@ -61,17 +64,18 @@ ICONS["id_10px"] = """
 #........#
 """
 
-# The contactless mark, which is what a tap actually is.
+# The contactless mark, which is what a tap actually is: three arcs spreading
+# out from the reader.
 ICONS["taps_10px"] = """
 .......#..
-...#...#..
-..#.#..#..
-.#...#.#..
-.#.#..##..
-.#.#..##..
-.#...#.#..
-..#.#..#..
-...#...#..
+....#...#.
+.#...#..#.
+..#..#...#
+..#..#...#
+..#..#...#
+..#..#...#
+.#...#..#.
+....#...#.
 .......#..
 """
 
@@ -89,20 +93,49 @@ ICONS["products_10px"] = """
 #########.
 """
 
+# A receipt with a torn foot: charge to account is spent now and billed later.
+ICONS["account_10px"] = """
+.########.
+.#......#.
+.#.####.#.
+.#......#.
+.#.###..#.
+.#......#.
+.#.####.#.
+.#......#.
+.#.#..#.#.
+..#.##.#..
+"""
+
+# An "i" in a circle: the summary of a card, and the About screen.
+ICONS["info_10px"] = """
+..######..
+.#......#.
+#...##...#
+#........#
+#...##...#
+#...##...#
+#...##...#
+#...##...#
+.#......#.
+..######..
+"""
+
 # --- 10x10: one per product type in the products list ------------------------
 
-# A single ticket with its tear-off perforation.
+# A National Rail ticket: the credit-card sized stock with its coloured bands
+# across the top and bottom edges, and a couple of lines of print between.
 ICONS["ticket_10px"] = """
 ..........
 ##########
-#...#....#
-#...#....#
-#........#
-#........#
-#...#....#
-#...#....#
 ##########
-..........
+#........#
+#.#####..#
+#........#
+#.###....#
+#........#
+##########
+##########
 """
 
 # A calendar: a period ticket or pass is bounded by dates.
@@ -119,17 +152,18 @@ ICONS["pass_10px"] = """
 ..........
 """
 
-# A star for loyalty points.
+# A five-pointed star for loyalty points, with a top point as long as the
+# feet so it stands upright rather than squat.
 ICONS["star_10px"] = """
-....##....
-....##....
-...####...
-##########
-.########.
-..######..
-..######..
-.##....##.
-.#......#.
+....#.....
+....#.....
+...###....
+#########.
+.#######..
+..#####...
+..##.##...
+.##...##..
+.#.....#..
 ..........
 """
 
@@ -165,19 +199,20 @@ ICONS["save_10px"] = """
 ##########
 """
 
-# A pencil, point down-left: the standard mark for editing, and the name is the
-# only part of a saved card there is anything to edit.
+# A pencil, sharpened point down-left and eraser up-right: the standard mark for
+# editing, and the name is the only part of a saved card there is anything to
+# edit.
 ICONS["rename_10px"] = """
-.......###
-......###.
-.....###..
-....###...
-...###....
-..###.....
-.####.....
-.###......
+.......##.
+......####
+.....#.##.
+....#..#..
+...#..#...
+..#..#....
+.#..#.....
+.#.#......
 .##.......
-.#........
+#.........
 """
 
 # A waste bin with its lid: the saved copy goes, the card does not.
@@ -232,74 +267,76 @@ ICONS["warning_10px"] = """
 
 # --- 14x14: the error screen -------------------------------------------------
 
-# A card with a question mark: there is a card, but no ITSO application on it.
+# A card with a question mark: there is a card, but no ITSO data on it.
 ICONS["not_itso_14px"] = """
 ..............
-.############.
-.#..........#.
-.#...####...#.
-.#..##..##..#.
-.#......##..#.
-.#.....##...#.
-.#....##....#.
-.#..........#.
-.#....##....#.
-.#..........#.
-.############.
+..............
+##############
+#............#
+#....####....#
+#...##..##...#
+#.......##...#
+#......##....#
+#............#
+#......##....#
+#............#
+##############
 ..............
 ..............
 """
 
-# A card whose contents are damaged: the shell is there but will not decode.
+# A cracked card: the card is ITSO, but its main record will not decode.
 ICONS["bad_shell_14px"] = """
 ..............
-.############.
-.#..........#.
-.#...####...#.
-.#..#....#..#.
-.#.#..##..#.#.
-.#.#.####.#.#.
-.#.#..##..#.#.
-.#..#....#..#.
-.#...####...#.
-.#..........#.
-.############.
+..............
+##############
+#.....#......#
+#.##...#.....#
+#.##..#......#
+#......#.....#
+#.....#..###.#
+#......#.....#
+#.....#......#
+#......#.....#
+##############
 ..............
 ..............
 """
 
-# A scallop shell: the Oyster card, which is recognised rather than decoded.
+# The roundel: the Oyster is Transport for London's card, and that is the mark
+# everyone knows TfL by. It is recognised rather than decoded.
 ICONS["oyster_14px"] = """
-..............
-.....####.....
-...##.##.##...
-..##..##..##..
-.##...##...##.
-.#...#..#...#.
-##...#..#...##
-#...##..##...#
-#...#....#...#
-#..##....##..#
-#..#......#..#
-##.#......#.##
-.############.
+....######....
+..##########..
+.###......###.
+.##........##.
+##..........##
+##############
+##############
+##############
+##..........##
+.##........##.
+.###......###.
+..##########..
+....######....
 ..............
 """
 
-# A card leaving the field: the read did not finish.
+# A card moving off to the right, speed lines behind it: the card left before
+# the read finished.
 ICONS["read_failed_14px"] = """
 ..............
-.#########....
-.#.......#..#.
-.#.......#.#..
-.#.......#.#..
-.#.......##...
-.#........#.#.
-.#........#.#.
-.#.......##...
-.#.......#.#..
-.#.......#.#..
-.#########..#.
+..............
+....##########
+....#........#
+##..#.##.....#
+....#.##.....#
+###.#........#
+....#........#
+##..#.####...#
+....#........#
+....##########
+..............
 ..............
 ..............
 """

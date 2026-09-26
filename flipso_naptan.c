@@ -147,6 +147,10 @@ bool flipso_naptan_available(const FlipsoNaptan* instance) {
     return instance && instance->open;
 }
 
+uint32_t flipso_naptan_count(const FlipsoNaptan* instance) {
+    return flipso_naptan_available(instance) ? instance->stops : 0;
+}
+
 /**
  * Copy the name an index entry points at into the instance buffer.
  * @param at  offset of the name pointer within the entry.

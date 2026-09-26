@@ -132,6 +132,10 @@ bool flipso_stations_available(const FlipsoStations* instance) {
     return instance && instance->open;
 }
 
+uint32_t flipso_stations_count(const FlipsoStations* instance) {
+    return flipso_stations_available(instance) ? instance->count : 0;
+}
+
 /** Parse a four-character NLC into the number the index is keyed on. */
 static bool flipso_stations_key(const char* nlc, uint16_t* out) {
     uint16_t value = 0;

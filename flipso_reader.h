@@ -5,7 +5,9 @@
  * ITSO defines several customer media, and they do not share a command set. The
  * reader therefore has more than one transport and tries them in turn: DESFire
  * first (CMD7 and CMD12), then ISO 7816 (CMD2, the generic micro-processor media
- * that SPT's Glasgow Subway card uses). Each transport needs its own poller, so
+ * that SPT's Glasgow Subway card uses). In front of both is a detection stage,
+ * the firmware's NFC scanner, which says what kind of card is on the reader
+ * before either transport commits to talking to it. Each transport needs its own poller, so
  * switching between them means stopping one and starting the next - see
  * flipso_reader_next_transport().
  *
@@ -59,9 +61,53 @@ typedef enum {
      */
     FlipsoReaderStatusCardLost,
     FlipsoReaderStatusOyster, /**< A TfL Oyster: known, and deliberately not decoded. */
+    /**
+     * A card is on the reader and it does not speak ISO 14443-4, which every
+     * ITSO medium Flipso reads does: a MIFARE Classic or Ultralight, a hotel
+     * key, an older ITSO card type. Without this the scan would wait for ever
+     * on a card that can never answer.
+     */
+    FlipsoReaderStatusUnsupported,
+    /**
+     * The first stage of a scan found an ISO 14443-4 card on the reader. Not a
+     * result: advance to the next transport and start again, as for NotItso.
+     */
+    FlipsoReaderStatusFound,
 } FlipsoReaderStatus;
 
 typedef struct FlipsoReader FlipsoReader;
+
+/**
+ * Where a transport gets a card's data groups from.
+ *
+ * The two transports address sectors differently - a DESFire file number, a
+ * CMD2 directory path - but once the shell and directory are in hand they walk
+ * the products and the log the same way, and that walk lives in one place:
+ * flipso_reader_read_groups().
+ */
+typedef struct {
+    /** Read the sector chain starting at @p sector; the bytes are left in @p data. */
+    size_t (*read_group)(void* context, uint8_t sector, const uint8_t** data);
+    /** Read the cyclic log, or return 0 when the card keeps none. */
+    size_t (*read_log)(void* context, const uint8_t** data);
+    /** True once the card has stopped answering. */
+    bool (*lost)(void* context);
+    void* context;
+} FlipsoGroupSource;
+
+/**
+ * Read and decode every product the directory lists, then the journey log.
+ *
+ * @param card    with the shell and directory already decoded into it.
+ * @param capture keeps each group's bytes, so the card can be saved.
+ * @return Success, or CardLost when the card left the field part way: a
+ *         product that could not be read is not a product the card does not
+ *         have, and finishing would show a card that looks read and is not.
+ */
+FlipsoReaderStatus flipso_reader_read_groups(
+    ItsoCard* card,
+    FlipsoCapture* capture,
+    const FlipsoGroupSource* source);
 
 /** Invoked from the NFC worker thread once a card has been processed. */
 typedef void (*FlipsoReaderCallback)(FlipsoReaderStatus status, void* context);

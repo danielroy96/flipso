@@ -613,6 +613,36 @@ static void flipso_carry_gone_products(
     }
 }
 
+/** True for the blocks a merge adds, as opposed to the ones a read produced. */
+static bool flipso_capture_is_history(uint8_t kind) {
+    return kind == FlipsoBlockLogHistory || kind == FlipsoBlockValueHistory ||
+           kind == FlipsoBlockProductHistory;
+}
+
+/**
+ * Take out whatever an earlier merge added, closing up the arena behind it.
+ *
+ * Blocks are appended in the order they arrive, so their offsets rise with
+ * their index and each one moves down into the space before it, never over a
+ * block not yet moved.
+ */
+static void flipso_capture_drop_history(FlipsoCapture* capture) {
+    size_t write = 0;
+    uint8_t kept = 0;
+    for(uint8_t i = 0; i < capture->count; i++) {
+        FlipsoCaptureBlock block = capture->blocks[i];
+        if(flipso_capture_is_history(block.kind)) continue;
+        if(block.offset != write) {
+            memmove(capture->bytes + write, capture->bytes + block.offset, block.len);
+            block.offset = (uint16_t)write;
+        }
+        write += block.len;
+        capture->blocks[kept++] = block;
+    }
+    capture->count = kept;
+    capture->len = write;
+}
+
 void flipso_capture_merge_history(
     FlipsoCapture* capture,
     const FlipsoCapture* previous,
@@ -621,6 +651,12 @@ void flipso_capture_merge_history(
     memset(&found, 0, sizeof(found));
     if(diff) *diff = found;
     if(!capture || !previous) return;
+
+    /* The save screen merges before it asks, so a user who backs out and asks
+     * again merges the same record into this capture a second time. Starting
+     * from the read alone makes that come out exactly as the first merge did,
+     * rather than finding every history slot already taken. */
+    flipso_capture_drop_history(capture);
 
     /* The largest history the log can produce, on the stack rather than the
      * heap: 384 bytes against the app's 4 KB. */

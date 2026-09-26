@@ -66,8 +66,9 @@ void flipso_saved_suggest_name(
 /**
  * Write a capture to @p path, creating the folder if need be.
  *
- * A write that fails part way takes the file with it: a half-written card would
- * load as a card with pieces missing rather than as a card that is not there.
+ * The file is written beside @p path and moved into place once it is whole, so
+ * a write that fails part way leaves no half-written card and, when @p path is
+ * a record being updated, leaves that record exactly as it was.
  */
 bool flipso_saved_write(const FlipsoCapture* capture, const char* path);
 
@@ -104,9 +105,11 @@ bool flipso_saved_find(const FlipsoCapture* capture, FuriString* path, uint32_t*
  * Blocks until they pick one or press Back, so it is called from a scene's
  * enter handler rather than from a draw callback.
  *
+ * @param select the card to put the cursor on - the one the user has just come
+ *               back from - or empty to start at the top of the list.
  * @return false when they backed out; @p path is untouched in that case.
  */
-bool flipso_saved_pick(FuriString* path);
+bool flipso_saved_pick(FuriString* path, const FuriString* select);
 
 bool flipso_saved_delete(const char* path);
 

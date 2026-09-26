@@ -149,6 +149,105 @@ int main(void) {
     check("the last line is shown", line_drawn("Line 19"));
     check("it does not scroll past the end", on_screen("Line 1"));
 
+    /* Left and Right page by a screen less a line. */
+    press(text, InputKeyLeft, InputTypeShort);
+    render(text);
+    check("left pages back", line_drawn("Line 11") && !line_drawn("Line 19"));
+    for(int i = 0; i < 10; i++) press(text, InputKeyLeft, InputTypeShort);
+    render(text);
+    check("left stops at the top", line_drawn("Line 0"));
+    press(text, InputKeyRight, InputTypeShort);
+    render(text);
+    check("right pages forward", line_drawn("Line 4") && !line_drawn("Line 3"));
+
+    /* --- Indentation. --- */
+    flipso_text_view_set_text(text, "Deposit: 5.00\n  paid by Card\n");
+    render(text);
+    show("an indented detail line");
+    int top_x = -1, detail_x = -1;
+    for(int i = 0; i < canvas.text_count; i++) {
+        if(strcmp(canvas.texts[i], "Deposit: 5.00") == 0) top_x = canvas.text_x[i];
+        if(strcmp(canvas.texts[i], "paid by Card") == 0) detail_x = canvas.text_x[i];
+    }
+    check("the leading spaces are not drawn as text", !on_screen("  paid"));
+    check("the detail is indented under its line", top_x >= 0 && detail_x > top_x);
+
+    /* An indented line that wraps keeps its indent on every row. */
+    flipso_text_view_set_text(text, "  Considered: Pay as you go and more words\n");
+    render(text);
+    show("an indented line that wraps");
+    check("an indented line wraps", canvas.text_count >= 2);
+    bool all_indented = canvas.text_count >= 2;
+    for(int i = 0; i < canvas.text_count; i++) {
+        if(canvas.text_x[i] <= 2) all_indented = false;
+    }
+    check("every row of it stays indented", all_indented);
+
+    /* A labelled value that wraps hangs its second row in. */
+    flipso_text_view_set_text(text, "Operator: South Western Railway\n");
+    render(text);
+    check(
+        "the value's continuation hangs under the label",
+        canvas.text_count == 2 && canvas.text_x[1] > canvas.text_x[0]);
+
+    /* --- No blank row after the last line. --- */
+    flipso_text_view_set_text(text, "One\nTwo\nThree\nFour\nFive\nSix\n");
+    render(text);
+    for(int i = 0; i < 10; i++) press(text, InputKeyDown, InputTypeShort);
+    render(text);
+    show("scrolled to the end of six lines");
+    check("a trailing newline adds no blank row", line_drawn("Two") && line_drawn("Six"));
+
+    /* --- A word longer than the line buffer is still all shown. --- */
+    FuriString* huge = furi_string_alloc();
+    for(int i = 0; i < 150; i++) furi_string_push_back(huge, (char)('A' + i % 26));
+    flipso_text_view_set_text(text, furi_string_get_cstr(huge));
+    render(text);
+    size_t shown = 0;
+    for(int i = 0; i < canvas.text_count; i++) shown += strlen(canvas.texts[i]);
+    /* Five rows of 24 are on screen; the rest is below, and counted. */
+    check("a 150 character word fills the screen", shown == 5 * 24);
+    for(int i = 0; i < 10; i++) press(text, InputKeyDown, InputTypeShort);
+    render(text);
+    check("and its tail is reachable", on_screen("QRST"));
+    furi_string_free(huge);
+
+    /* --- The currency symbols, which the fonts do not have. --- */
+    flipso_text_view_set_text(text, "Balance: \xC2\xA3" "24.15\nFare: \xE2\x82\xAC" "1.00\n");
+    render(text);
+    show("pounds and euros");
+    int glyph_rows = 0;
+    for(int y = 0; y < STUB_H; y++) {
+        for(int x = 0; x < STUB_W; x++) {
+            if(canvas.pixels[y][x] == '%') {
+                glyph_rows++;
+                break;
+            }
+        }
+    }
+    /* Seven rows of each symbol, one symbol on each of two lines. */
+    check("both symbols are drawn by hand", glyph_rows == 14);
+    check("the amounts are drawn", on_screen("24.15") && on_screen("1.00"));
+    check("no raw UTF-8 reaches the font", !on_screen("\xC2") && !on_screen("\xE2"));
+
+    /* --- Heading icons. --- */
+    static const Icon heading = {.width = 10, .height = 10, .mark = '@'};
+    static const Icon* const icons[] = {&heading};
+    flipso_text_view_set_icons(text, icons, 1);
+    flipso_text_view_set_text(text, "\e#\x11Pay as you go\nBody\n");
+    render(text);
+    show("a heading with an icon");
+    check("the heading icon is drawn", canvas.pixels[3][4] == '@');
+    check("the icon number is not drawn as text", line_drawn("Pay as you go"));
+    int heading_x = -1;
+    for(int i = 0; i < canvas.text_count; i++) {
+        if(strcmp(canvas.texts[i], "Pay as you go") == 0) heading_x = canvas.text_x[i];
+    }
+    check("the heading text clears the icon", heading_x >= 12);
+    flipso_text_view_set_text(text, "\e#\x15Out of range\n");
+    render(text);
+    check("an unknown icon number is left as text", on_screen("Out of range"));
+
     /* --- Keys that belong to the scene manager. --- */
     View* view = flipso_text_view_get_view(text);
     InputEvent back = {.key = InputKeyBack, .type = InputTypeShort};

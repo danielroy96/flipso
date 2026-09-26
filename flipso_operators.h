@@ -22,6 +22,9 @@ typedef struct FlipsoOperators FlipsoOperators;
 FlipsoOperators* flipso_operators_alloc(void);
 void flipso_operators_free(FlipsoOperators* instance);
 
+/** Entries read from the user's operators file; 0 when there is none. */
+uint16_t flipso_operators_user_count(const FlipsoOperators* instance);
+
 /**
  * Resolve an OID to a name, preferring the user's file over the built-in table.
  * @return the name, or NULL when the operator is unknown.

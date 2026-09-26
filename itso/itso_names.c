@@ -10,7 +10,7 @@
 const char* itso_typ_name(uint8_t typ) {
     switch(typ) {
     case 0:
-        return "Private app";
+        return "Private product";
     case ItsoTypStoredTravelRights:
         return "Pay as you go";
     case ItsoTypLoyalty1:
@@ -23,7 +23,7 @@ const char* itso_typ_name(uint8_t typ) {
     case ItsoTypId:
         return "ITSO ID";
     case ItsoTypLoyalty2:
-        return "Loyalty 2";
+        return "Loyalty";
     case ItsoTypPeriodTicket:
         return "Period ticket";
     case ItsoTypJourneyTicket:
@@ -33,11 +33,11 @@ const char* itso_typ_name(uint8_t typ) {
     case ItsoTypVoucher:
         return "Voucher";
     case ItsoTypTolling:
-        return "Tolling";
+        return "Toll pass";
     case ItsoTypPeriodCompact:
         return "Period pass";
     case ItsoTypCarnet:
-        return "Carnet";
+        return "Book of tickets";
     case ItsoTypMultiUse:
         return "Multi-use ticket";
     default:
@@ -144,29 +144,33 @@ const char* itso_profile_name(uint8_t code) {
 }
 
 const char* itso_transaction_name(uint8_t code) {
+    /* EventTypeCode, TS 1000-5 annex A.20. Four bits on the card, so only the
+     * first sixteen of its codes can appear. Code 0 does three jobs there - a
+     * mid-journey check, a product created empty, a change with no code of its
+     * own - so it is named for none of them in particular. */
     switch(code) {
     case 0:
-        return "Event";
+        return "Other";
     case 1:
         return "Sale";
     case 2:
-        return "Validation (out)";
+        return "Outward journey";
     case 3:
-        return "Undo";
+        return "Cancelled";
     case 4:
-        return "Top up";
+        return "Top-up";
     case 5:
-        return "Auto top up";
+        return "Auto top-up";
     case 6:
-        return "Validation (rtn)";
+        return "Return journey";
     case 7:
-        return "Fare deducted";
+        return "Fare paid";
     case 8:
         return "Exchange";
     case 9:
-        return "Loyalty redeemed";
+        return "Points redeemed";
     case 10:
-        return "Refund";
+        return "Refunded";
     case 11:
         return "Tap in";
     case 12:
@@ -200,11 +204,11 @@ const char* itso_shell_reject_name(ItsoShellReject reject) {
     case ItsoShellRejectShort:
         return "Too short";
     case ItsoShellRejectIin:
-        return "Bad IIN";
+        return "Not ITSO's issuer number";
     case ItsoShellRejectCompact:
-        return "Compact shell";
+        return "Compact layout";
     case ItsoShellRejectGeometry:
-        return "Bad geometry";
+        return "Impossible layout";
     case ItsoShellAccepted:
         return "Accepted";
     default:
@@ -225,7 +229,7 @@ const char* itso_payment_name(uint8_t code) {
     case 3:
         return "Card";
     case 4:
-        return "IEP";
+        return "E-purse";
     case 5:
         return "Charge to account";
     case 6:

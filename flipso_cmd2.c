@@ -395,6 +395,32 @@ static size_t flipso_cmd2_read_group(
     return total;
 }
 
+/* The CMD2 side of a FlipsoGroupSource. */
+typedef struct {
+    FlipsoCmd2* cmd2;
+    Iso14443_4aPoller* poller;
+    const ItsoCard* card;
+} FlipsoCmd2Source;
+
+static size_t flipso_cmd2_source_group(void* context, uint8_t sector, const uint8_t** data) {
+    FlipsoCmd2Source* source = context;
+    *data = source->cmd2->group;
+    return flipso_cmd2_read_group(source->cmd2, source->poller, source->card, sector);
+}
+
+static size_t flipso_cmd2_source_log(void* context, const uint8_t** data) {
+    /* CMD2 reserves no sector for the cyclic log: it is an ordinary data group
+     * starting at the sector its Directory entry names, exactly like a
+     * product. */
+    FlipsoCmd2Source* source = context;
+    return flipso_cmd2_source_group(context, source->card->log_dir_index, data);
+}
+
+static bool flipso_cmd2_source_lost(void* context) {
+    FlipsoCmd2Source* source = context;
+    return source->cmd2->link_error;
+}
+
 FlipsoReaderStatus flipso_cmd2_read(
     FlipsoCmd2* cmd2,
     Iso14443_4aPoller* poller,
@@ -502,45 +528,12 @@ FlipsoReaderStatus flipso_cmd2_read(
     }
     flipso_capture_add(capture, FlipsoBlockDirectory, 0, cmd2->dir, cmd2->dir_len);
 
-    for(uint8_t i = 0; i < card->product_count; i++) {
-        ItsoProduct* product = &card->products[i];
-        size_t len = flipso_cmd2_read_group(cmd2, poller, card, product->dir_index);
-        if(len && !cmd2->link_error) {
-            flipso_capture_add(
-                capture, FlipsoBlockProduct, product->dir_index, cmd2->group, len);
-            itso_parse_ipe(product, cmd2->group, len, card->sector_size);
-        }
-
-        FURI_LOG_D(
-            TAG,
-            "E%u: TYP %u.%u, %u bytes, rev %u, bitmap 0x%02X",
-            product->dir_index,
-            product->typ,
-            product->ptyp,
-            (unsigned)len,
-            product->format_rev,
-            product->bitmap);
-
-        if(cmd2->link_error) {
-            FURI_LOG_W(
-                TAG, "Card left the field at entry %u of %u (CMD2)", i + 1, card->product_count);
-            return FlipsoReaderStatusCardLost;
-        }
-    }
-
-    /* CMD2 reserves no sector for the cyclic log: it is an ordinary data group
-     * starting at the sector its Directory entry names, exactly like a product. */
-    if(card->log_dir_index) {
-        size_t len = flipso_cmd2_read_group(cmd2, poller, card, card->log_dir_index);
-        if(cmd2->link_error) {
-            FURI_LOG_W(TAG, "Card left the field reading the journey log (CMD2)");
-            return FlipsoReaderStatusCardLost;
-        }
-        if(len) {
-            flipso_capture_add(capture, FlipsoBlockLog, 0, cmd2->group, len);
-            itso_parse_log(card, cmd2->group, len);
-        }
-    }
-
-    return FlipsoReaderStatusSuccess;
+    FlipsoCmd2Source cmd2_source = {cmd2, poller, card};
+    const FlipsoGroupSource source = {
+        .read_group = flipso_cmd2_source_group,
+        .read_log = flipso_cmd2_source_log,
+        .lost = flipso_cmd2_source_lost,
+        .context = &cmd2_source,
+    };
+    return flipso_reader_read_groups(card, capture, &source);
 }

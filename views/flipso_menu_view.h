@@ -23,6 +23,8 @@ extern "C" {
  * saved card remembers from before the card dropped them. */
 #define FLIPSO_MENU_MAX_ITEMS 20
 #define FLIPSO_MENU_LABEL_LEN 32
+/** Longest tag, terminator included: "Off card". */
+#define FLIPSO_MENU_TAG_LEN   12
 
 typedef struct FlipsoMenuView FlipsoMenuView;
 
@@ -60,6 +62,22 @@ void flipso_menu_view_set_header_icon(FlipsoMenuView* instance, const Icon* icon
 void flipso_menu_view_add_item(
     FlipsoMenuView* instance,
     const char* label,
+    const Icon* icon,
+    uint32_t id);
+
+/**
+ * Append a row with a short tag drawn at its right-hand end.
+ *
+ * The tag is what a row says about its item - "Expired", "Off card" - and it
+ * is kept whole: the label is what gives way when the two do not fit, because
+ * a status cut to "[expi..." is a status nobody can read.
+ *
+ * @param tag copied; NULL or empty for none.
+ */
+void flipso_menu_view_add_tagged_item(
+    FlipsoMenuView* instance,
+    const char* label,
+    const char* tag,
     const Icon* icon,
     uint32_t id);
 
