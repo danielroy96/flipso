@@ -225,6 +225,9 @@ bool flipso_saved_find(const FlipsoCapture* capture, FuriString* path, uint32_t*
             furi_string_printf(candidate, "%s/%s", FLIPSO_SAVED_FOLDER, name);
             if(!file_stream_open(
                    stream, furi_string_get_cstr(candidate), FSAM_READ, FSOM_OPEN_EXISTING)) {
+                /* Closed even so, or the path stays registered as open and the
+                 * next open of it waits for ever (see flipso_stations_try()). */
+                file_stream_close(stream);
                 continue;
             }
 

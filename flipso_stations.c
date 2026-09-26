@@ -85,6 +85,13 @@ static bool flipso_stations_read_header(FlipsoStations* instance) {
 /** Open @p path if it holds a table we understand. */
 static bool flipso_stations_try(FlipsoStations* instance, const char* path) {
     if(!storage_file_open(instance->file, path, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        /* Close even though the open failed: the storage service registers the
+         * path before it tries the file, and only a close takes it back off.
+         * Left there, the next launch's open of the same missing path is told
+         * it is already open and waits for ever for a close that never comes -
+         * the app hangs before its first frame, behind the desktop, and the
+         * loader cannot close it. The SDK says so on storage_file_open(). */
+        storage_file_close(instance->file);
         FURI_LOG_D(TAG, "No station table at %s", path);
         return false;
     }

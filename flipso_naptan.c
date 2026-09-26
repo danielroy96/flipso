@@ -103,6 +103,8 @@ static bool flipso_naptan_read_header(FlipsoNaptan* instance) {
 /** Open @p path if it holds a table we understand. */
 static bool flipso_naptan_try(FlipsoNaptan* instance, const char* path) {
     if(!storage_file_open(instance->file, path, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        /* A failed open still has to be closed; see flipso_stations_try(). */
+        storage_file_close(instance->file);
         FURI_LOG_D(TAG, "No stop table at %s", path);
         return false;
     }

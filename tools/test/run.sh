@@ -54,6 +54,12 @@ ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
 ./test_naptan
 
 echo
+echo "Storage opens close on failure"
+# A failed open that is not closed leaves the path registered as open, and the
+# next launch of the app hangs on it behind the desktop. See the script.
+python3 "$ROOT/tools/test/lint_storage.py"
+
+echo
 echo "flipctl serial recovery"
 # Pure Python and needs no Flipper: it injects the USB CDC drop that cannot be
 # provoked on demand from a real device.
