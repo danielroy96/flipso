@@ -50,6 +50,16 @@ typedef struct {
  * specification, version 02-01, which uses real organisations in its worked
  * examples of ISAM IDs and shell reference numbers.
  *
+ * "Watson 2019" is Harley Watson's Abertay dissertation on ITSO data integrity
+ * (lobi.to/static/posts/papertickets/dissertation.pdf), whose table 1 lists
+ * eighteen cards the author held, each with its issuer, scheme and the OID Smart
+ * Ticket Checker read from it. The OIDs there are decimal, as here: its 0109,
+ * 0196 and 0247 are this table's 109, 196 and 247. A scheme it names is used as
+ * the brand only where it is the card's own name; "Smart", "Smartcard" and
+ * "STNR" (Smart Ticketing on National Rail) describe the technology. Where that
+ * left a gap, the brand is the one the operator sells the card under on its own
+ * website, checked 2026-09-27.
+ *
  * Entries must stay sorted by OID: lookup is a binary search.
  */
 static const ItsoOperatorEntry itso_operator_table[] = {
@@ -65,7 +75,34 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * issued now and wrong only for legacy stock. The alternative was no brand
      * at all for either. */
     {109, "South Western Railway", "SWR Touch"},
-    {143, "Southern", NULL}, /* RSPS3002 appendix D.3, example POST SET address */
+    /* Watson 2019, a ScotRail card read on both DESFire and CMD2 media. The
+     * scheme is recorded only as "Smartcard", so the brand names the issuer
+     * too, as c2c's does. */
+    {116, "ScotRail", "ScotRail Smartcard"},
+    /* Watson 2019, the only card in its table carrying both tickets and an
+     * ePurse, then TfGM's "get me there" card. TfGM has since rebranded its
+     * network as the Bee Network and the card as the Bee Card. As with OID 109,
+     * the OID is assumed to have carried across the rebrand and the brand is the
+     * current one, so a legacy get me there card is titled as a Bee Card. */
+    {125, "Bee Network", "Bee Card"},
+    /* Watson 2019 read this OID from two Dundee cards: a OneScotland National
+     * Entitlement Card on MIFARE Classic, which Flipso cannot read, and a
+     * saltirecard on CMD2. Two schemes on one OID, so like OID 165 the brand is
+     * the issuer, which is true of either card. */
+    {130, "Dundee City Council", "Dundee City Council"},
+    /* RSPS3002 appendix D.3, example POST SET address. Watson 2019 read it as the
+     * shell owner of a "The Key" card issued by Govia, whose Govia Thameslink
+     * Railway runs Southern - the same Go-Ahead scheme as OID 289 below. */
+    {143, "Southern", "The Key"},
+    /* Watson 2019, written there as "m-card"; this is how the scheme styles it.
+     * The dissertation names the issuer "West Yorkshire TA"; the combined
+     * authority is the body that runs MCard today. */
+    {152, "West Yorkshire Combined Authority", "MCard"},
+    /* Watson 2019, which calls the scheme "My Xplore" but also quotes an older
+     * source calling the card "Discovr". Both are right: Xplore Dundee's own
+     * news page says MyXplore replaced Discovr from 2 January 2017, and the
+     * brand is the current one, as with OID 109. */
+    {162, "Xplore Dundee", "MyXplore"},
     /* Shell owner of a Reading Buses card, read 2026-09-26, which also owns the
      * period ticket on it. Reading Buses is the trading name of Reading Transport
      * Ltd, the municipal operator; the council's own OID is 165 below. */
@@ -76,7 +113,13 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * the holder whose pass it is, where "ITSO Card" would tell them nothing. */
     {165, "Reading Borough Council", "Reading Borough Council"},
     /* Shell owner of an SPT Subway card, read 2026-09-17. The Subway's reusable
-     * smartcard is the one ITSO scheme still on ISO 7816 media (CMD2). */
+     * smartcard is the one ITSO scheme still on ISO 7816 media (CMD2).
+     *
+     * Watson 2019 read the same OID from a Subway card and names the scheme
+     * "Bramble". The brand stays as the card in hand has it. Watson also gives
+     * 196 for a Subway paper ticket, where the one read here (OID 8323 below)
+     * had the generic compact-shell 8189 - an older ticket, or Smart Ticket
+     * Checker showing a different field; not settled. */
     {196, "SPT (Strathclyde)", "SPT Subway"},
     /* Shell owner of a Freedom Pass, read 2026-09-17. The scheme is run by
      * London Councils for the London boroughs; the name is from that, the OID
@@ -90,9 +133,21 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * itself. No brand: it issues no card of its own.
      *
      * This entry previously read "South Western Railway", on the strength of a
-     * comment that actually described OID 109. Hence the provenance above. */
+     * comment that actually described OID 109. Hence the provenance above.
+     *
+     * Watson 2019 read it as the shell owner of a Greater Anglia smartcard.
+     * That fits a shared SEFT OID - Greater Anglia is inside the SEFT area - and
+     * is exactly why there is no brand: the shell is not one operator's. */
     {246, "SEFT Central Products", NULL},
-    {247, "c2c", "c2c Smart"}, /* RSPS3002 appendix D.2, "a C2C live Shell ISRN" */
+    /* RSPS3002 appendix D.2, "a C2C live Shell ISRN"; Watson 2019 read it from
+     * a c2c Smart card. */
+    {247, "c2c", "c2c Smart"},
+    /* Watson 2019 records these three National Rail operators' cards only as
+     * STNR. Each operator's site sells it as its own "Smartcard"; Chiltern's
+     * says "Chiltern Railways Smartcard", shortened so the header fits. */
+    {262, "Chiltern Railways", "Chiltern Smartcard"},
+    {285, "CrossCountry", "CrossCountry Smartcard"},
+    {288, "TransPennine Express", "TPE Smartcard"},
     /* Shell owner of a Southeastern "The Key" card, read 2026-09-18. The Key is
      * Go-Ahead's scheme rather than one operator's, so other Go-Ahead operators
      * issue Key cards of their own under their own OIDs - unlike OID 109 above,
@@ -100,6 +155,13 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * the operator rather than the group is what makes the product lines read
      * correctly; the brand is what is printed on the card. */
     {289, "Southeastern", "The Key"},
+    {303, "McGill's", "Go! Smart"}, /* Watson 2019, a CMD2 card */
+    /* Watson 2019, a CMD2 "Tripper" card, which it lists under SPT. SPT's own
+     * site says Tripper is not delivered by SPT: it is the Glasgow Bus
+     * Alliance's multi-operator bus ticket, issued by Glasgow Smartzone
+     * Ticketing Ltd (glasgowtripper.co.uk terms) and sold as Glasgow Tripper.
+     * The OID is from the card; the name is from who issues that card. */
+    {313, "Glasgow Smartzone Ticketing", "Glasgow Tripper"},
     {1136, "SEFT", NULL}, /* RSPS3002 appendix D.1, South East Flexible Ticketing */
     /* ITSO's own National Rail stored travel rights scheme - STR is the TS 1000
      * name for a purse - named for what a holder would call it. */

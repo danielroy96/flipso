@@ -46,6 +46,10 @@ card**, rather than waiting on it for ever.
 
 ITSO operator IDs/names aren't published anywhere. I've made a start using 
 cards in my possession/cards I could borrow off friends/colleagues.
+The rest come from two public documents that happen to name real OIDs: Rail
+Settlement Plan's RSPS3002, whose worked examples use real organisations, and
+table 1 of Harley Watson's 2019 dissertation on ITSO, which lists the OID of
+each of eighteen UK cards the author collected. Each entry cites its source.
 
 `itso/itso_operators.c` holds one table with two columns for each OID:
 

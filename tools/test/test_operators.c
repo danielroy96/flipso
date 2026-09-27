@@ -104,8 +104,9 @@ int main(void) {
      * a new entry needs a line, and the search finds it only while the table
      * stays sorted.
      */
-    static const uint16_t known[] = {
-        78, 96, 109, 143, 163, 165, 196, 226, 246, 247, 289, 1136, 8000, 8288};
+    static const uint16_t known[] = {78,  96,  109, 116,  125,  130,  143, 152, 162,
+                                     163, 165, 196, 226,  246,  247,  262, 285, 288,
+                                     289, 303, 313, 1136, 8000, 8288, 8323};
     unsigned unreachable = 0;
     for(size_t i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
         if(!itso_operator_name(known[i])) unreachable++;
@@ -136,6 +137,10 @@ int main(void) {
      * product owner must not lend its name to somebody else's card. */
     same("an operator that brands no card reports none", itso_operator_brand(78), NULL);
     same("an unknown operator has no brand", itso_operator_brand(4242), NULL);
+    /* STNR names the technology, not the card: the brand is what the operator
+     * sells its card as. */
+    same("a National Rail operator is named", itso_operator_name(262), "Chiltern Railways");
+    same("and titles its card as it sells it", itso_operator_brand(262), "Chiltern Smartcard");
 
     FlipsoOperators* operators = flipso_operators_alloc();
     same(
