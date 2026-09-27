@@ -461,8 +461,56 @@ int main(int argc, char** argv) {
         check("and its summary says so, of a ticket", shows(text, "Ticket: Expired "));
         check("with no card expiry line", !shows(text, "Card expires"));
 
+        /* A paper ticket's Summary answers what its holder asks: is it good,
+         * how much is left on it, when or where it was last used, and what it
+         * cost - all from its one product, since it keeps no log. */
+        furi_string_reset(text);
+        flipso_format_summary(text, &f, &t2);
+        check(
+            "a day ticket's summary has its state, last use and price",
+            shows(
+                text,
+                "Ticket: Active\n"
+                "Paper period ticket: Until 27/09/2026\n"
+                "Last used: 27/09/2026 17:47\n"
+                "Price paid: \xC2\xA3"
+                "4.45\n"));
+
+        itso_card_reset(&t2);
+        itso_parse_type2(&t2, cmd4_return, sizeof(cmd4_return));
+        furi_string_reset(text);
+        flipso_format_summary(text, &f, &t2);
+        check(
+            "a return's summary has its rides left and where it was last used",
+            shows(
+                text,
+                "Ticket: Active\n"
+                "Multi-use ticket: Until 26/09/2026\n"
+                "  Rides left: 1\n"
+                "Last used: Hillhead\n"
+                "Price paid: \xC2\xA3"
+                "3.30\n"));
+        check("a place with no time claims no time", !shows(text, "When: "));
+
+        itso_card_reset(&t2);
+        itso_parse_type2(&t2, cmd4_multileg, sizeof(cmd4_multileg));
+        furi_string_reset(text);
+        flipso_format_summary(text, &f, &t2);
+        check(
+            "a multi-leg ticket's summary has when it was last used",
+            shows(text, "  Rides left: 7\nLast used: 21/09/2026 08:20\n"));
+
+        itso_card_reset(&t2);
+        itso_parse_type2(&t2, cmd4_location, sizeof(cmd4_location));
+        furi_string_reset(text);
+        flipso_format_summary(text, &f, &t2);
+        check("a day ticket never used says so", shows(text, "Last used: Never\n"));
+
         itso_card_reset(&t2);
         itso_parse_type2(&t2, cmd4_unused, sizeof(cmd4_unused));
+        furi_string_reset(text);
+        flipso_format_summary(text, &f, &t2);
+        check("a single never used says so", shows(text, "Last used: Never\n"));
         furi_string_reset(text);
         flipso_format_card(text, &f, &t2, NULL, 0);
         check("an Infineon chip is named", shows(text, "Maker: Infineon\n"));

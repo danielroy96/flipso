@@ -446,6 +446,14 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
     if(card->dir_valid && !shown) furi_string_cat(out, "Products: None\n");
     if(!card->dir_valid) furi_string_cat(out, "Products: Could not be read\n");
 
+    /* A paper ticket keeps no log, so what a card's last tap says is in its one
+     * product instead - and a holder checks a ticket against what they paid. */
+    if(card->shell_compact && card->product_count) {
+        const ItsoProduct* ticket = &card->products[0];
+        flipso_cat_last_use(out, f, card, ticket, "Last used");
+        flipso_cat_money(out, "", "Price paid", &ticket->ticket.amount_paid);
+    }
+
     const ItsoTap* tap = flipso_latest_tap(card);
     if(tap) {
         /* Where it ended, if it was a tap out; where it began otherwise - and

@@ -85,6 +85,18 @@ void flipso_cat_product_ref(
 /** The name of the product in directory entry @p dir_index, or "Directory slot 3". */
 void flipso_cat_product_name(FuriString* out, const ItsoCard* card, uint8_t dir_index);
 
+/**
+ * When or where a Space Saving ticket was last used, or "Last used: Never";
+ * nothing for any other product. A TYP 29 revision 1 records a place, labelled
+ * @p place_label, or by default by whether the holder got on or off there.
+ */
+void flipso_cat_last_use(
+    FuriString* out,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    const ItsoProduct* product,
+    const char* place_label);
+
 /** "Label: Active" for a compact-shell ticket, from its one product. */
 void flipso_cat_ticket_state(
     FuriString* out,

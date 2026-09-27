@@ -165,6 +165,41 @@ static void flipso_cat_space_area(FuriString* out, const ItsoCard* card) {
     }
 }
 
+void flipso_cat_last_use(
+    FuriString* out,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    const ItsoProduct* product,
+    const char* place_label) {
+    if(!product->space_saving) return;
+    const ItsoSpaceSaving* ss = &card->space;
+
+    /* TYP 29 revision 1 records one place and no time: where the holder last
+     * got on, or last got off. On an SPT Subway ticket that is the station the
+     * gate is in. An unwritten one means the ticket has not been through a gate. */
+    if(product->typ == ItsoTypMultiUse && product->format_rev == 1) {
+        if(!product->from.valid) {
+            furi_string_cat(out, "Last used: Never\n");
+        } else if(place_label) {
+            flipso_cat_location(out, f, "", place_label, &product->from);
+        } else {
+            flipso_cat_location(
+                out, f, "", ss->usage_alighted ? "Last got off" : "Last got on", &product->from);
+        }
+        return;
+    }
+
+    /* The other types record a time and no place. A LastUseDTS of zero is a
+     * ticket not yet used, not the DTS epoch. */
+    if(ss->has_last_use) {
+        if(ss->last_use_dts) {
+            flipso_cat_datetime_line(out, "", "Last used", ss->last_use_dts);
+        } else {
+            furi_string_cat(out, "Last used: Never\n");
+        }
+    }
+}
+
 /**
  * The parts of a Space Saving IPE (TYP 27, 28 or 29) that are its own rather than
  * shared with a full ticket: its restrictions, where and when it was last used,
@@ -197,25 +232,7 @@ static void flipso_cat_space_saving(
         furi_string_cat(out, "Photocard number: None\n");
     }
 
-    if(ss->has_last_use) {
-        if(ss->last_use_dts) {
-            flipso_cat_datetime_line(out, "", "Last used", ss->last_use_dts);
-        } else {
-            furi_string_cat(out, "Last used: Never\n");
-        }
-    }
-
-    /* TYP 29 revision 1 records one place: where the holder last got on, or
-     * last got off. On an SPT Subway ticket that is the station the gate is in.
-     * An unwritten one means the ticket has not been through a gate. */
-    if(product->typ == ItsoTypMultiUse && product->format_rev == 1) {
-        if(product->from.valid) {
-            flipso_cat_location(
-                out, f, "", ss->usage_alighted ? "Last got off" : "Last got on", &product->from);
-        } else {
-            furi_string_cat(out, "Last used: Never\n");
-        }
-    }
+    flipso_cat_last_use(out, f, card, product, NULL);
 
     /* TYP 28: the day passes spent so far, each the day it was used. A tick of
      * zero is a pass still to use and 31 one never sold (clause 2.15.2). */

@@ -23,7 +23,6 @@ Every brief assumes the working rules in `CLAUDE.md` — in particular:
 | --- | --- | --- |
 | [transaction-amounts.md](transaction-amounts.md) | The amount of each transaction in a balance history, worked out from consecutive balances | Small |
 | [days-remaining.md](days-remaining.md) | "Days left" on expiries, and the current pass in the Summary | Small |
-| [paper-ticket-summary.md](paper-ticket-summary.md) | A Summary for paper tickets that says when and where it was last used | Small |
 | [operators-file-docs.md](operators-file-docs.md) | Make `operators.txt` discoverable, and say when it was cut short | Small |
 | [save-as-new-copy.md](save-as-new-copy.md) | Keep a snapshot of a card instead of updating its record | Medium |
 | [unsaved-card-warning.md](unsaved-card-warning.md) | Don't let Back silently throw away a card that was just read | Small |
