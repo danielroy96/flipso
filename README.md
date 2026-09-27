@@ -121,5 +121,3 @@ page; these are the ones Flipso is written against:
 
 [`docs/PROTOCOL.md`](docs/PROTOCOL.md) cites the clause and table behind each
 field Flipso decodes.
-</content>
-</invoke>
