@@ -106,6 +106,20 @@ in exchange for the use of this dataset.
 ### ITSO specification
 
 Field offsets are taken from ITSO TS 1000 version 2.1.5 (March 2025), published
-by ITSO Ltd under the Open Government Licence.
+by ITSO Ltd under the Open Government Licence. Every part is a free download
+from the [ITSO technical specification](https://www.itso.org.uk/itso-specification/itso-technical-specification)
+page; these are the ones Flipso is written against:
+
+| Part | Title | What Flipso takes from it |
+| --- | --- | --- |
+| [TS 1000-0](https://www.itso.org.uk/hubfs/TS_1000-0_V2_1_5_2025_03.pdf) | Concept and Context | An overview of the scheme; the place to start |
+| [TS 1000-1](https://www.itso.org.uk/hubfs/TS_1000-1_V2_1_5_2025_03.pdf) | General Reference | Data types: dates, timestamps, values, locations |
+| [TS 1000-2](https://www.itso.org.uk/hubfs/TS_1000-2_V2_1_5_2025_03.pdf) | Customer Media Format and Data Record Definitions | The shell, directory, product (IPE) and value record layouts |
+| [TS 1000-5](https://www.itso.org.uk/hubfs/TS_1000-5_V2_1_5_2025_03.pdf) | Customer Media Data and Customer Media Architecture | The fields of each product type, and the journey log |
+| [TS 1000-7](https://www.itso.org.uk/hubfs/TS_1000-7_V2_1_5_2025_03.pdf) | ITSO Security Subsystem | The seals, and why Flipso cannot check them without an ISAM |
+| [TS 1000-10](https://www.itso.org.uk/hubfs/TS_1000-10_V2_1_5_2025_03.pdf) | Customer Media Definitions | Where the data sits on each kind of card (CMD2, CMD4, CMD7) |
+
+[`docs/PROTOCOL.md`](docs/PROTOCOL.md) cites the clause and table behind each
+field Flipso decodes.
 </content>
 </invoke>
