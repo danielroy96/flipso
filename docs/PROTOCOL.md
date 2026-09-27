@@ -44,7 +44,7 @@ card**, rather than waiting on it for ever.
 ## Operator names and card branding
 
 ITSO operator IDs/names aren't published anywhere. I've made a start using 
-cards in my possession.
+cards in my possession/cards I could borrow off friends/colleagues.
 
 `itso/itso_operators.c` holds one table with two columns for each OID:
 
@@ -152,7 +152,9 @@ description of itself if it is there — see [Oyster cards](#oyster-cards).
 
 Not every ITSO card is a DESFire one. CMD2 puts the ITSO application in an
 ISO 7816-4 file system instead, and such a card ignores DESFire commands
-entirely. SPT's Glasgow Subway smartcard is one of these.
+entirely. SPT's Glasgow Subway smartcard is one of these. This generic
+card media is normally implemented as a cost saving measure, as DESFire
+cards often cost up to 5x as a generic card.
 
 1. Select the ITSO application by AID (`A0 00 00 02 16` + `"ITSO-1"`).
 2. Take the **Shell Environment** and the **Parameter EF** from the File Control
