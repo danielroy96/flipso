@@ -73,6 +73,10 @@ bool itso_date_expired(uint16_t date, uint32_t now) {
     return now >= itso_date_to_unix(date) + 86400UL;
 }
 
+bool itso_date_open(uint16_t date) {
+    return date == 0 || date == 0x3FFF;
+}
+
 void itso_decode_money(int32_t raw, uint8_t valc, ItsoMoney* out) {
     static const int32_t scale[4] = {1, 10, 100, 1000};
     out->valid = true;
@@ -497,4 +501,26 @@ uint8_t itso_half_days_mask(uint16_t half_days) {
         if((half_days >> (14 - 2 * day)) & 0x03) mask |= (uint8_t)(ITSO_DOW_MONDAY >> day);
     }
     return mask;
+}
+
+uint16_t itso_card_issuer_oid(const ItsoCard* card) {
+    /* A compact shell's OID is the generic 8189 every compact shell carries
+     * (TS 1000-10 table 42), which names no operator at all. The card holds one
+     * product, and that product's owner is the operator whose ticket it is. */
+    if(card->shell_compact && card->product_count && card->products[0].on_card) {
+        return card->products[0].oid;
+    }
+    return card->oid;
+}
+
+uint16_t itso_type2_locked_pages(const uint8_t lock[2]) {
+    return (uint16_t)(((uint16_t)lock[1] << 8) | (lock[0] & 0xF8));
+}
+
+uint16_t itso_type2_frozen_pages(const uint8_t lock[2]) {
+    uint16_t pages = 0;
+    if(lock[0] & 0x01) pages |= 1u << 3; /* BL-OTP: page 3. */
+    if(lock[0] & 0x02) pages |= 0x03F0; /* BL9-4: pages 4-9. */
+    if(lock[0] & 0x04) pages |= 0xFC00; /* BL15-10: pages 10-15. */
+    return pages;
 }

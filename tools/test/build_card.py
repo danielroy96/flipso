@@ -12,7 +12,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from itso_build import (  # noqa: E402
     Bits, bcd, date_stamp, dir_entry, dts, instance_and_seal, journey_tail,
     capping_vgx, isam, log_entry, loc1, loyalty_tail, loc2, luhn, nlc, pad, period_tail, purse_tail,
-    put_secrc, tt_record, tt_record_rev4, value_group, value_record)
+    put_secrc, tt_record, tt_record_rev4, type2_page_memory, typ27_dataset, typ28_dataset,
+    typ29_dataset, value_group,
+    value_record)
 
 # ---------------------------------------------------------------- Shell (FID 15)
 IIN, OID, ISSN = "633597", "1234", "0012345"
@@ -449,6 +451,115 @@ cmd2_ipe16.putb(40, (0b1111111111100000).to_bytes(2, "big"))
 cmd2_ipe16.putb(42, loc1(203, nlc("5685")))
 cmd2_sector2 = pad(bytes(cmd2_ipe16.buf) + instance_and_seal(), CMD2_B)
 
+# ================================================================== CMD4 card
+# A Compact ITSO Shell on a MIFARE Ultralight / Infineon my-d (TS 1000-10 section
+# 5), the family SPT's Glasgow Subway paper tickets use. Only three bytes are
+# stored - ShellLength, ShellBitMap, ShellFormatRevision and FVC (TS 1000-2 table
+# 4); the identity (IIN 633597, OID 8189, ISSN 0) and the geometry are implied by
+# the CMD (TS 1000-10 table 42) rather than held on the media.
+cmd4_shell_bits = Bits(3)
+cmd4_shell_bits.put(0, 6, 6)    # ShellLength = 6 blocks
+cmd4_shell_bits.put(6, 6, 0)    # ShellBitMap = 0 -> compact
+cmd4_shell_bits.put(12, 4, 1)   # ShellFormatRevision = 1
+cmd4_shell_bits.buf[2] = 4      # FVC = 4 -> Ultralight CMD4
+cmd4_shell = bytes(cmd4_shell_bits.buf)
+CMD4_ISRN = "633597" + "8189" + "0000000"
+CMD4_ISRN += luhn(CMD4_ISRN)
+
+# The whole 64-byte page memory of a CMD4 tag, as the Type 2 transport reads it:
+# the compact shell at page 6, the single IPE Directory Entry at page 6 byte 3,
+# and a full TYP 27 dataset spread across the static, dynamic and OTP regions
+# (TS 1000-10 table 46). Shaped like an SPT Subway day ticket read 2026-09-27: a
+# Period ticket (TYP 27) owned by SPT's extended-range OID 8323, an adult all-day
+# ticket at GBP 4.45, issued and last used on one day, valid across the network.
+CMD4_EXPIRY = date_stamp(2026, 9, 27)
+cmd4_pages = type2_page_memory(
+    bytes([0x04, 0xA2, 0xB3, 0xC4, 0xD5, 0xE6, 0xF7]),
+    dir_entry(131, 27, 0, False, CMD4_EXPIRY, extended=True),
+    typ27_dataset(
+        issue_date=CMD4_EXPIRY, amount=445, passback=7,
+        flags=0b1000,  # ExpiryTimeFlag: an owner-defined end-of-service time
+        event2=12, last_use=dts(2026, 9, 27, 17, 47)))
+
+# The other Space Saving IPEs on the same medium. The return is in the shape of
+# one in Ryan Murphy's published dump of SPT Subway tickets (the builder
+# reproduces his bytes exactly): a TYP 29 revision 1 carnet of two rides with one
+# left, bought for GBP 3.30, last used getting off at fare stage 4 - Hillhead - at
+# gate 5F2800. The carnet (TYP 28) and multi-leg ticket (TYP 29 revision 2) follow
+# the spec alone: no Subway ticket of either kind has been seen.
+T2_SERIAL = bytes([0x04, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66])
+cmd4_return = type2_page_memory(
+    T2_SERIAL,
+    dir_entry(131, 29, 2, False, date_stamp(2026, 9, 26), extended=True),
+    typ29_dataset(
+        issue_date=date_stamp(2026, 9, 26), rides_left=1, amount=330, mop=3,
+        flags=0b1000, usage_code=0b101, usage=bytes.fromhex("5F280004")))
+cmd4_carnet = type2_page_memory(
+    T2_SERIAL,
+    dir_entry(131, 28, 0, False, date_stamp(2026, 10, 10), extended=True),
+    typ28_dataset(
+        issue_date=date_stamp(2026, 9, 10), amount=2000, passback=5, flags=0b0001,
+        last_use=dts(2026, 9, 20, 8, 5),
+        # Two passes used, 20 and 10 days before expiry; two left, plus one for
+        # the day of expiry itself; two never sold.
+        ticks=(20, 10, 0, 0, 31, 31), issue_day=True, expiry_day=True))
+cmd4_multileg = type2_page_memory(
+    T2_SERIAL,
+    dir_entry(131, 29, 0, False, date_stamp(2026, 12, 31), extended=True),
+    typ29_dataset(
+        issue_date=date_stamp(2026, 9, 1), rides_left=7, rev=2, passback=10,
+        max_daily=4, max_transfers=2, journey_start=dts(2026, 9, 21, 7, 58),
+        transfers=1, daily=2, last_use=dts(2026, 9, 21, 8, 20)))
+
+# The same day ticket blocked: TS 1000-10 clause 5.16 blocks a CMD4 product by
+# zeroing its Seal, since there is no Sector Chain Table to mark.
+cmd4_blocked = type2_page_memory(
+    bytes([0x04, 0xA2, 0xB3, 0xC4, 0xD5, 0xE6, 0xF7]),
+    dir_entry(131, 27, 0, False, CMD4_EXPIRY, extended=True),
+    typ27_dataset(issue_date=CMD4_EXPIRY, amount=445),
+    seal=bytes(8))
+# A directory entry naming a type a CMD4 cannot carry (TYP 22, a full period
+# ticket) over a Space Saving layout: left as the entry says, not misread.
+cmd4_wrong_type = type2_page_memory(
+    T2_SERIAL,
+    dir_entry(131, 22, 0, False, CMD4_EXPIRY, extended=True),
+    typ27_dataset(issue_date=CMD4_EXPIRY, amount=445))
+# A single, bought and never used, on an Infineon chip (maker code 05): no
+# usage place, and one ride left. Its issuer locked only pages 6-9, leaving the
+# IPE static data in pages 10-13 writable against TS 1000-10 clause 5.10.2.
+cmd4_unused = type2_page_memory(
+    bytes([0x05, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60]),
+    dir_entry(131, 29, 0, False, CMD4_EXPIRY, extended=True),
+    typ29_dataset(issue_date=CMD4_EXPIRY, rides_left=1, amount=175, mop=1),
+    locks=bytes([0xC0, 0x03]))
+# A return with both rides spent: the ticket is used up, though in date.
+cmd4_spent = type2_page_memory(
+    T2_SERIAL,
+    dir_entry(131, 29, 2, False, date_stamp(2040, 1, 1), extended=True),
+    typ29_dataset(
+        issue_date=CMD4_EXPIRY, rides_left=0, amount=330, mop=3,
+        usage_code=0b101, usage=bytes.fromhex("5F280002")))
+# The two other ways GeoValidity can be coded (TS 1000-5 table 50): a fare
+# value, here GBP 1.75, and a location of LocDefType 201.
+cmd4_fare_value = type2_page_memory(
+    T2_SERIAL,
+    dir_entry(131, 27, 0, False, CMD4_EXPIRY, extended=True),
+    typ27_dataset(issue_date=CMD4_EXPIRY, amount=445, geo=175, fare_value=True,
+                  event1=11, event2=12, photocard=424242),
+    # All three block-lock bits set as well: the lock bits for pages 3-15 are
+    # themselves fixed.
+    locks=bytes([0xC7, 0x3F]))
+cmd4_location = type2_page_memory(
+    T2_SERIAL,
+    dir_entry(131, 27, 0, False, CMD4_EXPIRY, extended=True),
+    typ27_dataset(issue_date=CMD4_EXPIRY, amount=445, area_type=1, geo=0x12345678))
+
+# A full ITSO shell at page 6 of a larger tag: a CMD9 (NTAG215) card, which
+# Flipso identifies but does not read. 128 bytes, well short of a real NTAG215,
+# is enough to hold the shell and to be a whole Type 2 read.
+cmd9_pages = bytearray(128)
+cmd9_pages[24:24 + len(shell.buf)] = shell.buf
+
 # ---------------------------------------------------------------- emit
 def carr(name, data):
     body = ", ".join(f"0x{b:02X}" for b in data)
@@ -483,6 +594,21 @@ with open("card_data.h", "w") as f:
     f.write(carr("cmd2_sector1", cmd2_sector1))
     f.write(carr("cmd2_sector2", cmd2_sector2))
     f.write(carr("cmd2_sector18", cmd2_sector18))
+    f.write("\n/* Synthetic ITSO CMD4 compact-shell card (Type 2 tag). */\n")
+    f.write(f'#define EXPECT_CMD4_ISRN "{CMD4_ISRN}"\n')
+    f.write(carr("cmd4_shell", cmd4_shell))
+    f.write(carr("cmd4_pages", cmd4_pages))
+    f.write(carr("cmd4_return", cmd4_return))
+    f.write(carr("cmd4_carnet", cmd4_carnet))
+    f.write(carr("cmd4_multileg", cmd4_multileg))
+    f.write(carr("cmd4_blocked", cmd4_blocked))
+    f.write(carr("cmd4_wrong_type", cmd4_wrong_type))
+    f.write(carr("cmd4_unused", cmd4_unused))
+    f.write(carr("cmd4_spent", cmd4_spent))
+    f.write(carr("cmd4_fare_value", cmd4_fare_value))
+    f.write(carr("cmd4_location", cmd4_location))
+    f.write(carr("cmd9_pages", bytes(cmd9_pages)))
 print("ISRN:", ISRN)
 print("CMD2 ISRN:", CMD2_ISRN)
+print("CMD4 ISRN:", CMD4_ISRN)
 print("wrote card_data.h")

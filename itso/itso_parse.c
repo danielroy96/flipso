@@ -16,6 +16,12 @@
 #define ITSO_INSTANCE_ID_LEN 8
 #define ITSO_SEAL_LEN        8
 
+/* Format Version Code of the Compact-Shell page media (TS 1000-10 clause 5.3):
+ * a MIFARE Ultralight / Infineon my-d, the family SPT's paper tickets use. The
+ * other Type 2 tag CMDs (9 NTAG, 10 Ultralight EV1) carry a full shell, so a
+ * compact shell is specifically this one. */
+#define ITSO_FVC_ULTRALIGHT 4
+
 void itso_card_reset(ItsoCard* card) {
     memset(card, 0, sizeof(ItsoCard));
 }
@@ -23,6 +29,26 @@ void itso_card_reset(ItsoCard* card) {
 /* ------------------------------------------------------------------ */
 /* ITSO Shell Environment Data Group (TS 1000-2 clause 4)             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * True for a Compact ITSO Shell (TS 1000-2 table 4): three bytes holding only
+ * ShellLength, ShellBitMap, ShellFormatRevision and FVC, the rest of the shell
+ * implied by the CMD.
+ *
+ * The three stored bytes are a prefix of the full shell's, so a full shell
+ * cannot be told from a compact one by those alone - a full shell's byte 2 is
+ * the first BCD pair of the IIN (0x63), where a compact shell's is the FVC. That
+ * is the discriminator: an empty ShellBitMap (no full-shell directory), the
+ * fixed ShellLength and ShellFormatRevision of TS 1000-10 table 42, and an FVC
+ * that names a compact-shell platform rather than looking like the IIN.
+ */
+static bool itso_shell_is_compact(const uint8_t* data, size_t len) {
+    if(len < 3) return false;
+    uint8_t shell_len = (uint8_t)itso_bits(data, 0, 6);
+    uint8_t bitmap = (uint8_t)itso_bits(data, 6, 6);
+    uint8_t format_rev = (uint8_t)itso_bits(data, 12, 4);
+    return shell_len == 6 && bitmap == 0 && format_rev == 1 && data[2] == ITSO_FVC_ULTRALIGHT;
+}
 
 /**
  * The header tests, reported individually.
@@ -33,12 +59,16 @@ void itso_card_reset(ItsoCard* card) {
  * plausible - the geometry has not been looked at yet.
  */
 static ItsoShellReject itso_shell_header_reject(const uint8_t* data, size_t len) {
+    /* A compact shell has no IIN to check and is only three bytes long, so it is
+     * settled before the full-shell tests that would reject it as short. */
+    if(itso_shell_is_compact(data, len)) return ItsoShellAccepted;
     /* The IIN is the only fixed marker: ITSO's registered issuer number, 633597,
      * held as six BCD digits at byte 2. */
     if(len < 24) return ItsoShellRejectShort;
     if(data[2] != 0x63 || data[3] != 0x35 || data[4] != 0x97) return ItsoShellRejectIin;
-    /* A compact shell (bitmap zero) carries only a format version code: there is
-     * no directory to walk, so there is nothing for us to show. */
+    /* A full-shell bitmap with bit 0 clear is a shell with no directory to walk,
+     * so there is nothing for us to show. (A genuine compact shell, caught
+     * above, is a different thing that we do decode.) */
     if((itso_bits(data, 6, 6) & 0x01) == 0) return ItsoShellRejectCompact;
     return ItsoShellAccepted;
 }
@@ -48,12 +78,15 @@ bool itso_looks_like_shell(const uint8_t* data, size_t len) {
     return reject != ItsoShellRejectShort && reject != ItsoShellRejectIin;
 }
 
-/** Luhn "double-add-double" check over the 18 ISRN digits (ISO/IEC 7812-1). */
-static bool itso_isrn_check(const char* isrn) {
+/**
+ * The Luhn "double-add-double" check digit for the 17 ISRN digits before it
+ * (ISO/IEC 7812-1), as an ASCII char. Returns 0 for a non-digit in the input.
+ */
+static char itso_isrn_check_digit(const char* isrn) {
     uint32_t sum = 0;
     bool doubled = true; /* Start doubling from the digit left of the check digit. */
     for(int8_t i = ITSO_ISRN_DIGITS - 2; i >= 0; i--) {
-        if(isrn[i] < '0' || isrn[i] > '9') return false;
+        if(isrn[i] < '0' || isrn[i] > '9') return 0;
         uint8_t digit = isrn[i] - '0';
         if(doubled) {
             digit *= 2;
@@ -62,12 +95,29 @@ static bool itso_isrn_check(const char* isrn) {
         sum += digit;
         doubled = !doubled;
     }
-    uint8_t expected = (10 - (sum % 10)) % 10;
-    return isrn[ITSO_ISRN_DIGITS - 1] == ('0' + expected);
+    return (char)('0' + (10 - (sum % 10)) % 10);
+}
+
+/** Luhn check over the 18 ISRN digits (ISO/IEC 7812-1). */
+static bool itso_isrn_check(const char* isrn) {
+    char expected = itso_isrn_check_digit(isrn);
+    return expected && isrn[ITSO_ISRN_DIGITS - 1] == expected;
 }
 
 bool itso_shell_card_number(const uint8_t* data, size_t len, char* out) {
     if(itso_shell_header_reject(data, len) != ItsoShellAccepted) return false;
+
+    if(itso_shell_is_compact(data, len)) {
+        /* A compact shell stores no identity: it is implied by the CMD and is the
+         * same for every card of it (TS 1000-10 table 42 - IIN 633597, OID 8189,
+         * ISSN 0). So this is the media type's number, not a per-card one; the
+         * card's real serial is its chip UID. */
+        /* IIN 633597, OID 8189, ISSN 0000000 - 17 digits, then the check below. */
+        memcpy(out, "63359781890000000", 17);
+        out[17] = itso_isrn_check_digit(out);
+        out[ITSO_ISRN_DIGITS] = '\0';
+        return true;
+    }
 
     /* ISRN = IIN(6) + OID(4) + ISSN(7) + check digit, all BCD. TS 1000-2 4.1.4. */
     itso_bcd(data, 16, 6, out);
@@ -77,9 +127,46 @@ bool itso_shell_card_number(const uint8_t* data, size_t len, char* out) {
     return true;
 }
 
+/**
+ * Expand a Compact ITSO Shell into the card, filling in the platform parameters
+ * the CMD implies rather than stores (TS 1000-10 table 42 for CMD4).
+ *
+ * The three stored bytes give ShellLength, ShellBitMap, ShellFormatRevision and
+ * FVC; everything else - the identity, the geometry, the expiry - is fixed by
+ * the CMD. There is no SCT and a single directory entry, so the sector-chain
+ * machinery the full shell drives does not apply and the geometry check that
+ * guards it is not run.
+ */
+static bool itso_parse_compact_shell(ItsoCard* card, const uint8_t* data, size_t len) {
+    card->shell_compact = true;
+    itso_shell_card_number(data, len, card->isrn);
+    card->isrn_check_ok = itso_isrn_check(card->isrn);
+
+    card->shell_len = (uint8_t)itso_bits(data, 0, 6); /* 6 */
+    card->format_rev = (uint8_t)itso_bits(data, 12, 4); /* 1 */
+    card->fvc = data[2]; /* 4 */
+
+    /* Implied platform parameters (TS 1000-10 table 42). */
+    card->iin = 633597;
+    card->oid = 8189; /* Reserved OID used for compact shells. */
+    card->ksc = 0;
+    card->kvc = 1;
+    card->expiry = 0x3FFF; /* EXP: does not expire for the foreseeable future. */
+    card->sector_size = 32; /* B: one 32-byte sector for IPE storage. */
+    card->sector_count = 1; /* S */
+    card->dir_entries = 1; /* E: a single directory entry. */
+    card->sct_len = 0; /* No Sector Chain Table. */
+
+    /* No SECRC: the Compact Shell Dataset has none (TS 1000-2 table 4), and the
+     * checksum the full shell carries covers a full shell's elements. */
+    card->shell_valid = true;
+    return true;
+}
+
 bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
     card->shell_reject = itso_shell_header_reject(data, len);
     if(card->shell_reject != ItsoShellAccepted) return false;
+    if(itso_shell_is_compact(data, len)) return itso_parse_compact_shell(card, data, len);
     itso_shell_card_number(data, len, card->isrn);
 
     uint8_t bitmap = itso_bits(data, 6, 6);
@@ -275,6 +362,312 @@ bool itso_parse_directory(ItsoCard* card, const uint8_t* data, size_t len) {
     }
 
     card->dir_valid = true;
+    return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* Type 2 tag page media (TS 1000-10 section 5, CMD4)                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A Compact-Shell Type 2 tag lays its data groups out at fixed pages rather than
+ * behind a Sector Chain Table (TS 1000-10 clauses 5.5-5.6). Numbering user bytes
+ * from page 4 as the spec's "Data(n)" does, physical byte = 16 + n, so:
+ *
+ *   page 0-2   (bytes 0..11)  the chip serial, its check bytes and the lock bytes
+ *   page 3     (bytes 12..15) IPE dynamic data, one-time programmable
+ *   page 4-5   (bytes 16..23) IPE dynamic data, rewritable
+ *   page 6     (bytes 24..26) the Compact ITSO Shell (Data8..Data10)
+ *   page 6-7   (bytes 27..31) the single IPE Directory Entry E1 (Data11..Data15)
+ *   page 8-9   (bytes 32..39) the IPE InstanceID
+ *   page 10-13 (bytes 40..55) IPE static data
+ *   page 14-15 (bytes 56..63) the Seal
+ */
+#define ITSO_T2_SHELL_OFFSET    ITSO_TYPE2_SHELL_OFFSET
+#define ITSO_T2_DIR_OFFSET      27
+#define ITSO_T2_INSTANCE_OFFSET 32
+#define ITSO_T2_SEAL_OFFSET     56
+
+/* The physical page offsets the Space Saving IPE's dataset is spread across
+ * (TS 1000-10 clauses 5.6.2-5.6.3). Reassembling them in this order gives the
+ * one contiguous dataset TS 1000-5 table 48 defines: the static elements, then
+ * the rewritable dynamic elements, then the one-time-programmable ones. */
+#define ITSO_T2_STATIC_OFFSET   40 /* Pages 10-13: 16 bytes of static data. */
+#define ITSO_T2_STATIC_LEN      16
+#define ITSO_T2_DYN_DATA_OFFSET 16 /* Pages 4-5: 8 bytes of rewritable dynamic data. */
+#define ITSO_T2_DYN_DATA_LEN    8
+#define ITSO_T2_OTP_OFFSET      12 /* Page 3: 4 bytes of OTP dynamic data. */
+#define ITSO_T2_OTP_LEN         4
+#define ITSO_T2_DATASET_LEN     (ITSO_T2_STATIC_LEN + ITSO_T2_DYN_DATA_LEN + ITSO_T2_OTP_LEN)
+
+static void itso_parse_instance_id(
+    ItsoProduct* product,
+    const uint8_t* group,
+    size_t len,
+    size_t dataset_len);
+
+ItsoType2Kind itso_type2_kind(const uint8_t* pages, size_t len) {
+    /* Checked first, because a read cut short can still hold page 6: a compact
+     * shell with its Seal missing would decode, and be saved, as a ticket whose
+     * product is half there. */
+    if(len < ITSO_CMD4_MEMORY_LEN) return ItsoType2Incomplete;
+
+    const uint8_t* shell = pages + ITSO_T2_SHELL_OFFSET;
+    size_t shell_len = len - ITSO_T2_SHELL_OFFSET;
+    if(itso_shell_is_compact(shell, shell_len)) return ItsoType2Compact;
+    if(itso_looks_like_shell(shell, shell_len)) return ItsoType2FullShell;
+    return ItsoType2NotItso;
+}
+
+/**
+ * Decode a Space Saving IPE's area element: TYP 27's 100-bit GeoValidity (table
+ * 50) or TYP 28/29's 68-bit AreaValidity (tables 53 and 57). Both start at bit
+ * 60 of the dataset and share one coding - a top nibble that, when non-zero, is
+ * a LocDefType-200; when zero, the bit below it choosing a reference fare code or
+ * an actual fare value, held in the rest of the element.
+ */
+static void itso_space_area(ItsoSpaceSaving* ss, const uint8_t* ds, uint8_t bits) {
+    uint8_t locdef = (uint8_t)itso_bits(ds, 60, 4);
+    if(locdef == 0) {
+        ss->area_kind = itso_bits(ds, 64, 1) ? ItsoAreaFareValue : ItsoAreaFareCode;
+        /* The code or value fills 63 or 95 bits; the low 32 are kept, which any
+         * fare and any fare table an operator could print will fit. */
+        ss->area_value = itso_bits(ds, 60 + bits - 32, 32);
+    } else {
+        /* A LOCE of LocDefType 200+n fills the rest of the element. Every ticket
+         * seen so far carries a fare code instead, so the location itself is not
+         * decoded: its type is kept, and the screen says it is not decoded. */
+        ss->area_kind = ItsoAreaLocation;
+        ss->area_value = (uint32_t)locdef + 200;
+    }
+}
+
+/** LastUseDTS, where the type has one. Zero is "never used" at creation (and
+ *  a DTS of zero decodes to 2028, so it must not be shown as a time). */
+static void itso_space_last_use(ItsoSpaceSaving* ss, const uint8_t* ds) {
+    ss->has_last_use = true;
+    ss->last_use_dts = itso_bits(ds, 168, 24);
+}
+
+/**
+ * Where a TYP 29 was last used: a 4-byte LOCE whose LocDefType (200-203) the
+ * TYP29UsageRecCode gives (table 58). Held in @c from, rendered through the same
+ * location decoder a full ticket's are.
+ *
+ * SPT's Subway gates record a bus fare stage (202) whose stage number is the
+ * station, 1-15, and whose machine number is the gate - as Ryan Murphy found,
+ * with Partick at 2 and Hillhead at 4. On an SPT ticket the stage is shown as the
+ * station it names; anywhere else it stays a fare stage.
+ */
+static void itso_space_usage_place(ItsoProduct* product, uint8_t def_type, const uint8_t* loce) {
+    const uint8_t loc2[7] = {def_type, loce[0], loce[1], loce[2], loce[3], 0, 0};
+    itso_parse_location(loc2, sizeof(loc2), ItsoLocStructLoc2, &product->from);
+    if(itso_is_blank(loce, 4)) product->from.valid = false; /* Never used. */
+
+    if(def_type == 202 && product->oid == ITSO_OID_SPT_SUBWAY_TICKET) {
+        const char* station = itso_spt_subway_station(loce[3]);
+        if(station) snprintf(product->from.text, sizeof(product->from.text), "%s", station);
+    }
+}
+
+/**
+ * Decode a Space Saving IPE (TYP 27, 28 or 29) from a card's page memory into
+ * @p product and @c card->space (TS 1000-5 clauses 2.14-2.16).
+ *
+ * Each dataset is a fixed sequence of fields at known bit offsets, unlike a full
+ * IPE where a bitmap says which optional elements are present. It is physically
+ * split across three page regions, so it is reassembled into one buffer first
+ * and the offsets below are into that. All four layouts - TYP 27, 28, and TYP 29
+ * at revisions 1 and 2 - fill 16 static and 12 dynamic bytes exactly, and agree
+ * on the first 31 bits and on where the pass flags and area sit.
+ *
+ * TYP 27 was confirmed field for field against a real SPT Subway day ticket read
+ * 2026-09-27, and TYP 29 revision 1 against Ryan Murphy's published dump of 21
+ * Subway singles and returns. TYP 28 and TYP 29 revision 2 follow the spec alone.
+ * The elements a full ticket also has go into @c product->ticket so they render
+ * through the shared path.
+ */
+static void itso_parse_space_saving(
+    ItsoCard* card,
+    ItsoProduct* product,
+    const uint8_t* pages,
+    size_t len) {
+    if(len < ITSO_CMD4_MEMORY_LEN) return;
+    /* A CMD4 carries only these three (TS 1000-10 clause 5.6). Any other type in
+     * the directory entry is left as the directory entry describes it, rather
+     * than read through a layout that is not its own. */
+    if(product->typ != ItsoTypPeriodCompact && product->typ != ItsoTypCarnet &&
+       product->typ != ItsoTypMultiUse) {
+        return;
+    }
+
+    uint8_t ds[ITSO_T2_DATASET_LEN];
+    memcpy(ds, pages + ITSO_T2_STATIC_OFFSET, ITSO_T2_STATIC_LEN);
+    memcpy(ds + ITSO_T2_STATIC_LEN, pages + ITSO_T2_DYN_DATA_OFFSET, ITSO_T2_DYN_DATA_LEN);
+    memcpy(
+        ds + ITSO_T2_STATIC_LEN + ITSO_T2_DYN_DATA_LEN,
+        pages + ITSO_T2_OTP_OFFSET,
+        ITSO_T2_OTP_LEN);
+
+    /* TYP 27 and 28 define revision 1 only, TYP 29 revisions 1 and 2. A card
+     * claiming another is left as a product decoded from its directory entry. */
+    uint8_t rev = (uint8_t)itso_bits(ds, 12, 4);
+    bool multi_leg = product->typ == ItsoTypMultiUse && rev == 2;
+    if(rev != 1 && !multi_leg) return;
+
+    ItsoSpaceSaving* ss = &card->space;
+    memset(ss, 0, sizeof(ItsoSpaceSaving));
+    product->space_saving = true;
+    product->body_parsed = true;
+    product->format_rev = rev;
+    product->bitmap = (uint8_t)itso_bits(ds, 6, 6);
+
+    ItsoTicketTerms* t = &product->ticket;
+    t->valid = true;
+    t->issue_date = (uint16_t)itso_bits(ds, 16, 14); /* IssueDate, a DATE. */
+    ss->euro = itso_bits(ds, 30, 1);
+
+    /* Bits 32-39 are PassbackTime and the payment method on TYP 27 and 28; TYP 29
+     * spends the same eight bits differently at each revision. PassbackTime is
+     * kept even at zero, which means the reader's own rule applies. */
+    if(multi_leg) {
+        product->has_passback = true;
+        product->passback = (uint8_t)itso_bits(ds, 32, 4);
+        ss->max_daily_journeys = (uint8_t)itso_bits(ds, 36, 4);
+        t->max_transfers = (uint8_t)itso_bits(ds, 40, 4);
+    } else {
+        if(product->typ != ItsoTypMultiUse) {
+            product->has_passback = true;
+            product->passback = (uint8_t)itso_bits(ds, 32, 4);
+        }
+        t->paid_mop = (uint8_t)itso_bits(ds, 36, 4);
+        t->amount_paid.value = (int32_t)itso_bits(ds, 40, 16); /* AmountPaid, VALI, pence. */
+        t->amount_paid.currency = ss->euro ? 1 : 0;
+        t->amount_paid.valid = true;
+    }
+
+    /* TYP27/28/29PassFlags share one definition (tables 49, 52 and 56). */
+    ss->flags = (uint8_t)itso_bits(ds, 56, 4);
+    t->travel_class = (ss->flags & ITSO_SS_FIRST_CLASS) ? 1 : 2;
+
+    switch(product->typ) {
+    case ItsoTypPeriodCompact: {
+        /* Table 48. Bit 31 is the child flag; GeoValidity runs on into dynamic
+         * memory, 100 bits in all. */
+        if(itso_bits(ds, 31, 1)) {
+            t->children = 1;
+        } else {
+            t->adults = 1;
+        }
+        itso_space_area(ss, ds, 100);
+        /* Event1 and Event2: two EventTypeCodes, which the spec does not order
+         * or otherwise explain, so both are kept and shown as they stand. */
+        ss->has_events = true;
+        ss->event1 = (uint8_t)itso_bits(ds, 160, 4);
+        ss->event2 = (uint8_t)itso_bits(ds, 164, 4);
+        itso_space_last_use(ss, ds);
+        t->photocard = itso_bits(ds, 192, 24); /* PhotocardNumber, 0 if none. */
+        /* TYP27ExpiryDate: days to subtract from the directory expiry. Zero leaves
+         * the directory's own date standing. */
+        uint8_t expiry_offset = (uint8_t)itso_bits(ds, 216, 8);
+        if(expiry_offset && product->expiry > expiry_offset) {
+            product->expiry = (uint16_t)(product->expiry - expiry_offset);
+        }
+        break;
+    }
+
+    case ItsoTypCarnet: {
+        /* Table 51: a carnet of up to eight day passes (clause 2.15.2). Six
+         * one-time-programmable ticks record the days used; issue and expiry day
+         * each have a flag instead of a tick. */
+        itso_space_area(ss, ds, 68);
+        itso_space_last_use(ss, ds);
+        uint8_t unused = 0;
+        for(uint8_t i = 0; i < sizeof(ss->carnet_ticks); i++) {
+            ss->carnet_ticks[i] = (uint8_t)itso_bits(ds, 192 + i * 5, 5);
+            if(ss->carnet_ticks[i] == 0) unused++;
+        }
+        ss->carnet_issue_day = itso_bits(ds, 222, 1);
+        ss->carnet_expiry_day = itso_bits(ds, 223, 1);
+        /* The expiry-day pass spends no tick, so it is one more left until the
+         * day it is for - and on that day the product's own expiry takes over.
+         * The issue-day pass is not counted: it is for the day the carnet was
+         * bought, which has gone by the time anyone is counting what is left. */
+        if(ss->carnet_expiry_day) unused++;
+        product->count_kind = ItsoCountPasses;
+        product->count = unused;
+        break;
+    }
+
+    case ItsoTypMultiUse:
+        itso_space_area(ss, ds, 68);
+        if(!multi_leg) {
+            /* Table 55: a carnet of single tickets, or coupons. QtyRemaining counts
+             * up from 8191 minus the number bought, so what is left is the
+             * difference. */
+            product->count_kind = itso_bits(ds, 31, 1) ? ItsoCountCoupons : ItsoCountRides;
+            product->count = 8191 - itso_bits(ds, 147, 13);
+            uint8_t code = (uint8_t)itso_bits(ds, 144, 3); /* TYP29UsageRecCode. */
+            ss->usage_alighted = code & 0x01;
+            itso_space_usage_place(product, (uint8_t)(200 + ((code >> 1) & 0x03)), ds + 20);
+        } else {
+            /* Table 55a: multi-leg journeys. QtyRemaining counts up from 255. */
+            ss->journey_start_dts = itso_bits(ds, 128, 24);
+            product->count_kind = ItsoCountRides;
+            product->count = 255 - itso_bits(ds, 152, 8);
+            ss->transfers = (uint8_t)itso_bits(ds, 160, 4);
+            ss->daily_journeys = (uint8_t)itso_bits(ds, 164, 4);
+            itso_space_last_use(ss, ds);
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
+bool itso_parse_type2(ItsoCard* card, const uint8_t* pages, size_t len) {
+    /* Only a whole CMD4: a full shell (CMD9, CMD10) is laid out nothing like
+     * this fixed mapping, and a short read is not a card at all. */
+    if(itso_type2_kind(pages, len) != ItsoType2Compact) return false;
+    if(!itso_parse_shell(card, pages + ITSO_T2_SHELL_OFFSET, len - ITSO_T2_SHELL_OFFSET)) {
+        return false;
+    }
+
+    /* The chip serial, skipping BCC0 at byte 3: the one thing that tells two
+     * tickets apart, since the compact shell's number is the same on all. */
+    const uint8_t uid[7] = {pages[0], pages[1], pages[2], pages[4], pages[5], pages[6], pages[7]};
+    memcpy(card->chip_uid, uid, sizeof(uid));
+    card->chip_uid_valid = true;
+    /* Page 2 bytes 2-3, which say which pages the issuer made read-only. */
+    card->chip_lock[0] = pages[10];
+    card->chip_lock[1] = pages[11];
+    card->chip_memory_len = (uint16_t)len;
+
+    /* The single IPE Directory Entry, decoded exactly as a full card's is - it is
+     * the same five bytes (TS 1000-2 clause 6.1). An all-zero entry is a shell
+     * that has been formatted but carries no product yet. */
+    const uint8_t* entry = pages + ITSO_T2_DIR_OFFSET;
+    if(itso_is_blank(entry, ITSO_DIR_ENTRY_LEN)) return true;
+
+    ItsoProduct* product = &card->products[0];
+    itso_parse_dir_entry(product, entry, 1);
+    card->product_count = 1;
+    card->dir_valid = true;
+
+    /* There is no Sector Chain Table to give a status. A CMD4 product is blocked
+     * by zeroing its Seal (TS 1000-10 clause 5.16); short of that, whether it is
+     * still good is a matter of its own dates and counts, so no status is
+     * claimed for it rather than an "Active" its expiry may contradict. */
+    if(itso_is_blank(pages + ITSO_T2_SEAL_OFFSET, ITSO_SEAL_LEN)) {
+        product->status = ItsoProductStatusBlocked;
+    }
+
+    /* The InstanceID has the full IPE's structure (TS 1000-10 clause 5.6.1): the
+     * ISAM that created the ticket, which names the operator that sold it. */
+    itso_parse_instance_id(product, pages, len, ITSO_T2_INSTANCE_OFFSET);
+
+    itso_parse_space_saving(card, product, pages, len);
     return true;
 }
 

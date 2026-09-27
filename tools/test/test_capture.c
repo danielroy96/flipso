@@ -204,6 +204,53 @@ static void chip_block(void) {
     flipso_capture_free(capture);
 }
 
+/* A Type 2 tag: its whole page memory is one block, and the card decodes from it
+ * on its own - no shell/directory/product blocks. It survives the save/load round
+ * trip and takes its identity from the chip UID, not the shared compact ISRN. */
+static void type2_card(void) {
+    FlipsoCapture* capture = flipso_capture_alloc();
+    check("an empty capture is not valid", !flipso_capture_valid(capture));
+    check(
+        "a Type 2 block is kept",
+        flipso_capture_add(capture, FlipsoBlockType2, 0, cmd4_pages, sizeof(cmd4_pages)));
+    check("a Type 2 capture is worth saving", flipso_capture_valid(capture));
+
+    /* The identity is the UID (pages 0-1), not the compact ISRN every card shares:
+     * "8189" then the seven serial bytes as hex. */
+    char number[ITSO_ISRN_DIGITS + 1];
+    check("a Type 2 capture has a card number", flipso_capture_card_number(capture, number));
+    check(
+        "it is the chip UID, not the shared ISRN",
+        strcmp(
+            number,
+            "8189"
+            "04A2B3C4D5E6F7") == 0);
+
+    ItsoCard direct;
+    check("a Type 2 capture decodes", flipso_capture_decode(capture, &direct));
+    check("it decodes to the SPT compact card", direct.shell_compact && direct.product_count == 1);
+
+    size_t count = 0;
+    char** lines = to_lines(capture, &count);
+    check("header plus the one block", count == 3 + 1);
+    bool keyed = false;
+    for(size_t i = 0; i < count; i++) {
+        if(strncmp(lines[i], "Type 2: 04 A2 B3", 16) == 0) keyed = true;
+    }
+    check("it is written under its own key", keyed);
+
+    FlipsoCapture* loaded = flipso_capture_alloc();
+    for(size_t i = 0; i < count; i++)
+        flipso_capture_parse_line(loaded, lines[i]);
+    ItsoCard reloaded;
+    check("the loaded Type 2 capture decodes", flipso_capture_decode(loaded, &reloaded));
+    check("to the same card, byte for byte", memcmp(&direct, &reloaded, sizeof(ItsoCard)) == 0);
+
+    free_lines(lines, count);
+    flipso_capture_free(loaded);
+    flipso_capture_free(capture);
+}
+
 /* A directory entry no product claims: written out, read back, and simply not
  * used by the decode. It must not take the rest of the file with it. */
 static void spare_entry(void) {
@@ -945,6 +992,7 @@ int main(void) {
     printf("Save and load\n");
     round_trip();
     chip_block();
+    type2_card();
     printf("\nIncomplete reads\n");
     partial();
     spare_entry();

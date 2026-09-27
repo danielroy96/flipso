@@ -117,8 +117,8 @@ static void
  * An expiry date, whose label changes once it has passed.
  *
  * Changing the label rather than appending a marker keeps the line to what fits
- * across the screen. A stored zero is EN1545's maximum date (10/11/2041), which
- * is how schemes say "no expiry".
+ * across the screen. The dates that mean "no expiry" (itso_date_open()) say so
+ * rather than printing a day in 2041.
  */
 static void flipso_cat_expiry(
     FuriString* out,
@@ -127,7 +127,7 @@ static void flipso_cat_expiry(
     const char* past_label,
     uint16_t date,
     uint32_t now) {
-    if(date == 0) {
+    if(itso_date_open(date)) {
         furi_string_cat_printf(out, "%s%s: No expiry\n", indent, label);
         return;
     }
@@ -462,6 +462,120 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
         if(t->paid_mop)
             furi_string_cat_printf(out, "  Paid by: %s\n", itso_payment_name(t->paid_mop));
         flipso_cat_vat(out, "  ", t->vat);
+    }
+}
+
+/**
+ * Where a Space Saving IPE is good (TS 1000-5 tables 50, 53 and 57). A reference
+ * fare code is the owner's own, so it says the operator decides rather than
+ * what the operator decided - even code 0, which SPT's whole-network Subway
+ * tickets carry but another scheme may give its innermost zone.
+ */
+static void flipso_cat_space_area(FuriString* out, const ItsoCard* card) {
+    const ItsoSpaceSaving* ss = &card->space;
+    switch((ItsoAreaKind)ss->area_kind) {
+    case ItsoAreaFareCode:
+        furi_string_cat(out, "Area: Set by the operator\n");
+        furi_string_cat_printf(out, "  Fare code: %lu\n", (unsigned long)ss->area_value);
+        break;
+    case ItsoAreaFareValue: {
+        furi_string_cat(out, "Area: Set by fare value\n");
+        ItsoMoney fare = {
+            .value = (int32_t)ss->area_value, .currency = ss->euro ? 1 : 0, .valid = true};
+        flipso_cat_money(out, "  ", "Fare value", &fare);
+        break;
+    }
+    case ItsoAreaLocation:
+        furi_string_cat(out, "Area: A location, not decoded\n");
+        furi_string_cat_printf(out, "  Location type: %lu\n", (unsigned long)ss->area_value);
+        break;
+    }
+}
+
+/**
+ * The parts of a Space Saving IPE (TYP 27, 28 or 29) that are its own rather than
+ * shared with a full ticket: its restrictions, where and when it was last used,
+ * and the day passes or journeys it keeps count of. Its price, issue date, class
+ * and travellers are in @c ticket and shown by flipso_cat_ticket_terms(), its
+ * area by flipso_cat_space_area(), and its rides or passes left by the
+ * product's counter.
+ *
+ * Every element the dataset carries is shown, default or not: a paper ticket
+ * holds little enough that "Off-peak only: No" is information, not clutter.
+ */
+static void flipso_cat_space_saving(
+    FuriString* out,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    const ItsoProduct* product) {
+    if(!product->space_saving) return;
+    const ItsoSpaceSaving* ss = &card->space;
+
+    flipso_cat_flag(out, "", "Off-peak only", ss->flags & ITSO_SS_OFF_PEAK);
+    flipso_cat_flag(out, "", "Weekdays only", ss->flags & ITSO_SS_WEEKDAY);
+    /* ExpiryTimeFlag (tables 49, 52 and 56): 23:59, or a time the owner sets in
+     * its readers - end of service, which can fall after midnight. */
+    if(ss->flags & ITSO_SS_EXPIRY_TIME) {
+        furi_string_cat(out, "Ends at: Set by the operator\n");
+    } else {
+        furi_string_cat(out, "Ends at: 23:59 on the expiry date\n");
+    }
+    if(product->typ == ItsoTypPeriodCompact && !product->ticket.photocard) {
+        furi_string_cat(out, "Photocard number: None\n");
+    }
+
+    if(ss->has_last_use) {
+        if(ss->last_use_dts) {
+            flipso_cat_datetime_line(out, "", "Last used", ss->last_use_dts);
+        } else {
+            furi_string_cat(out, "Last used: Never\n");
+        }
+    }
+
+    /* TYP 29 revision 1 records one place: where the holder last got on, or
+     * last got off. On an SPT Subway ticket that is the station the gate is in.
+     * An unwritten one means the ticket has not been through a gate. */
+    if(product->typ == ItsoTypMultiUse && product->format_rev == 1) {
+        if(product->from.valid) {
+            flipso_cat_location(
+                out, f, "", ss->usage_alighted ? "Last got off" : "Last got on", &product->from);
+        } else {
+            furi_string_cat(out, "Last used: Never\n");
+        }
+    }
+
+    /* TYP 27's two EventTypeCodes. The spec does not say which is the newer, so
+     * both are shown as numbered on the card. */
+    if(ss->has_events) {
+        furi_string_cat_printf(out, "Event 1: %s\n", itso_transaction_name(ss->event1));
+        furi_string_cat_printf(out, "Event 2: %s\n", itso_transaction_name(ss->event2));
+    }
+
+    /* TYP 28: the day passes spent so far, each the day it was used. A tick of
+     * zero is a pass still to use and 31 one never sold (clause 2.15.2). */
+    if(product->typ == ItsoTypCarnet) {
+        flipso_cat_flag(out, "", "Valid on day of issue", ss->carnet_issue_day);
+        flipso_cat_flag(out, "", "Valid on day of expiry", ss->carnet_expiry_day);
+        for(size_t i = 0; i < COUNT_OF(ss->carnet_ticks); i++) {
+            uint8_t tick = ss->carnet_ticks[i];
+            if(tick == 0 || tick == 31 || tick > product->expiry) continue;
+            flipso_cat_date_line(out, "", "Day used", (uint16_t)(product->expiry - tick));
+        }
+    }
+
+    /* TYP 29 revision 2, multi-leg journeys. The daily count is the count for
+     * the day the latest journey began - which is only today if that was today,
+     * so it hangs off that date rather than claiming to be today's. */
+    if(product->typ == ItsoTypMultiUse && product->format_rev == 2) {
+        furi_string_cat_printf(out, "Daily journey limit: %u\n", ss->max_daily_journeys);
+        furi_string_cat_printf(out, "Changes allowed: %u\n", product->ticket.max_transfers);
+        if(ss->journey_start_dts) {
+            flipso_cat_datetime_line(out, "", "Journey began", ss->journey_start_dts);
+            furi_string_cat_printf(out, "  Changes made: %u\n", ss->transfers);
+            furi_string_cat_printf(out, "  Journeys that day: %u\n", ss->daily_journeys);
+        } else {
+            furi_string_cat(out, "Journey began: Not yet\n");
+        }
     }
 }
 
@@ -833,8 +947,15 @@ static void flipso_cat_product_details(
 
     /* --- Where. An entitlement's two locations are areas it is good in, not
      * the ends of a journey. --- */
-    flipso_cat_location(out, f, "", identity ? "Valid in" : "From", &product->from);
-    flipso_cat_location(out, f, "", identity ? "Also valid in" : "To", &product->to);
+    /* A Space Saving IPE has an area element instead, and keeps the place it
+     * was last used in @c from - not the start of a journey, so
+     * flipso_cat_space_saving() labels it with the other facts of its use. */
+    if(product->space_saving) {
+        flipso_cat_space_area(out, card);
+    } else {
+        flipso_cat_location(out, f, "", identity ? "Valid in" : "From", &product->from);
+        flipso_cat_location(out, f, "", identity ? "Also valid in" : "To", &product->to);
+    }
     /* A period ticket may leave both locations out, and then it is good wherever
      * its owner has configured that product type to be accepted - an operator's
      * whole network, typically. The card cannot say more than that, and saying
@@ -865,9 +986,15 @@ static void flipso_cat_product_details(
             flipso_cat_flag(out, "", "Photo on card", itso_id_personalised(product->id_flags));
     }
     /* PassbackTime: how long a gate refuses the same pass after it has been
-     * used, so it cannot be handed back through for a second person. */
-    if(product->has_passback && product->passback) {
-        furi_string_cat_printf(out, "Re-use wait: %u min\n", product->passback);
+     * used, so it cannot be handed back through for a second person. Zero is
+     * not "no wait" but "the reader's own rule" (TS 1000-5, every IPE that
+     * carries it), so it is shown as that rather than left out. */
+    if(product->has_passback) {
+        if(product->passback) {
+            furi_string_cat_printf(out, "Re-use wait: %u min\n", product->passback);
+        } else {
+            furi_string_cat(out, "Re-use wait: Set by the operator\n");
+        }
     }
 
     /* --- Its state. --- */
@@ -890,6 +1017,7 @@ static void flipso_cat_product_details(
 
     /* --- The terms behind it, then what has happened to it. --- */
     flipso_cat_ticket_terms(out, product);
+    flipso_cat_space_saving(out, f, card, product);
     flipso_cat_id_details(out, product);
     flipso_cat_last_transaction(out, product);
     flipso_cat_purse_terms(out, product);
@@ -913,6 +1041,41 @@ static void flipso_cat_product_details(
 static void flipso_cat_hex(FuriString* out, const uint8_t* data, size_t len) {
     for(size_t i = 0; i < len; i++) {
         furi_string_cat_printf(out, "%02X", data[i]);
+    }
+}
+
+/** "6-13, 15" for the pages set in @p pages (bit n is page n), or "None". */
+static void flipso_cat_pages(FuriString* out, uint16_t pages) {
+    if(!pages) {
+        furi_string_cat(out, "None");
+        return;
+    }
+    const char* sep = "";
+    for(uint8_t page = 0; page < 16; page++) {
+        if(!(pages & (1u << page))) continue;
+        uint8_t last = page;
+        while(last + 1 < 16 && (pages & (1u << (last + 1))))
+            last++;
+        if(last == page) {
+            furi_string_cat_printf(out, "%s%u", sep, page);
+        } else {
+            furi_string_cat_printf(out, "%s%u-%u", sep, page, last);
+        }
+        sep = ", ";
+        page = last;
+    }
+}
+
+/** The ISO/IEC 7816-6 manufacturer of a Type A UID's first byte, for the two
+ *  makers of the Ultralight-class chips ITSO's CMD4 names, or NULL. */
+static const char* flipso_chip_maker(uint8_t code) {
+    switch(code) {
+    case 0x04:
+        return "NXP";
+    case 0x05:
+        return "Infineon";
+    default:
+        return NULL;
     }
 }
 
@@ -1145,6 +1308,37 @@ static const ItsoTap* flipso_latest_tap(const ItsoCard* card) {
     return NULL;
 }
 
+/**
+ * "Label: Active" for a compact-shell ticket, from its one product.
+ *
+ * A paper ticket is its product: its shell is implied by the CMD, never expires
+ * and cannot be blocked (TS 1000-10 table 42), so the state a full card takes
+ * from its shell would call a spent ticket "Active". This asks the product
+ * instead - blocked, out of date, or out of rides - in that order.
+ */
+static void flipso_cat_ticket_state(
+    FuriString* out,
+    const char* label,
+    const ItsoCard* card,
+    uint32_t now) {
+    if(!card->product_count) {
+        furi_string_cat_printf(out, "%s: No ticket on it\n", label);
+        return;
+    }
+    const ItsoProduct* product = &card->products[0];
+    if(product->status == ItsoProductStatusBlocked) {
+        furi_string_cat_printf(out, "%s: Blocked\n", label);
+    } else if(!itso_date_open(product->expiry) && itso_date_expired(product->expiry, now)) {
+        furi_string_cat_printf(out, "%s: Expired ", label);
+        flipso_cat_date(out, product->expiry);
+        furi_string_push_back(out, '\n');
+    } else if(itso_count_name(product->count_kind) && product->count == 0) {
+        furi_string_cat_printf(out, "%s: Used up\n", label);
+    } else {
+        furi_string_cat_printf(out, "%s: Active\n", label);
+    }
+}
+
 /** One product as a summary line: "Period ticket: Until 31/03/2027". */
 static void flipso_summary_product(FuriString* out, const ItsoProduct* product, uint32_t now) {
     const char* title = flipso_product_title(product);
@@ -1163,7 +1357,7 @@ static void flipso_summary_product(FuriString* out, const ItsoProduct* product, 
             out, "%s: %s\n", title, itso_entitlement_name(product->entitlement_code));
     } else {
         furi_string_cat_printf(out, "%s: ", title);
-        if(product->expiry == 0) {
+        if(itso_date_open(product->expiry)) {
             furi_string_cat(out, "No expiry");
         } else {
             furi_string_cat(out, itso_date_expired(product->expiry, now) ? "Expired " : "Until ");
@@ -1189,8 +1383,10 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
 
     /* The card's own state first: a blocked or expired card is the headline,
      * whatever its products say. */
-    const bool expired = card->expiry && itso_date_expired(card->expiry, f->now);
-    if(card->shell_blocked) {
+    const bool expired = !itso_date_open(card->expiry) && itso_date_expired(card->expiry, f->now);
+    if(card->shell_compact) {
+        flipso_cat_ticket_state(out, "Card", card, f->now);
+    } else if(card->shell_blocked) {
         furi_string_cat(out, "Card: Blocked by its issuer\n");
     } else if(expired) {
         /* One label and a value that says both things, as a product's summary
@@ -1275,16 +1471,29 @@ void flipso_format_card(
     }
     furi_string_push_back(out, '\n');
     if(!card->isrn_check_ok) furi_string_cat(out, "Check digit: Does not match\n");
+    /* A compact shell stores no number: this one is implied by the CMD (TS
+     * 1000-10 table 42), so every ticket of its kind shows it. Said here, beside
+     * it, because it looks like this ticket's own; the chip below is what is. */
+    if(card->shell_compact) furi_string_cat(out, "  Shared by: Every compact-shell ticket\n");
 
     furi_string_cat(out, "\n");
     flipso_cat_heading(out, FlipsoIconPass, "Validity");
-    flipso_cat_expiry(out, "", "Expires", "Expired", card->expiry, f->now);
+    /* A compact shell's expiry is implied rather than stored, and never comes, so
+     * a paper ticket's validity is its product's and takes the place of both
+     * lines. */
+    if(card->shell_compact) {
+        flipso_cat_ticket_state(out, "Status", card, f->now);
+    } else {
+        flipso_cat_expiry(out, "", "Expires", "Expired", card->expiry, f->now);
+    }
     /* The good case is stated rather than left to silence, because nothing else
      * on the screen separates a card the issuer is happy with from one whose
      * directory was never read. */
-    if(card->shell_blocked) {
+    if(card->shell_compact) {
+        /* Already stated, from the product. */
+    } else if(card->shell_blocked) {
         furi_string_cat(out, "Status: Blocked\n");
-    } else if(card->expiry && itso_date_expired(card->expiry, f->now)) {
+    } else if(!itso_date_open(card->expiry) && itso_date_expired(card->expiry, f->now)) {
         furi_string_cat(out, "Status: Expired\n");
     } else if(card->dir_valid) {
         furi_string_cat(out, "Status: Active\n");
@@ -1297,9 +1506,16 @@ void flipso_format_card(
      * number is what a user needs to add their card to the operators file - on
      * a line of its own for a named one, and in the "Unknown (1234)" that
      * stands in for the name otherwise. */
-    flipso_cat_operator(out, f, "", "Operator", card->oid);
-    if(flipso_operators_name(f->operators, card->oid)) {
-        furi_string_cat_printf(out, "Operator number: %u\n", card->oid);
+    const uint16_t issuer = itso_card_issuer_oid(card);
+    flipso_cat_operator(out, f, "", "Operator", issuer);
+    if(flipso_operators_name(f->operators, issuer)) {
+        furi_string_cat_printf(out, "Operator number: %u\n", issuer);
+    }
+    /* A compact shell's own OID is the generic one every compact shell carries,
+     * so the operator above comes from the ticket's product instead. Saying so
+     * explains why the card number has a different operator number in it. */
+    if(card->shell_compact) {
+        furi_string_cat_printf(out, "  Shell operator: %u (compact)\n", card->oid);
     }
     /* Every ITSO shell carries ITSO's own issuer number, so this only earns a
      * line when it is something else. */
@@ -1318,6 +1534,43 @@ void flipso_format_card(
         furi_string_cat(out, "\n");
         flipso_cat_heading(out, FlipsoIconNone, "Chip");
         flipso_cat_chip_summary(out, f->media);
+    } else if(card->chip_uid_valid) {
+        /* A Type 2 tag's serial is in its own page memory, saved with the rest,
+         * and is the only thing that tells one paper ticket from another. */
+        furi_string_cat(out, "\n");
+        flipso_cat_heading(out, FlipsoIconNone, "Chip");
+        furi_string_cat(out, "UID: ");
+        flipso_cat_hex(out, card->chip_uid, sizeof(card->chip_uid));
+        furi_string_push_back(out, '\n');
+        /* The first byte of a 7-byte UID is the maker's ISO/IEC 7816-6 code. */
+        const char* maker = flipso_chip_maker(card->chip_uid[0]);
+        if(maker) {
+            furi_string_cat_printf(out, "Maker: %s\n", maker);
+        } else {
+            furi_string_cat_printf(out, "Maker: Unknown (%02X)\n", card->chip_uid[0]);
+        }
+        furi_string_cat_printf(out, "Memory: %u bytes\n", card->chip_memory_len);
+
+        /* The lock bits: which pages the issuer made read-only. ITSO says which
+         * a CMD4 must lock once it is issued (TS 1000-10 clause 5.10.2), so a
+         * ticket whose data could still be rewritten says so. */
+        uint16_t locked = itso_type2_locked_pages(card->chip_lock);
+        furi_string_cat(out, "Locked pages: ");
+        flipso_cat_pages(out, locked);
+        furi_string_push_back(out, '\n');
+        if(card->shell_compact) {
+            uint16_t unlocked = ITSO_CMD4_LOCKED_PAGES & ~locked;
+            flipso_cat_flag(out, "  ", "As ITSO requires", !unlocked);
+            if(unlocked) {
+                furi_string_cat(out, "  Still writable: ");
+                flipso_cat_pages(out, unlocked);
+                furi_string_push_back(out, '\n');
+            }
+        }
+        /* The block-lock bits, which fix the lock bits themselves. */
+        furi_string_cat(out, "Lock bits frozen: ");
+        flipso_cat_pages(out, itso_type2_frozen_pages(card->chip_lock));
+        furi_string_push_back(out, '\n');
     }
 
     furi_string_cat(out, "\n");
@@ -1326,6 +1579,9 @@ void flipso_format_card(
     switch(card->fvc) {
     case 2:
         furi_string_cat(out, "Card type: Smartcard (CMD2)\n");
+        break;
+    case 4:
+        furi_string_cat(out, "Card type: Ultralight (CMD4)\n");
         break;
     case 7:
         furi_string_cat(out, "Card type: DESFire (CMD7)\n");
@@ -1354,14 +1610,26 @@ void flipso_format_card(
                 card->secrc_computed);
         }
     }
-    furi_string_cat_printf(out, "Key set: %u, version %u\n", card->ksc, card->kvc);
-    furi_string_cat_printf(
-        out, "Layout: %u sectors of %u bytes\n", card->sector_count, card->sector_size);
-    furi_string_cat_printf(out, "Directory: %u slots\n", card->dir_entries);
+    /* A compact shell stores none of the key set, geometry or directory group:
+     * the CMD fixes them (TS 1000-10 table 42), so they are not the card's to
+     * report, and it has no directory sequence to count. */
+    if(card->shell_compact) {
+        furi_string_cat(out, "Layout: Compact shell\n");
+    } else {
+        furi_string_cat_printf(out, "Key set: %u, version %u\n", card->ksc, card->kvc);
+        furi_string_cat_printf(
+            out,
+            "Layout: %u sector%s of %u bytes\n",
+            card->sector_count,
+            card->sector_count == 1 ? "" : "s",
+            card->sector_size);
+        furi_string_cat_printf(
+            out, "Directory: %u slot%s\n", card->dir_entries, card->dir_entries == 1 ? "" : "s");
+    }
     /* The directory sequence number counts every change made to the shell,
      * modulo 256; it is also how a CMD2 card's two directory copies are told
      * apart. */
-    if(card->dir_valid) {
+    if(card->dir_valid && !card->shell_compact) {
         furi_string_cat_printf(out, "Update count: %u\n", card->dir_sequence);
         if(card->dir_instance_valid && card->shell_iteration) {
             /* INS#: bumped to bring a stopped card back into use. */

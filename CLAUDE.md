@@ -49,6 +49,7 @@ flipso.c              app entry, the icon table, the name validator
 flipso_format.c       the text of every detail screen; host-tested by test_format.c
 flipso_reader.c       card reading: DESFire (CMD7/CMD12) and the retry logic
 flipso_cmd2.c         ISO 7816 transport for CMD2 media
+flipso_type2.c        NFC Type 2 tag transport for CMD4 (SPT paper tickets)
 flipso_media.c        what a DESFire says about itself (incl. Oyster); the text is flipso_format.c's
 flipso_capture.c      the raw blocks a read produced; saved cards decode from these
 flipso_saved.c        those blocks on the SD card: write, read, browse, match, rename, delete
@@ -93,12 +94,13 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-about 60 KB of the 204 KB file as of 2026-09-26, because the 79 KB station
+about 66 KB of the 214 KB file as of 2026-09-27, because the 79 KB station
 table lives in `.fapassets`, which the firmware unpacks to the SD card and never
 maps. Anything added as a `const` array *does* reach RAM. Flipso costs about
-75 KB of heap all told while running (measured 2026-09-26 with `flipctl mem
---cost`), of which that 60 KB is the image and the rest is what it allocates -
-about 15 KB of that is `ItsoCard`, twenty products and twelve taps. Measure it
+101 KB of heap all told while running (measured 2026-09-27 with `flipctl mem
+--cost`; the CMD4 paper-ticket support added 5 KB, almost all of it code), of
+which that 66 KB is the image and the rest is what it allocates - about 15 KB
+of that is `ItsoCard`, twenty products and twelve taps. Measure it
 as the difference between `flipctl mem` with the app up and with the desktop
 showing, which is the only honest way to read it.
 

@@ -25,6 +25,16 @@ static const char* fmt_dts(uint32_t dts) {
     return buf;
 }
 
+/** A 14-bit DATE as a readable UTC day. */
+static const char* fmt_date(uint16_t date) {
+    static char buf[16];
+    time_t when = (time_t)itso_date_to_unix(date);
+    struct tm tm;
+    gmtime_r(&when, &tm);
+    strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
+    return buf;
+}
+
 static void show_location(const char* label, const ItsoLocation* loc) {
     if(loc->valid) printf("      %-12s %s (LocDefType %u)\n", label, loc->text, loc->def_type);
 }
@@ -124,9 +134,156 @@ static void show_extras(const ItsoProduct* p, const uint8_t* group, size_t len, 
     }
 }
 
+/** Print the shell identity and geometry a card decoded to. */
+static void show_shell(const ItsoCard* card) {
+    printf(
+        "  card number   %s (check digit %s)\n", card->isrn, card->isrn_check_ok ? "ok" : "BAD");
+    printf(
+        "  IIN %u, OID %u, FVC %u, format rev %u%s\n",
+        card->iin,
+        card->oid,
+        card->fvc,
+        card->format_rev,
+        card->shell_compact ? " (compact)" : "");
+    printf(
+        "  geometry      %u sectors of %u bytes, %u directory entries, SCTL %u\n",
+        card->sector_count,
+        card->sector_size,
+        card->dir_entries,
+        card->sct_len);
+}
+
 int main(void) {
     ItsoCard card;
     itso_card_reset(&card);
+
+    /* A Type 2 tag is one flat block of pages, not a shell/directory/product
+     * read, so it decodes on its own and there is nothing else in the file. */
+    if(replay_type2_len) {
+        printf("Type 2 tag (%zu bytes of page memory)\n", replay_type2_len);
+        static const char* const kinds[] = {
+            "incomplete read", "no ITSO shell", "full shell (CMD9/CMD10)", "compact shell (CMD4)"};
+        ItsoType2Kind kind = itso_type2_kind(replay_type2, replay_type2_len);
+        printf("  %s\n", kinds[kind]);
+        if(!itso_parse_type2(&card, replay_type2, replay_type2_len)) {
+            printf("  REJECTED by itso_parse_type2 - not a whole CMD4 ticket\n");
+            return 1;
+        }
+        show_shell(&card);
+        printf("  chip UID     ");
+        for(size_t i = 0; i < sizeof(card.chip_uid); i++)
+            printf("%02X", card.chip_uid[i]);
+        printf("\n");
+        printf(
+            "  lock bytes   %02X %02X: locked pages %04X (ITSO wants %04X), frozen %04X\n",
+            card.chip_lock[0],
+            card.chip_lock[1],
+            itso_type2_locked_pages(card.chip_lock),
+            ITSO_CMD4_LOCKED_PAGES,
+            itso_type2_frozen_pages(card.chip_lock));
+        printf("  memory       %u bytes\n", card.chip_memory_len);
+        printf("\nProducts\n  %u product(s)\n", card.product_count);
+        const ItsoSpaceSaving* ss = &card.space;
+        for(uint8_t p = 0; p < card.product_count; p++) {
+            const ItsoProduct* product = &card.products[p];
+            const ItsoTicketTerms* t = &product->ticket;
+            printf(
+                "  E%u  %s (TYP %u.%u), owner OID %u%s, %s\n",
+                product->dir_index,
+                itso_typ_name(product->typ),
+                product->typ,
+                product->ptyp,
+                product->oid,
+                product->oid_extended ? " (extended)" : "",
+                itso_status_name(product->status));
+            printf(
+                "      %-12s %s (DATE %u)\n",
+                "expires",
+                fmt_date(product->expiry),
+                product->expiry);
+            if(product->instance_valid)
+                printf(
+                    "      %-12s ISAM %08lX (OID %u), seq %lu, key %u\n",
+                    "created by",
+                    (unsigned long)product->isam_id,
+                    itso_isam_oid(product->isam_id),
+                    (unsigned long)product->isam_seq,
+                    product->key_id);
+            if(!product->space_saving) continue;
+
+            if(t->issue_date) printf("      %-12s %s\n", "issued", fmt_date(t->issue_date));
+            show_money("price paid", &t->amount_paid);
+            if(t->adults || t->children)
+                printf("      %-12s %s\n", "traveller", t->children ? "child" : "adult");
+            printf("      %-12s %s\n", "class", t->travel_class == 1 ? "first" : "standard");
+            static const char* const area[] = {"fare code", "fare value", "location type"};
+            printf(
+                "      %-12s %s %lu\n",
+                "area",
+                area[ss->area_kind % 3],
+                (unsigned long)ss->area_value);
+            printf(
+                "      %-12s off-peak=%d weekday=%d first=%d expiry-time=%d\n",
+                "flags",
+                !!(ss->flags & ITSO_SS_OFF_PEAK),
+                !!(ss->flags & ITSO_SS_WEEKDAY),
+                !!(ss->flags & ITSO_SS_FIRST_CLASS),
+                !!(ss->flags & ITSO_SS_EXPIRY_TIME));
+            if(product->has_passback)
+                printf("      %-12s %u min\n", "passback", product->passback);
+            if(ss->has_last_use)
+                printf(
+                    "      %-12s %s\n",
+                    "last used",
+                    ss->last_use_dts ? fmt_dts(ss->last_use_dts) : "never");
+            if(ss->has_events)
+                printf(
+                    "      %-12s %s, %s\n",
+                    "events",
+                    itso_transaction_name(ss->event1),
+                    itso_transaction_name(ss->event2));
+            if(t->photocard) printf("      %-12s %lu\n", "photocard", (unsigned long)t->photocard);
+            if(itso_count_name(product->count_kind))
+                printf(
+                    "      %-12s %lu\n",
+                    itso_count_name(product->count_kind),
+                    (unsigned long)product->count);
+            if(product->from.valid)
+                printf(
+                    "      %-12s %s (LocDefType %u)\n",
+                    ss->usage_alighted ? "last off at" : "last on at",
+                    product->from.text,
+                    product->from.def_type);
+            if(product->typ == ItsoTypCarnet) {
+                printf(
+                    "      %-12s %u %u %u %u %u %u, issue day %d, expiry day %d\n",
+                    "day ticks",
+                    ss->carnet_ticks[0],
+                    ss->carnet_ticks[1],
+                    ss->carnet_ticks[2],
+                    ss->carnet_ticks[3],
+                    ss->carnet_ticks[4],
+                    ss->carnet_ticks[5],
+                    ss->carnet_issue_day,
+                    ss->carnet_expiry_day);
+            }
+            if(product->typ == ItsoTypMultiUse && product->format_rev == 2) {
+                printf(
+                    "      %-12s %s\n",
+                    "journey began",
+                    ss->journey_start_dts ? fmt_dts(ss->journey_start_dts) : "not yet");
+                printf(
+                    "      %-12s %u that day (limit %u), %u changes (limit %u)\n",
+                    "journeys",
+                    ss->daily_journeys,
+                    ss->max_daily_journeys,
+                    ss->transfers,
+                    t->max_transfers);
+            }
+        }
+        printf("\nDecoded without crashing. Compare the fields above against the ticket.\n");
+        return 0;
+    }
 
     printf("Shell (%zu bytes)\n", replay_shell_len);
     if(!replay_shell_len) {

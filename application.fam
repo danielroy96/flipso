@@ -15,6 +15,7 @@ App(
         "flipso.c",
         "flipso_reader.c",
         "flipso_cmd2.c",
+        "flipso_type2.c",
         "flipso_media.c",
         "flipso_capture.c",
         "flipso_saved.c",

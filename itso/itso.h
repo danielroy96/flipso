@@ -6,7 +6,7 @@
  *   Part 1  - data types (DATE, DTS, VALC/VALS) and location definitions
  *   Part 2  - Shell Environment, Directory, IPE, Value Record and Log Directory Entry
  *   Part 5  - per-IPE-type datasets and the Transient Ticket Record
- *   Part 10 - the customer media definitions (CMD2, CMD7, CMD12)
+ *   Part 10 - the customer media definitions (CMD2, CMD4, CMD7, CMD12)
  *
  * Everything here is pure computation over byte buffers: no NFC, no GUI. That keeps
  * the decoder testable off-device and keeps the transport layer free to stream
@@ -138,6 +138,7 @@ typedef enum {
     ItsoCountPasses, /**< TYP 22: unactivated passes left. */
     ItsoCountTransactions, /**< TYP 5: charge transactions used this period. */
     ItsoCountPoints, /**< TYP 3: loyalty points held. */
+    ItsoCountCoupons, /**< TYP 29 coupons: units of travel, several to a journey. */
 } ItsoCountKind;
 
 /** TYP23Mode: how a journey ticket's rides are counted (TS 1000-5 table 35a). */
@@ -146,6 +147,70 @@ typedef enum {
     ItsoJourneyModeStoredJourneys = 1, /**< Each journey uses one, legs within limits. */
     ItsoJourneyModeSimple = 2, /**< An ordinary ticket, the default. */
 } ItsoJourneyMode;
+
+/* The pass flags of the Space Saving IPEs, numbered from the least significant
+ * bit: TYP27PassFlags, TYP28PassFlags and TYP29PassFlags (TS 1000-5 tables 49,
+ * 52 and 56) share the one definition. */
+#define ITSO_SS_OFF_PEAK    (1u << 0) /**< Valid off-peak only. */
+#define ITSO_SS_WEEKDAY     (1u << 1) /**< Valid weekdays only. */
+#define ITSO_SS_FIRST_CLASS (1u << 2) /**< First class rather than standard. */
+/** Clear: the ticket ends at 23:59. Set: at a time the IPE owner configures in
+ *  its readers, which may run past midnight or stop short of it. */
+#define ITSO_SS_EXPIRY_TIME (1u << 3)
+
+/**
+ * How a Space Saving IPE's area element restricts where it is good (TS 1000-5
+ * tables 50, 53 and 57). A reference fare code is the owner's own, so even code
+ * 0 says only that the operator decides - a whole-network day ticket and a
+ * one-zone ticket may both carry one.
+ */
+typedef enum {
+    ItsoAreaFareCode, /**< An owner-defined reference fare code. */
+    ItsoAreaFareValue, /**< An actual fare value, in minor currency units. */
+    ItsoAreaLocation, /**< A LOCE of the LocDefType held in the value; not decoded. */
+} ItsoAreaKind;
+
+/**
+ * The parts of a Space Saving IPE (TYP 27/28/29, TS 1000-5 clauses 2.14-2.16)
+ * that a full IPE has no field for.
+ *
+ * Held once on the card rather than in every product slot: only a CMD4 carries
+ * a Space Saving IPE, and it carries exactly one, so these would otherwise cost
+ * their size twenty times over for one product that uses them. The elements
+ * shared with a full ticket - price, issue date, class, travellers, passback -
+ * go in the product's @c ticket as usual, and the place a TYP 29 was last used
+ * in its @c from.
+ */
+typedef struct {
+    uint8_t flags; /**< ITSO_SS_* pass flags. */
+    bool euro; /**< Sterling/Euro flag: the currency of every amount. */
+    uint8_t area_kind; /**< ItsoAreaKind. */
+    uint32_t area_value; /**< Fare code, fare value, or the location's LocDefType. */
+
+    bool has_last_use; /**< The type carries a LastUseDTS (TYP 27, 28, 29 rev 2). */
+    uint32_t last_use_dts; /**< Raw DTS of the last use; 0 is never used. */
+    bool has_events; /**< TYP 27: Event1 and Event2 are present. */
+    uint8_t event1; /**< EN1545 EventTypeCode. */
+    uint8_t event2;
+
+    /* TYP 29 revision 1: whether UsageRec is where the holder got on or got off
+     * (table 58). The place is in the product's @c from. */
+    bool usage_alighted;
+
+    /* TYP 29 revision 2, multi-leg journeys (table 55a). */
+    uint32_t journey_start_dts; /**< JnyComDTS: when the latest journey began. */
+    uint8_t transfers; /**< TransferCounter: changes made on that journey. */
+    uint8_t daily_journeys; /**< DailyJnyCounter: journeys begun that day. */
+    uint8_t max_daily_journeys; /**< MaxDailyJourneys. */
+
+    /* TYP 28, a carnet of day passes (clause 2.15.2): each tick is the day a
+     * pass was used, as days before the directory expiry. 0 is a pass not yet
+     * used and 31 one never sold; the two flags stand for passes on the first
+     * and last days, which spend no tick. */
+    uint8_t carnet_ticks[6];
+    bool carnet_issue_day; /**< NDoIE: a pass is valid on the day of issue. */
+    bool carnet_expiry_day; /**< NDoEE: a pass is valid on the day of expiry. */
+} ItsoSpaceSaving;
 
 /** PassDurationCode: the unit PassDuration counts in (TS 1000-5 table 3.30a). */
 typedef enum {
@@ -512,7 +577,12 @@ typedef struct {
     uint8_t shell_deposit_mop;
     uint16_t shell_deposit_vat;
 
-    ItsoTicketTerms ticket; /**< TYP 22 only. */
+    /** TYP 22 and 23, and the elements a Space Saving IPE shares with them. */
+    ItsoTicketTerms ticket;
+
+    /* A Space Saving IPE (TYP 27/28/29), the one product a CMD4 paper ticket
+     * carries. Its own elements are in ItsoCard::space; see ItsoSpaceSaving. */
+    bool space_saving;
 
     ItsoLocation from;
     ItsoLocation to;
@@ -587,7 +657,28 @@ typedef struct {
     uint16_t oid; /**< Shell owner. */
     uint16_t expiry; /**< Raw DATE. */
     uint8_t format_rev; /**< ShellFormatRevision. */
-    uint8_t fvc; /**< Format Version Code: 7 = DESFire CMD7, 12 = CMD12. */
+    uint8_t fvc; /**< Format Version Code: 4 = Ultralight CMD4, 7 = DESFire CMD7, 12 = CMD12. */
+    /**
+     * A Compact ITSO Shell (TS 1000-2 clause 4.2): the tiny page-based media that
+     * cannot hold a full shell - a MIFARE Ultralight / Infineon my-d (CMD4), as
+     * SPT's Glasgow Subway paper tickets use. Only ShellLength, ShellBitMap,
+     * ShellFormatRevision and FVC are stored; the rest of the identity and the
+     * geometry are implied by the CMD (TS 1000-10 table 42) and filled in here.
+     *
+     * The implied identity is fixed for every card of the CMD - IIN 633597, OID
+     * 8189, ISSN 0 - so @c isrn is the media type's number, not a per-card one.
+     * The card's real serial is its chip UID; a caller that needs to tell two of
+     * these apart must use that rather than the ISRN.
+     */
+    bool shell_compact;
+    /** A Type 2 tag's 7-byte chip serial (pages 0-1, less BCC0): the identity a
+     *  compact shell lacks. Set only by itso_parse_type2(). */
+    bool chip_uid_valid;
+    uint8_t chip_uid[7];
+    /** The tag's two static lock bytes (page 2, bytes 2-3); see
+     *  itso_type2_locked_pages() and itso_type2_frozen_pages(). */
+    uint8_t chip_lock[2];
+    uint16_t chip_memory_len; /**< Bytes of page memory the tag gave up. */
     uint8_t ksc;
     uint8_t kvc;
     uint8_t shell_len; /**< ShellLength, in blocks of ITSO_SHELL_BLOCK_LEN. */
@@ -638,6 +729,9 @@ typedef struct {
     ItsoProduct products[ITSO_MAX_CARD_PRODUCTS];
     uint8_t product_count;
 
+    /** The Space Saving IPE's own elements, when products[0].space_saving. */
+    ItsoSpaceSaving space;
+
     ItsoTap taps[ITSO_MAX_TAPS];
     uint8_t tap_count;
 } ItsoCard;
@@ -674,6 +768,14 @@ uint32_t itso_dts_to_unix(uint32_t dts);
 /** True once the DATE has passed relative to @p now (a Unix timestamp). */
 bool itso_date_expired(uint16_t date, uint32_t now);
 
+/**
+ * True for an expiry DATE that means "does not expire": zero, the EN1545 maximum
+ * date schemes use for it, and 0x3FFF, the last date the 14 bits can hold, which
+ * is what TS 1000-10 table 42 gives a compact shell ("does not expire for the
+ * foreseeable future"). Either would otherwise print as a day in 2041.
+ */
+bool itso_date_open(uint16_t date);
+
 /* ------------------------------------------------------------------ */
 /* Parsing                                                            */
 /* ------------------------------------------------------------------ */
@@ -702,6 +804,66 @@ bool itso_looks_like_shell(const uint8_t* data, size_t len);
 
 /** Parse the Directory Data Group: directory entries, log entry and blocked flag. */
 bool itso_parse_directory(ItsoCard* card, const uint8_t* data, size_t len);
+
+/**
+ * Decode a Compact-Shell Type 2 tag from its raw page memory (TS 1000-10 section
+ * 5, CMD4): the page-based media that SPT's Glasgow Subway paper tickets use.
+ *
+ * Unlike the other media there is no separate shell/directory/product read - the
+ * whole tag is one flat block, its data groups at fixed page offsets. This finds
+ * the Compact Shell, the single IPE Directory Entry, and the Space Saving IPE
+ * (TYP 27, 28 or 29) spread across the static, dynamic and OTP pages, with its
+ * InstanceID and - through the Seal - whether it has been blocked.
+ *
+ * @param pages the tag's page memory, page 0 first.
+ * @return false unless itso_type2_kind() calls @p pages ItsoType2Compact.
+ */
+bool itso_parse_type2(ItsoCard* card, const uint8_t* pages, size_t len);
+
+/** A CMD4 tag's whole page memory: sixteen 4-byte pages (TS 1000-10 clause 5.2.2). */
+#define ITSO_CMD4_MEMORY_LEN 64
+
+/** Where a Type 2 tag's shell starts, compact or full: page 6 (TS 1000-10
+ *  clauses 5.13, 10.20 and 11.22). */
+#define ITSO_TYPE2_SHELL_OFFSET 24
+
+/** The pages TS 1000-10 clause 5.10.2 requires a CMD4 to make read-only once
+ *  issued - the shell and directory entry, InstanceID and IPE static data,
+ *  pages 6 to 13 - as a mask of bit n for page n. */
+#define ITSO_CMD4_LOCKED_PAGES 0x3FC0
+
+/**
+ * The pages a Type 2 tag's static lock bits have made read-only, bit n for page
+ * n. The layout is the MIFARE Ultralight one that CMD4 is built on: lock byte 0
+ * bits 3-7 lock pages 3-7, and lock byte 1 bits 0-7 lock pages 8-15. Locking is
+ * one-way (TS 1000-10 clause 5.10). Pages 0 and 1, and the first half of page 2,
+ * are read-only from the factory and have no lock bit.
+ */
+uint16_t itso_type2_locked_pages(const uint8_t lock[2]);
+
+/**
+ * The pages whose lock bits are themselves frozen, bit n for page n: lock byte 0
+ * bits 0-2 are the block-lock bits for page 3, pages 4-9 and pages 10-15, and
+ * once one is set the lock bits it covers can no longer be changed.
+ */
+uint16_t itso_type2_frozen_pages(const uint8_t lock[2]);
+
+/** What a Type 2 tag's page memory is, as far as ITSO goes. */
+typedef enum {
+    /** Shorter than any Type 2 tag - the smallest, an Ultralight, has 64 bytes -
+     *  so the read stopped early and says nothing about the card. */
+    ItsoType2Incomplete,
+    ItsoType2NotItso, /**< No ITSO shell at page 6. */
+    /** A full shell at page 6: a CMD9 (NTAG215/216) or CMD10 (Ultralight EV1)
+     *  card, which lays out a real directory and is not decoded. */
+    ItsoType2FullShell,
+    ItsoType2Compact, /**< A CMD4 compact shell, which itso_parse_type2() decodes. */
+} ItsoType2Kind;
+
+/**
+ * Classify a Type 2 tag's page memory by what sits at ITSO_TYPE2_SHELL_OFFSET.
+ */
+ItsoType2Kind itso_type2_kind(const uint8_t* pages, size_t len);
 
 /**
  * Read one Sector Chain Table element.
@@ -824,6 +986,22 @@ bool itso_value_record_newer(const uint8_t* a, const uint8_t* b);
 /* ------------------------------------------------------------------ */
 
 const char* itso_typ_name(uint8_t typ);
+
+/**
+ * SPT Glasgow Subway station name for its 1-15 station id, or NULL if out of
+ * range. Scheme-specific, not from the ITSO spec: see the table's provenance in
+ * itso_names.c. The Subway's tickets are a compact-shell Type 2 medium
+ * (@c shell_compact) and number their stations this way rather than by NLC.
+ */
+const char* itso_spt_subway_station(uint8_t id);
+
+/**
+ * The OID that owns the product on an SPT Subway paper ticket (read from real
+ * tickets, 2026-09-27). The ticket's compact shell names no operator, so this is
+ * what identifies one - and what says its fare stages are Subway stations.
+ */
+#define ITSO_OID_SPT_SUBWAY_TICKET 8323
+
 const char* itso_entitlement_name(uint8_t code);
 const char* itso_profile_name(uint8_t code);
 const char* itso_transaction_name(uint8_t code);
@@ -848,6 +1026,15 @@ const char* itso_payment_name(uint8_t code);
  * the directory, whose reader took a tap - can be named this way.
  */
 uint16_t itso_isam_oid(uint32_t isam);
+
+/**
+ * The operator that issued the card, and so the one whose branding titles it.
+ *
+ * Ordinarily the shell owner. A compact shell (CMD4, a paper ticket) is the
+ * exception: its shell OID is the generic 8189 shared by every compact shell, so
+ * the operator is named by the owner of the one product the ticket carries.
+ */
+uint16_t itso_card_issuer_oid(const ItsoCard* card);
 
 /** ITSO language code (TS 1000-5 annex A.24) as ISO 639-1, e.g. "en". False if unknown. */
 bool itso_language_code(uint8_t code, char out[3]);

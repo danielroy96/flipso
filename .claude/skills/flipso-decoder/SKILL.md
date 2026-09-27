@@ -78,10 +78,22 @@ in the record, and the result looks plausible rather than obviously broken.
   later than any real timestamp, so an unwritten record beats the live one when
   picking "newest". Check `itso_is_blank` before comparing timestamps.
 - **A DATE of zero is the top of the 14-bit range (2041-11-10)**, which schemes
-  use to mean "never expires". Print that, not a bewildering 2041 date.
+  use to mean "never expires". Print that, not a bewildering 2041 date. `0x3FFF`
+  means the same on a compact shell (TS 1000-10 table 42); `itso_date_open()`
+  covers both.
 - **CMD2 cards use a different geometry** from CMD7 — 80-byte sectors, 64 of
   them, 16 directory entries, and therefore a six-bit Sector Chain Table rather
   than a four-bit one. Both are covered in `tools/test/build_card.py`.
+- **Every paper ticket (CMD4) has the same card number.** A compact shell
+  stores no identity - `633597 8189 0000000 3` is implied by the CMD - so saved
+  tickets are matched and named on the chip UID, and the operator comes from the
+  product owner (`itso_card_issuer_oid()`), not the shell's generic OID 8189.
+- **Never start an ISO 14443-4 poller on a Type 2 tag.** It sends a RATS the tag
+  cannot answer and polls for ever. The detect stage routes Type A cards that do
+  not speak -4 straight to the Type 2 transport (`flipso_reader_next_transport()`).
+- **A Type 2 read shorter than 64 bytes is a failed read**, not a small card:
+  `itso_type2_kind()` calls it incomplete, so it is retried instead of being
+  shown - or saved over a good copy - half decoded.
 - **Oyster is deliberately unsupported.** It is DESFire but runs a proprietary
   application; `flipso_media.c` detects it and explains rather than failing.
 - **Operator ids are scheme-specific.** The published ENCTS list names the local

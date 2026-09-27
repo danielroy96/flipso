@@ -8,8 +8,8 @@ to see most of Flipso without owning the card that carries the feature: nobody
 has a wallet with a loyalty IPE, a charge-to-account product, a blocked shell
 and a revision 1 period ticket in it.
 
-So these four cards are built to cover the app rather than to be plausible
-wallets. Between them they reach every screen, both the CMD7 and CMD2
+So these cards are built to cover the app rather than to be plausible wallets.
+Between them they reach every screen, the CMD7, CMD2 and Type 2 (CMD4)
 geometries, every IPE type the decoder names, every value record tail it
 decodes, nearly every location renderer, and the parts of the model only a
 saved card can hold - journeys and transactions that have rolled off the card,
@@ -34,7 +34,8 @@ from itso_build import (  # noqa: E402
     Bits, bcd, charge_tail, count_tail, date_stamp, dir_entry, dts,
     instance_and_seal, isrn, journey_tail, loc1, loc2, log_entry, loyalty_tail,
     naptan, pad_sector, period_tail, purse_tail, shell_dataset, sncode, sncode2,
-    tt_record, tt_record_rev4, value_group, value_record, voucher_tail)
+    tt_record, tt_record_rev4, type2_page_memory, typ27_dataset, typ29_dataset, value_group,
+    value_record, voucher_tail)
 
 IIN = "633597"
 
@@ -835,7 +836,68 @@ def card_history():
     ]
 
 
-CARDS = [card_the_key, card_blocked, card_cmd2, card_history]
+# ====================================================================
+# Card 5 - a Glasgow Subway paper ticket
+#
+# The other four cards are ISO 14443-4 media - DESFire or ISO 7816. This one is
+# an NFC Type 2 tag (TS 1000-10 CMD4): a MIFARE Ultralight / Infineon my-d, the
+# family SPT's single-use paper tickets use. It has no full shell and no
+# directory - the whole card is one flat run of 4-byte pages, and its data groups
+# sit at fixed page offsets. So the saved card is a single "Type 2" block of the
+# raw page memory, which itso_parse_type2() decodes on its own: the Compact
+# Shell, the single IPE Directory Entry, the InstanceID and the TYP 27 dataset,
+# whose offsets were confirmed against a real day ticket.
+# ====================================================================
+def card_subway_paper():
+    # A day ticket in the shape of a real one read on 2026-09-27: a Period ticket
+    # (TYP 27) owned by SPT's product OID 8323 (extended range, so raw 131 with the
+    # flag set), an adult all-day ticket valid across the whole network, bought
+    # and last tapped on the one day it is good for. The chip serial is invented;
+    # it is the card's identity, since a compact shell's number is the same on
+    # every ticket, so Flipso keys a saved Type 2 card on it (flipso_capture.c).
+    day = date_stamp(2026, 9, 21)
+    pages = type2_page_memory(
+        bytes([0x04, 0xA2, 0xB3, 0xC4, 0xD5, 0xE6, 0xF7]),
+        dir_entry(131, 27, 0, False, day, extended=True),
+        typ27_dataset(
+            issue_date=day, amount=445, passback=7,
+            flags=0b1000,  # ExpiryTimeFlag: the operator's own end-of-service time
+            event2=12, last_use=dts(2026, 9, 21, 17, 47)))
+
+    return "Demo 5 Subway paper", unix(2026, 9, 21, 19, 40), [
+        ("Type 2", pages),
+    ]
+
+
+# ====================================================================
+# Card 6 - a Glasgow Subway paper return, half used
+#
+# Rebuilt from Ryan Murphy's published dump of 21 SPT Subway tickets
+# (blog.ry4n.org, "Reverse engineering Glasgow's subway tickets", 2022): the
+# builder reproduces his bytes exactly, so this is the shape of a real return
+# rather than one read off the spec. A Multi-Use ticket (TYP 29 revision 1) of
+# two rides, bought for GBP 3.30, with one ride left. Its last use was getting
+# off at fare stage 4 through gate 5F2800 - which on an SPT ticket is Hillhead.
+# Its one-time-programmable backup has 31 of 32 bits set, the 7F FF FF FF his
+# half-used returns show. The serial is invented and the seal filler.
+# ====================================================================
+def card_subway_return():
+    day = date_stamp(2026, 9, 21)
+    pages = type2_page_memory(
+        bytes([0x04, 0x5B, 0x61, 0x7C, 0x2A, 0x90, 0x3D]),
+        dir_entry(131, 29, 2, False, day, extended=True),
+        typ29_dataset(
+            issue_date=day, rides_left=1, amount=330, mop=3,
+            flags=0b1000,  # ExpiryTimeFlag: the operator's own end-of-service time
+            usage_code=0b101,  # UsageRec is an alighting point, LocDefType 202
+            usage=bytes.fromhex("5F280004")))
+    return "Demo 6 Subway return", unix(2026, 9, 21, 19, 45), [
+        ("Type 2", pages),
+    ]
+
+
+CARDS = [card_the_key, card_blocked, card_cmd2, card_history, card_subway_paper,
+         card_subway_return]
 
 
 def main():

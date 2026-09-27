@@ -22,6 +22,7 @@
  */
 #include "flipso_reader.h"
 #include "flipso_cmd2.h"
+#include "flipso_type2.h"
 #include "itso/itso_operators.h"
 
 #include <furi.h>
@@ -31,6 +32,7 @@
 #include <nfc/protocols/mf_desfire/mf_desfire.h>
 #include <nfc/protocols/mf_desfire/mf_desfire_poller.h>
 #include <nfc/protocols/iso14443_4a/iso14443_4a_poller.h>
+#include <nfc/protocols/iso14443_3a/iso14443_3a_poller.h>
 #include <lib/toolbox/simple_array.h>
 
 #define TAG "Flipso"
@@ -83,6 +85,7 @@ typedef enum {
     FlipsoTransportDetect,
     FlipsoTransportDesfire, /**< CMD7 and CMD12: native DESFire commands. */
     FlipsoTransportIso7816, /**< CMD2: an ISO 7816-4 file system. */
+    FlipsoTransportType2, /**< CMD4: a page-based NFC Type 2 tag. */
     FlipsoTransportCount,
 } FlipsoTransport;
 
@@ -92,11 +95,17 @@ struct FlipsoReader {
     NfcScanner* scanner; /**< Running instead of a poller in the detect stage. */
     /** The scanner has reported its card; it repeats itself until stopped. */
     bool detected;
+    /** The detected card speaks ISO 14443-4: it is a DESFire or ISO 7816
+     *  candidate rather than a Type 2 tag. Set by the detect stage, read by
+     *  flipso_reader_next_transport() to choose which transports to try. */
+    bool detected_iso4;
     bool running;
     FlipsoTransport transport;
 
     /** Allocated the first time the ISO 7816 transport is used. */
     FlipsoCmd2* cmd2;
+    /** Allocated the first time the Type 2 transport is used. */
+    FlipsoType2* type2;
 
     ItsoCard* card;
     FlipsoMedia* media;
@@ -759,30 +768,50 @@ static FlipsoReaderStatus flipso_read_card(FlipsoReader* reader, MfDesfirePoller
 /* ------------------------------------------------------------------ */
 
 /**
- * The detect stage: report whether the card on the reader speaks ISO 14443-4,
- * which both transports need. Runs on the scanner's thread, and only ever
- * reports once - the scanner repeats itself for as long as it runs.
+ * The detect stage: work out which command set the card on the reader might
+ * answer, so the right transport is tried and no transport is tried that would
+ * hang on it. Runs on the scanner's thread, and only ever reports once - the
+ * scanner repeats itself for as long as it runs.
+ *
+ * A card that speaks ISO 14443-4 is a DESFire (CMD7/12) or ISO 7816 (CMD2)
+ * candidate. A Type A card that does not - a MIFARE Ultralight or Infineon my-d -
+ * may be a Type 2 tag (CMD4), which is read a different way entirely. Starting a
+ * -4 poller on a Type 2 tag would send RATS it can never answer and poll for
+ * ever, so the two are kept apart here rather than tried in turn.
+ *
+ * A MIFARE Classic is Type A but not a medium Flipso reads (the obsolete CMD5),
+ * so it is called unsupported rather than fed to the Type 2 transport.
  */
 static void flipso_reader_scanner_callback(NfcScannerEvent event, void* context) {
     FlipsoReader* reader = context;
     if(event.type != NfcScannerEventTypeDetected || reader->detected) return;
     reader->detected = true;
 
-    bool iso4 = false;
+    bool iso4 = false, type_a = false, classic = false;
     for(size_t i = 0; i < event.data.protocol_num; i++) {
         NfcProtocol protocol = event.data.protocols[i];
         if(protocol == NfcProtocolIso14443_4a ||
            nfc_protocol_has_parent(protocol, NfcProtocolIso14443_4a)) {
             iso4 = true;
         }
+        if(protocol == NfcProtocolIso14443_3a ||
+           nfc_protocol_has_parent(protocol, NfcProtocolIso14443_3a)) {
+            type_a = true;
+        }
+        if(protocol == NfcProtocolMfClassic) classic = true;
     }
+
+    reader->detected_iso4 = iso4;
+    bool supported = iso4 || (type_a && !classic);
     FURI_LOG_I(
         TAG,
-        "Card detected: %u protocol(s), %s ISO 14443-4",
+        "Card detected: %u protocol(s), %s",
         (unsigned)event.data.protocol_num,
-        iso4 ? "speaks" : "does not speak");
+        iso4      ? "ISO 14443-4" :
+        supported ? "Type 2 tag" :
+                    "unsupported");
 
-    reader->status = iso4 ? FlipsoReaderStatusFound : FlipsoReaderStatusUnsupported;
+    reader->status = supported ? FlipsoReaderStatusFound : FlipsoReaderStatusUnsupported;
     reader->callback(reader->status, reader->context);
 }
 
@@ -824,6 +853,24 @@ static NfcCommand flipso_iso7816_callback(NfcGenericEvent event, void* context) 
     return NfcCommandStop;
 }
 
+/**
+ * Type 2 tag transport. Started in plain mode: the ISO 14443-3A poller activates
+ * the card (anticollision and select, no RATS) and reports Ready, after which the
+ * tag's pages are read with raw 0x30 commands.
+ */
+static NfcCommand flipso_type2_poller_callback(NfcGenericEvent event, void* context) {
+    FlipsoReader* reader = context;
+    furi_assert(event.protocol == NfcProtocolIso14443_3a);
+
+    const Iso14443_3aPollerEvent* iso_event = event.event_data;
+    if(iso_event->type != Iso14443_3aPollerEventTypeReady) return NfcCommandContinue;
+
+    reader->status =
+        flipso_type2_read(reader->type2, event.instance, reader->card, reader->capture);
+    reader->callback(reader->status, reader->context);
+    return NfcCommandStop;
+}
+
 /* ------------------------------------------------------------------ */
 /* Lifecycle                                                           */
 /* ------------------------------------------------------------------ */
@@ -841,6 +888,7 @@ void flipso_reader_free(FlipsoReader* reader) {
     furi_assert(reader);
     flipso_reader_stop(reader);
     if(reader->cmd2) flipso_cmd2_free(reader->cmd2);
+    if(reader->type2) flipso_type2_free(reader->type2);
     nfc_free(reader->nfc);
     free(reader);
 }
@@ -849,13 +897,21 @@ bool flipso_reader_next_transport(FlipsoReader* reader) {
     furi_assert(reader);
     furi_assert(!reader->running);
 
-    if(reader->transport + 1 < FlipsoTransportCount) {
-        reader->transport++;
+    /* Not a straight walk down the list: the detect stage decides whether the
+     * card is an ISO 14443-4 one, and only then are the two -4 transports worth
+     * trying. A Type 2 tag skips them for the one transport that fits it - and
+     * being tried a -4 transport would hang it (see the scanner callback). */
+    switch(reader->transport) {
+    case FlipsoTransportDetect:
+        reader->transport = reader->detected_iso4 ? FlipsoTransportDesfire : FlipsoTransportType2;
         return true;
+    case FlipsoTransportDesfire:
+        reader->transport = FlipsoTransportIso7816;
+        return true;
+    default: /* Iso7816 and Type2 are each the last of their path. */
+        reader->transport = FlipsoTransportDetect;
+        return false;
     }
-
-    reader->transport = FlipsoTransportDetect;
-    return false;
 }
 
 void flipso_reader_reset_transport(FlipsoReader* reader) {
@@ -897,6 +953,13 @@ void flipso_reader_start(
         if(!reader->cmd2) reader->cmd2 = flipso_cmd2_alloc();
         reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolIso14443_4a);
         nfc_poller_start(reader->poller, flipso_iso7816_callback, reader);
+    } else if(reader->transport == FlipsoTransportType2) {
+        /* Read the raw Type 2 tag over the base ISO 14443-3A poller: it activates
+         * with anticollision and select but no RATS, which is all a Type 2 tag
+         * answers. Allocated late, like the CMD2 buffers, for the same reason. */
+        if(!reader->type2) reader->type2 = flipso_type2_alloc();
+        reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolIso14443_3a);
+        nfc_poller_start(reader->poller, flipso_type2_poller_callback, reader);
     } else {
         reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolMfDesfire);
         nfc_poller_start_ex(reader->poller, flipso_desfire_callback, reader);

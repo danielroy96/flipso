@@ -310,6 +310,150 @@ int main(int argc, char** argv) {
     FlipsoFormat later = f;
     later.now = FLIPSO_TEST_LATER;
     every_screen("synthetic, expired", &later, &card);
+
+    /* The Space Saving IPEs of a Type 2 paper ticket, which hold their facts in
+     * places a full IPE does not - a counter, a place last used, day ticks. */
+    {
+        static ItsoCard t2;
+        const struct {
+            const char* name;
+            const uint8_t* pages;
+            size_t len;
+            const char* expect[5];
+        } tickets[] = {
+            {"TYP 27 day ticket",
+             cmd4_pages,
+             sizeof(cmd4_pages),
+             {"Area: Set by the operator\n  Fare code: 0\n",
+              "Ends at: Set by the operator\n",
+              "Off-peak only: No\n",
+              "Event 2: Tap out\n",
+              "Created by: SPT (Strathclyde)\n"}},
+            {"TYP 29 return",
+             cmd4_return,
+             sizeof(cmd4_return),
+             {"Rides left: 1\n",
+              "Last got off: Hillhead\n",
+              "Price paid: \xC2\xA3"
+              "3.30\n",
+              "Ends at: Set by the operator\n",
+              "Weekdays only: No\n"}},
+            {"TYP 28 carnet",
+             cmd4_carnet,
+             sizeof(cmd4_carnet),
+             {"Passes left: 3\n",
+              "Day used: ",
+              "Valid on day of issue: Yes\n",
+              "Valid on day of expiry: Yes\n",
+              "Ends at: 23:59 on the expiry date\n"}},
+            {"TYP 29 multi-leg",
+             cmd4_multileg,
+             sizeof(cmd4_multileg),
+             {"Rides left: 7\n",
+              "  Journeys that day: 2\n",
+              "Journey began: ",
+              "Daily journey limit: 4\n",
+              "  Changes made: 1\n"}},
+            {"TYP 29 unused single",
+             cmd4_unused,
+             sizeof(cmd4_unused),
+             {"Last used: Never\n", "Rides left: 1\n", "Area: ", "Paid by: Cash\n", "Class: "}},
+            {"TYP 27 by fare value",
+             cmd4_fare_value,
+             sizeof(cmd4_fare_value),
+             {"Area: Set by fare value\n  Fare value: \xC2\xA3"
+              "1.75\n",
+              "Event 1: Tap in\n",
+              "Photocard number: 424242\n",
+              "Re-use wait: Set by the operator\n",
+              "Travellers: 1 adult\n"}},
+            {"TYP 27 by location",
+             cmd4_location,
+             sizeof(cmd4_location),
+             {"Area: A location, not decoded\n  Location type: 201\n",
+              "Photocard number: None\n",
+              "Last used: Never\n",
+              "Event 1: Other\n",
+              "Issued: "}},
+        };
+        for(size_t i = 0; i < COUNT_OF(tickets); i++) {
+            itso_card_reset(&t2);
+            check("a whole CMD4 decodes", itso_parse_type2(&t2, tickets[i].pages, tickets[i].len));
+            every_screen(tickets[i].name, &f, &t2);
+            furi_string_reset(text);
+            flipso_format_product(text, &f, &t2, &t2.products[0]);
+            for(size_t e = 0; e < COUNT_OF(tickets[i].expect); e++) {
+                char what[160];
+                snprintf(what, sizeof(what), "%s shows %s", tickets[i].name, tickets[i].expect[e]);
+                check(what, shows(text, tickets[i].expect[e]));
+            }
+            /* The place a ticket was last used is not the start of a journey,
+             * and a product with no Sector Chain Table claims no status. */
+            char what[160];
+            snprintf(what, sizeof(what), "%s has no From line", tickets[i].name);
+            check(what, !shows(text, "From: "));
+            snprintf(what, sizeof(what), "%s claims no status", tickets[i].name);
+            check(what, !shows(text, "Status: "));
+        }
+
+        /* The Card screen of a paper ticket: its implied shell is not presented
+         * as the card's own data, its UID is, and its state is its product's. */
+        itso_card_reset(&t2);
+        itso_parse_type2(&t2, cmd4_pages, sizeof(cmd4_pages));
+        furi_string_reset(text);
+        flipso_format_card(text, &f, &t2, NULL, 0);
+        check("a paper ticket's number is marked shared", shows(text, "  Shared by: "));
+        check("a paper ticket shows its UID", shows(text, "UID: 04A2B3C4D5E6F7\n"));
+        check("and its chip maker", shows(text, "Maker: NXP\n"));
+        check("and its memory", shows(text, "Memory: 64 bytes\n"));
+        check(
+            "and which pages are locked, as ITSO requires",
+            shows(text, "Locked pages: 6-13\n  As ITSO requires: Yes\n"));
+        check("and that no lock bits are frozen", shows(text, "Lock bits frozen: None\n"));
+        check("a paper ticket names its card type", shows(text, "Card type: Ultralight (CMD4)\n"));
+        check("a compact shell says so", shows(text, "Layout: Compact shell\n"));
+        check(
+            "a compact shell shows no implied geometry",
+            !shows(text, "sectors") && !shows(text, "Directory: ") && !shows(text, "Key set: ") &&
+                !shows(text, "Update count: "));
+        check("a paper ticket shows no 2041 expiry", !shows(text, "2041"));
+        check("an in-date paper ticket is active", shows(text, "Status: Active\n"));
+        furi_string_reset(text);
+        flipso_format_card(text, &later, &t2, NULL, 0);
+        check("an expired paper ticket says so", shows(text, "Status: Expired "));
+        furi_string_reset(text);
+        flipso_format_summary(text, &later, &t2);
+        check("and its summary says so", shows(text, "Card: Expired "));
+        check("with no card expiry line", !shows(text, "Card expires"));
+
+        itso_card_reset(&t2);
+        itso_parse_type2(&t2, cmd4_unused, sizeof(cmd4_unused));
+        furi_string_reset(text);
+        flipso_format_card(text, &f, &t2, NULL, 0);
+        check("an Infineon chip is named", shows(text, "Maker: Infineon\n"));
+        check(
+            "a ticket locked short of ITSO's rule says what is still writable",
+            shows(text, "Locked pages: 6-9\n  As ITSO requires: No\n  Still writable: 10-13\n"));
+
+        itso_card_reset(&t2);
+        itso_parse_type2(&t2, cmd4_fare_value, sizeof(cmd4_fare_value));
+        furi_string_reset(text);
+        flipso_format_card(text, &f, &t2, NULL, 0);
+        check("frozen lock bits are listed", shows(text, "Lock bits frozen: 3-15\n"));
+
+        itso_card_reset(&t2);
+        itso_parse_type2(&t2, cmd4_spent, sizeof(cmd4_spent));
+        furi_string_reset(text);
+        flipso_format_summary(text, &f, &t2);
+        check("a ticket with no rides left is used up", shows(text, "Card: Used up\n"));
+
+        itso_card_reset(&t2);
+        itso_parse_type2(&t2, cmd4_blocked, sizeof(cmd4_blocked));
+        every_screen("blocked paper ticket", &f, &t2);
+        furi_string_reset(text);
+        flipso_format_summary(text, &f, &t2);
+        check("a zero-Seal ticket is blocked", shows(text, "Card: Blocked\n"));
+    }
     furi_string_reset(text);
     flipso_format_summary(text, &later, &card);
     check("an expired card's summary says so", shows(text, "Card: Expired "));
@@ -422,7 +566,7 @@ int main(int argc, char** argv) {
             cards++;
         }
         if(dir) closedir(dir);
-        check("all four demo cards were rendered", cards == 4);
+        check("all six demo cards were rendered", cards == 6);
         check("and a saved chip block was among them", chips > 0);
     }
 

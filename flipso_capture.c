@@ -151,7 +151,41 @@ const uint8_t* flipso_capture_chip(const FlipsoCapture* capture, size_t* len) {
 }
 
 bool flipso_capture_valid(const FlipsoCapture* capture) {
-    return capture && flipso_capture_find(capture, FlipsoBlockShell, 0) != NULL;
+    if(!capture) return false;
+    /* A Type 2 tag holds its whole card in one page-memory block instead of a
+     * separate shell, so either is enough to have something worth saving. */
+    return flipso_capture_find(capture, FlipsoBlockShell, 0) != NULL ||
+           flipso_capture_find(capture, FlipsoBlockType2, 0) != NULL;
+}
+
+/**
+ * The identity of a Type 2 tag: its chip UID, as eighteen filename-safe
+ * characters, so two of them are told apart when saved.
+ *
+ * A compact shell carries no per-card number - every card of the CMD shares the
+ * implied one (633597 8189 0...) - so the ISRN cannot be the identity here the
+ * way it is for a full shell. The chip's 7-byte UID can: it sits in pages 0-1 of
+ * the page memory (byte 3 is BCC0 and skipped), and is the only thing that
+ * differs between one paper ticket and the next. Rendered as hex behind the
+ * compact OID so it is the right length for the field and safe in a file name.
+ */
+static bool flipso_capture_type2_identity(const FlipsoCapture* capture, char* out) {
+    const FlipsoCaptureBlock* block = flipso_capture_find(capture, FlipsoBlockType2, 0);
+    if(!block || block->len < 8) return false;
+    const uint8_t* p = capture->bytes + block->offset;
+    const uint8_t uid[7] = {p[0], p[1], p[2], p[4], p[5], p[6], p[7]};
+    int n = snprintf(
+        out,
+        ITSO_ISRN_DIGITS + 1,
+        "8189%02X%02X%02X%02X%02X%02X%02X",
+        uid[0],
+        uid[1],
+        uid[2],
+        uid[3],
+        uid[4],
+        uid[5],
+        uid[6]);
+    return n == ITSO_ISRN_DIGITS;
 }
 
 uint32_t flipso_capture_time(const FlipsoCapture* capture) {
@@ -166,14 +200,24 @@ bool flipso_capture_card_number(const FlipsoCapture* capture, char* out) {
     if(!capture || !out) return false;
 
     const FlipsoCaptureBlock* shell = flipso_capture_find(capture, FlipsoBlockShell, 0);
-    if(!shell) return false;
-    return itso_shell_card_number(capture->bytes + shell->offset, shell->len, out);
+    if(shell) return itso_shell_card_number(capture->bytes + shell->offset, shell->len, out);
+
+    /* A Type 2 tag has no full shell to take a number from, and its compact one is
+     * the same for every card. Its identity is the chip UID instead, so that two
+     * paper tickets do not save over each other. */
+    return flipso_capture_type2_identity(capture, out);
 }
 
 bool flipso_capture_decode(const FlipsoCapture* capture, ItsoCard* card) {
     if(!capture || !card) return false;
 
     itso_card_reset(card);
+
+    /* A Type 2 tag is one flat block of pages with its data groups at fixed
+     * offsets, so it decodes on its own rather than through the shell/directory/
+     * product sequence the other media use. */
+    const FlipsoCaptureBlock* type2 = flipso_capture_find(capture, FlipsoBlockType2, 0);
+    if(type2) return itso_parse_type2(card, capture->bytes + type2->offset, type2->len);
 
     const FlipsoCaptureBlock* shell = flipso_capture_find(capture, FlipsoBlockShell, 0);
     if(!shell) return false;
@@ -755,6 +799,9 @@ static void flipso_capture_key(const FlipsoCaptureBlock* block, char* out, size_
     case FlipsoBlockChip:
         snprintf(out, out_len, "Chip");
         break;
+    case FlipsoBlockType2:
+        snprintf(out, out_len, "Type 2");
+        break;
     case FlipsoBlockValueHistory:
         snprintf(out, out_len, "Value history %u", block->index);
         break;
@@ -945,6 +992,8 @@ bool flipso_capture_parse_line(FlipsoCapture* capture, const char* line) {
         kind = FlipsoBlockLogHistory;
     } else if(strcmp(key, "Chip") == 0) {
         kind = FlipsoBlockChip;
+    } else if(strcmp(key, "Type 2") == 0) {
+        kind = FlipsoBlockType2;
     } else if(flipso_capture_indexed_key(key, "Product history ", &index)) {
         kind = FlipsoBlockProductHistory;
     } else if(flipso_capture_indexed_key(key, "Product ", &index)) {

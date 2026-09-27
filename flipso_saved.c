@@ -56,16 +56,18 @@ void flipso_saved_name(FuriString* name, const char* path) {
     path_extract_filename_no_ext(path, name);
 }
 
-void flipso_saved_suggest_name(char* out, size_t out_len, const ItsoCard* card, const char* brand) {
+void flipso_saved_suggest_name(char* out, size_t out_len, const char* number, const char* brand) {
     furi_assert(out);
     furi_assert(out_len);
 
-    /* The last four digits of the card number go on the end: that is how two
-     * cards from the same scheme are told apart, and it is printed on the card
-     * itself. Room for them is reserved before the brand is copied, because the
-     * brand is the half a user can recognise without them. */
+    /* The last four characters of the card's identity go on the end: that is how
+     * two cards from the same scheme are told apart - for most cards the end of
+     * the number printed on them, for a paper ticket the end of its chip serial.
+     * Room for them is reserved before the brand is copied, because the brand is
+     * the half a user can recognise without them. */
+    if(!number) number = "";
     size_t digits = 0;
-    while(digits < ITSO_ISRN_DIGITS && card->isrn[digits]) {
+    while(digits < ITSO_ISRN_DIGITS && number[digits]) {
         digits++;
     }
     bool numbered = digits >= 4 && out_len > 6;
@@ -87,7 +89,7 @@ void flipso_saved_suggest_name(char* out, size_t out_len, const ItsoCard* card, 
 
     if(numbered) {
         if(pos) out[pos++] = ' ';
-        memcpy(out + pos, card->isrn + digits - 4, 4);
+        memcpy(out + pos, number + digits - 4, 4);
         pos += 4;
     }
 

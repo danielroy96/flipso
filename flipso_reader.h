@@ -3,13 +3,15 @@
  * @brief Reads an ITSO Shell from a card and decodes it.
  *
  * ITSO defines several customer media, and they do not share a command set. The
- * reader therefore has more than one transport and tries them in turn: DESFire
- * first (CMD7 and CMD12), then ISO 7816 (CMD2, the generic micro-processor media
- * that SPT's Glasgow Subway card uses). In front of both is a detection stage,
- * the firmware's NFC scanner, which says what kind of card is on the reader
- * before either transport commits to talking to it. Each transport needs its own poller, so
- * switching between them means stopping one and starting the next - see
- * flipso_reader_next_transport().
+ * reader therefore has more than one transport and tries them in turn: for a card
+ * that speaks ISO 14443-4, DESFire first (CMD7 and CMD12), then ISO 7816 (CMD2,
+ * the generic micro-processor media that SPT's Glasgow Subway smartcard uses);
+ * for a Type A card that does not, the Type 2 tag transport (CMD4, the page-based
+ * media SPT's paper tickets use). In front of them is a detection stage, the
+ * firmware's NFC scanner, which decides which of those a card could be before any
+ * transport commits to it - a -4 poller started on a Type 2 tag would hang.
+ * Each transport needs its own poller, so switching between them means stopping
+ * one and starting the next - see flipso_reader_next_transport().
  *
  * The reader owns the NFC stack. Polling runs on the NFC worker thread; the
  * result callback is invoked from that thread, so it must only signal the UI

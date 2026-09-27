@@ -123,6 +123,14 @@ typedef enum {
      * ITSO shell, but it is still what the card said, and without it a saved
      * card could not say what chip it is. */
     FlipsoBlockChip,
+
+    /* The whole page memory of a Compact-Shell Type 2 tag (TS 1000-10 CMD4), as
+     * SPT's Glasgow Subway paper tickets use. Unlike the other media a Type 2 tag
+     * has no shell/directory/product split on the wire - it is one flat block of
+     * pages, and itso_parse_type2() finds the data groups at their fixed offsets.
+     * A card holds this instead of the Shell/Directory/Product blocks, not as
+     * well: it is the raw dump the whole card decodes from. */
+    FlipsoBlockType2,
 } FlipsoBlockKind;
 
 /**

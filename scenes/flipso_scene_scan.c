@@ -146,8 +146,9 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
         /* Stop polling from the UI thread: the poller cannot stop itself. */
         flipso_reader_stop(app->reader);
 
-        /* The detect stage found a card that speaks ISO 14443-4: on to the
-         * transports, with the card still on the reader. */
+        /* The detect stage found a card one of the transports might read - an
+         * ISO 14443-4 card or a Type 2 tag: on to them, with the card still on
+         * the reader. */
         if(app->status == FlipsoReaderStatusFound && flipso_reader_next_transport(app->reader)) {
             flipso_scene_scan_start_reader(app);
             return true;

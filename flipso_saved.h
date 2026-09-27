@@ -52,12 +52,17 @@ void flipso_saved_name(FuriString* name, const char* path);
 /**
  * Propose a name for a card that has just been read.
  *
- * The card's branding and the last four digits of its number, which is what
- * distinguishes two cards from the same scheme in a list of them. Characters a
- * file name cannot carry are dropped rather than substituted, so the suggestion
- * is always usable as it stands.
+ * The card's branding and the last four characters of its identity, which is
+ * what distinguishes two cards from the same scheme in a list of them.
+ * Characters a file name cannot carry are dropped rather than substituted, so the
+ * suggestion is always usable as it stands.
+ *
+ * @param number the identity saved cards are matched on, from
+ *               flipso_capture_card_number(): the card number, or for a compact-
+ *               shell ticket - whose card number is the same on every one - the
+ *               chip serial. May be empty.
  */
-void flipso_saved_suggest_name(char* out, size_t out_len, const ItsoCard* card, const char* brand);
+void flipso_saved_suggest_name(char* out, size_t out_len, const char* number, const char* brand);
 
 /**
  * Write a capture to @p path, creating the folder if need be.

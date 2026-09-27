@@ -37,8 +37,9 @@ card" screen. And an ITSO DESFire read ends by asking the same questions, so
 its Card screen names the chip, its UID and when it was made.
 
 A card that answers the ISO 14443-3 wake-up but will not activate as ISO
-14443-4 - a MIFARE Classic or Ultralight, a building key - can never answer an
-ITSO read. After about a second of that the scan stops and says **Unsupported
+14443-4 goes to the Type 2 transport below instead, since an Ultralight-class
+tag may be an ITSO paper ticket. A MIFARE Classic cannot be an ITSO card Flipso
+reads, so after about a second of that the scan stops and says **Unsupported
 card**, rather than waiting on it for ever.
 
 ## Operator names and card branding
@@ -57,7 +58,8 @@ OID turns up — a season ticket sold by one operator sits happily on another's
 card. A brand is only true of the **shell owner**, the OID in the Shell
 Environment Data Group (TS 1000-2 clause 4), which is the operator that issued
 the card the user is holding. So the menu title comes from `card.oid` and never
-from a product's OID.
+from a product's OID - with one exception, the compact-shell paper ticket, whose
+shell OID is a generic one; see [Type 2 tags](#type-2-tags-cmd4-compact-page-media).
 
 Most entries have no brand: the operator owns products on other issuers' cards
 but issues none of its own, or we have simply never seen one of its cards. A
@@ -128,8 +130,12 @@ neither shows as its bare code.
 ## How it reads the card
 
 ITSO defines several customer media, and they do not share a command set, so
-Flipso has two transports and tries them in turn. The switch is invisible: the
-card stays on the reader and the user sees one scan.
+Flipso has three transports. The detect stage decides which apply: a card that
+speaks ISO 14443-4 is tried as DESFire and then ISO 7816, and a Type A card that
+does not is read as a Type 2 tag. The two paths are kept apart rather than tried
+in turn, because a 14443-4 poller started on a Type 2 tag sends a RATS it can
+never answer and polls for ever. The switch is invisible: the card stays on the
+reader and the user sees one scan.
 
 ### DESFire (CMD7, and CMD12 where the layout matches)
 
@@ -180,6 +186,134 @@ necessarily use the defaults in the specification: the Subway card reports
 and 8, which among other things widens each Sector Chain Table entry from five
 bits to six.
 
+### Type 2 tags (CMD4, compact page media)
+
+SPT's Glasgow Subway paper tickets are ITSO too, on an NFC Forum Type 2 tag - a
+MIFARE Ultralight-class chip (an Infineon my-d on the tickets seen so far).
+There is no application to select and no file system: the tag is sixteen
+4-byte pages, read with the Type 2 READ command (`0x30`, four pages at a time),
+and TS 1000-10 section 5 puts each data group at a fixed page:
+
+| Pages | Bytes | Holds |
+| --- | --- | --- |
+| 0-2 | 0-11 | chip serial, check bytes, lock bytes |
+| 3 | 12-15 | IPE dynamic data, one-time-programmable |
+| 4-5 | 16-23 | IPE dynamic data, rewritable |
+| 6 | 24-26 | **Compact ITSO Shell** |
+| 6-7 | 27-31 | the single IPE Directory Entry |
+| 8-9 | 32-39 | IPE InstanceID |
+| 10-13 | 40-55 | IPE static data |
+| 14-15 | 56-63 | Seal |
+
+The read goes over the raw ISO 14443-3A poller rather than the firmware's
+Ultralight poller, because a my-d is Ultralight-command compatible without
+always being identified as an Ultralight. Reads continue until the tag refuses
+one, and what came back is classified by what sits at page 6:
+
+- **fewer than 64 bytes** - less than the smallest Type 2 tag holds, so the
+  ticket left the field mid-read. That is a failed read and is retried; a
+  half-read ticket is never shown or saved, which matters because a save would
+  replace the good copy of the same ticket.
+- **a compact shell** - a CMD4 ticket, decoded as below.
+- **a full shell** - an ITSO card on the other Type 2 media, CMD9 (NTAG215/216)
+  or CMD10 (Ultralight EV1). Both put a full shell at page 6 (TS 1000-10
+  clauses 10.20 and 11.22) and a real directory behind it, which Flipso does not
+  walk: it says the card is ITSO but unsupported, rather than that it is not
+  ITSO at all.
+- **neither** - not an ITSO card.
+
+A **Compact ITSO Shell** (TS 1000-2 clause 4.2) stores only ShellLength,
+ShellBitMap, ShellFormatRevision and FVC - three bytes, `18 01 04` on every
+ticket. Everything else is implied by the CMD (TS 1000-10 table 42): IIN 633597,
+OID 8189 (reserved for compact shells), ISSN 0, no expiry, one 32-byte sector,
+one directory entry and no Sector Chain Table. So every such ticket has the same
+card number, `633597 8189 0000000 3`, and the shell owner names no operator. The
+ticket's one product does: its owner, SPT's OID 8323, stands in for the shell
+owner as the card's issuer, and so titles the menu "SPT Subway" and fills the
+Card screen's Issuer section. A saved ticket is named and matched on its chip
+serial for the same reason - the card number would be identical on all of them.
+The Card screen marks the number as shared, shows the chip serial and its maker
+(the first byte of the UID: `04` NXP, `05` Infineon - every real Subway ticket
+so far is Infineon), and leaves out the implied key set, geometry and expiry,
+which the card does not hold.
+
+That is all the chip says about itself. An Ultralight-class chip has no
+equivalent of a DESFire's GetVersion - no batch, production week or storage
+report - so the rest of the Chip section comes from the page memory itself:
+
+- **Memory**, the bytes the tag gave up before refusing a read: 64 on a CMD4.
+- **Locked pages**, from the two static lock bytes in page 2 (the MIFARE
+  Ultralight layout: lock byte 0 bits 3-7 lock pages 3-7, lock byte 1 bits 0-7
+  lock pages 8-15). Locking is one-way. TS 1000-10 clause 5.10.2 requires an
+  issued CMD4 to lock pages 6-13 - shell, directory entry, InstanceID and IPE
+  static data - so the screen says whether it did, and lists any of those still
+  writable. Real Subway tickets have `C0 3F`: exactly pages 6-13.
+- **Lock bits frozen**, from the three block-lock bits in lock byte 0, which fix
+  the lock bits for page 3, pages 4-9 and pages 10-15. None are set on the
+  tickets seen so far.
+
+Nor does the shell say whether the ticket is still good - it never expires and
+cannot be blocked - so a paper ticket's state is its product's: blocked, expired,
+used up (no rides or passes left) or active, on the Summary and the Card screen
+alike. The product has no Sector Chain Table to give it a status either, so it
+claims none, with one exception: TS 1000-10 clause 5.16 blocks a CMD4 product by
+setting its **Seal** to all zeros, and Flipso reads that as blocked. The
+**InstanceID** in pages 8-9 has the full IPE's structure, so the product's
+Technical section names the ISAM that sold it - on the real tickets, one
+registered to SPT.
+
+The ticket itself is a **Space Saving IPE** (TS 1000-5 clauses 2.14-2.16): a
+fixed field sequence rather than a bitmap of optional elements, split across the
+static, rewritable and OTP regions above. Reassembled in that order - static,
+then pages 4-5, then page 3 - it is the dataset TS 1000-5 table 48 defines.
+The three types share that shape: 16 static bytes, 8 rewritable and 4 one-time
+programmable, agreeing on the first 31 bits and on where the pass flags and the
+area sit.
+
+- **TYP 27, the Period ticket**, is a Subway day ticket; confirmed field for
+  field against real tickets read on 2026-09-27.
+- **TYP 29, the Multi-Use ticket**, is a Subway single or return (revision 1:
+  a carnet of single tickets, or coupons). Checked against Ryan Murphy's
+  published dump of 21 Subway tickets (blog.ry4n.org, 2022), whose fields map
+  onto it exactly - and the test builder, written from the spec, reproduces his
+  return byte for byte. What he found by hand is, in ITSO's terms:
+  - his "journey type" byte is the directory entry's TYP and subtype
+    (`A0`/`A2`/`A7` are TYP 29 subtypes 0, 2 and 7; `60` is TYP 27);
+  - his "in/out" and "journeys left" bytes are the 3-bit TYP29UsageRecCode
+    (boarding or alighting, and a LocDefType of 200 plus two bits) and the
+    13-bit QtyRemaining, which counts *up* from 8191 minus the rides bought;
+  - his "gate" and "station" bytes are UsageRec, a LocDefType 202 fare stage:
+    a 3-byte machine number (the gate) and a stage number, which on SPT's
+    tickets is the station, 1-15 anticlockwise from Govan - so Flipso names it
+    from the Subway station table;
+  - his one-time-programmable counter (`3F`, `7F`, `FF`) is the
+    ScaledQtyBackup, a bit per ride set from the bottom of page 3 up.
+  Revision 2, multi-leg journeys, is decoded from the spec alone.
+- **TYP 28, a carnet of day passes**, is decoded from the spec alone: six
+  5-bit ticks in the OTP page record the days passes were used, as days before
+  the directory expiry. The pass on the day of expiry spends no tick (clause
+  2.15.2), so it is counted among the passes left. No Subway ticket of this
+  type has been seen.
+
+Every element a Space Saving IPE carries is shown, default or not - the house
+style for a medium this small. A few read differently from a full ticket's:
+
+- **Area.** The top nibble of GeoValidity / AreaValidity picks a reference fare
+  code, a fare value or a location (tables 50, 53, 57). A fare code is the
+  operator's own, so even code 0 - which every Subway ticket carries - is shown
+  as "Set by the operator" with the code, not as the whole network it happens to
+  mean on the Subway. A location is identified by its LocDefType but not decoded.
+- **Ends at.** ExpiryTimeFlag clear is 23:59; set, it is a time the owner
+  configures in its readers, which Subway day tickets use.
+- **Events.** TYP 27 carries two EventTypeCodes, Event1 and Event2, which the
+  spec does not order, so both are shown as numbered. A used Subway day ticket
+  has `0` and `12`, tap out.
+- **Journeys that day.** A TYP 29 revision 2 ticket's DailyJnyCounter counts the
+  day its latest journey began, which is not necessarily today, so it is shown
+  under that journey's start time rather than as today's count.
+- **Re-use wait.** PassbackTime 0 means the reader's own rule applies, and is
+  shown as that; this holds for every IPE that carries it.
+
 ## Saved cards
 
 A saved card is the raw blocks of the read above, not the decoded fields: the
@@ -207,6 +341,11 @@ Product 2: 2C 42 FF 00 00 ...
 Log: 14 02 00 DB EE 5A ...
 Chip: 04 01 01 01 00 18 05 ...
 ```
+
+A Type 2 tag is saved as a single block of its whole page memory instead,
+`Type 2: 05 79 76 82 ...`, and decodes from that alone. Its identity for matching
+a saved file is the chip serial rather than the card number, which a compact
+shell shares with every other ticket.
 
 `Chip` is the one block that is not part of the ITSO shell: a DESFire's
 GetVersion reply (seven bytes of hardware version, seven of software, the UID,
@@ -347,8 +486,8 @@ by ITSO Ltd under the Open Government Licence:
 - **Part 1** — data types (`DATE`, `DTS`, `VALC`/`VALS`) and location definitions
 - **Part 2** — Shell Environment, Directory, IPE, Value Record, Log Directory Entry
 - **Part 5** — per-IPE-type datasets and the Transient Ticket Record
-- **Part 10** — the customer media definitions: clause 3 for CMD2, clause 8 for
-  CMD7
+- **Part 10** — the customer media definitions: clause 3 for CMD2, clause 5 for
+  CMD4, clause 8 for CMD7
 
 Date encoding comes in two forms:
 
@@ -440,6 +579,9 @@ Beyond that:
 | TYP 24 — Reservation | Journeys remaining |
 | TYP 25 — Voucher | Vouchers remaining, auto-renew |
 | TYP 26 — Tolling | Rides remaining, auto-renew |
+| TYP 27 — Period ticket (space saving) | Issue date, price paid and currency, adult or child, class, passback, off-peak and weekday restrictions, expiry time, where it is valid (fare code or fare value; a specific location is identified but not yet decoded), last use, both event codes, photocard number, the expiry offset from the directory date, the InstanceID, and blocking by a zero Seal |
+| TYP 28 — Carnet of day passes (space saving) | As TYP 27 without the child flag, photocard or events; passes left (counting the expiry-day pass), the day each used pass was used, validity on the day of issue and of expiry |
+| TYP 29 — Multi-use ticket (space saving) | Revision 1: rides or coupons left, issue date, price paid, class, restrictions, area, and where it was last used and whether getting on or off (an SPT fare stage named as its Subway station). Revision 2: journeys left, when the latest journey began with the journeys begun that day and the changes made on it, the daily journey limit, the changes allowed, passback, last use. Both: expiry time, the InstanceID, and blocking by a zero Seal |
 
 Every product carrying a value record also reports its common header (TS 1000-2
 table 15): what the last transaction was, when, how many times the record has
@@ -538,13 +680,20 @@ LocDefType 212 carries several stops and names the first, counting the rest.
 
 ## Limitations
 
-- Reads DESFire ITSO cards (CMD7, and CMD12 where the layout matches) and
-  ISO 7816 ones (CMD2). The obsolete MIFARE Classic and Ultralight media
-  definitions are not supported, nor is CMD11, which replaces the file system
-  with a proprietary command set.
+- Reads DESFire ITSO cards (CMD7, and CMD12 where the layout matches), ISO 7816
+  ones (CMD2) and compact-shell Type 2 tags (CMD4). The obsolete MIFARE Classic
+  media definition is not supported, nor is CMD11, which replaces the file system
+  with a proprietary command set. The other Type 2 media, CMD9 (NTAG) and CMD10
+  (Ultralight EV1), carry a full shell and are not read yet: Flipso recognises
+  them and says so.
+- Space Saving IPEs: an area given as a specific location, rather than as a
+  fare code or a fare value, is identified but not decoded;
+  the ScaledQtyBackup is not used to check QtyRemaining; and the TYP 29
+  subtypes are shown as numbers - SPT's appear to be 0 adult single, 2 adult
+  return and 7 child single, but that is inferred from prices, not stated
+  anywhere.
 - Oyster cards are recognised and described, but the data is encrypted
-- MIFARE Classic, Ultralight and other cards that are not ISO 14443-4 are
-  reported as unsupported
+- MIFARE Classic and non-Type A cards are reported as unsupported
 - Seals are not verified, so Flipso cannot tell you whether a card has been
   tampered with - only the shell's own checksum is checked. See
   [Integrity](#integrity).

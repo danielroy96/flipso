@@ -38,6 +38,7 @@ TS 1000 specification. Flipso decodes as much of it as it can:
 * **Pay as you go** — balance, owning operator and purse, and the most recent transactions
 * **Cardholder** — name, date of birth, concession and entitlements
 * **Journeys** — recent taps and completed journeys, with origin, destination, fare and whether you were inside the gates
+* **Paper tickets** — ITSO's compact paper tickets, such as the Glasgow Subway's singles, returns and day tickets: rides left, price, when and at which station they were last used
 
 Station and operator names are resolved on the device from bundled reference
 data, so a card that stores nothing but a code still shows a place you
@@ -76,6 +77,22 @@ than bundled into it.
 Contributions are welcome — particularly **other media types**, **operator
 names and card branding**, **station codes**, and **fixes for cards that do not
 read**.
+
+### Claude Code
+
+Flipso is tooled out for AI-first development with Claude Code. When making
+changes, please keep the skills and tooling up to date.
+
+Claude's tooling includes `flipctl` - a little python util that encapsulates
+most of the problem solving required to develop/debug on a physical Flipper
+Zero device connected via USB. This drastically reduces fault-finding cycles
+and helps keep token usage down.
+
+Claude has been carefully housetrained to develop responsibly according to
+my guidance and desire for unit tests. A good starting point is to scan your
+card for Claude. If you're building a large new feature Claude will benefit
+from synthesizing cards so he can test them on the device without needing 
+you around to tap them.
 
 ## Licensing
 

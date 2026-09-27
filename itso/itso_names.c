@@ -265,6 +265,8 @@ const char* itso_count_name(ItsoCountKind kind) {
         return "Charges used";
     case ItsoCountPoints:
         return "Points";
+    case ItsoCountCoupons:
+        return "Coupons left";
     default:
         return NULL;
     }
@@ -354,4 +356,40 @@ uint16_t itso_isam_oid(uint32_t isam) {
     if(!(isam & (1UL << 18))) return top;
     if(!(isam & (1UL << 17))) return (uint16_t)(0x2000 | top);
     return (uint16_t)(((isam & (1UL << 16)) ? 0xE000 : 0x6000) | top);
+}
+
+/*
+ * SPT Glasgow Subway station numbering.
+ *
+ * Unlike the rail NLCs and NaPTAN codes the other locations use, the Subway
+ * numbers its 15 stations 1-15, anticlockwise from Govan (the outer-circle
+ * order). The table is complete: the Subway has exactly fifteen stations and
+ * every one is here. This is *not* from the ITSO specification - it is the SPT
+ * scheme's own encoding, reverse-engineered by Ryan Murphy and published at
+ * https://github.com/fork-bombed/spt-decoded (src/spt.py), and cross-checked
+ * against the current SPT station list. The station ID is the stage number of the
+ * bus fare stage (LocDefType 202) a Subway gate writes to a TYP 29 ticket's
+ * UsageRec - the machine number is the gate - as Ryan Murphy's published dump of
+ * real tickets shows.
+ */
+const char* itso_spt_subway_station(uint8_t id) {
+    static const char* const stations[] = {
+        "Govan",
+        "Partick",
+        "Kelvinhall",
+        "Hillhead",
+        "Kelvinbridge",
+        "St George's Cross",
+        "Cowcaddens",
+        "Buchanan Street",
+        "St Enoch",
+        "Bridge Street",
+        "West Street",
+        "Shields Road",
+        "Kinning Park",
+        "Cessnock",
+        "Ibrox",
+    };
+    if(id < 1 || id > sizeof(stations) / sizeof(stations[0])) return NULL;
+    return stations[id - 1];
 }

@@ -32,9 +32,9 @@ void flipso_scene_error_on_enter(void* context) {
 
     const char* title;
     const char* detail;
-    /* Only the unreadable-shell case builds its text, and it has to outlive
-     * this function: the widget element is handed a const char*, and nothing in
-     * its contract promises a copy. Freed in on_exit alongside the widget. */
+    /* The cases that build their text need it to outlive this function: the
+     * widget element is handed a const char*, and nothing in its contract
+     * promises a copy. Freed in on_exit alongside the widget. */
     FuriString* built = NULL;
     const Icon* icon;
     const char* button = "Scan again";
@@ -76,13 +76,32 @@ void flipso_scene_error_on_enter(void* context) {
     case FlipsoReaderStatusUnsupported:
         icon = &I_not_itso_14px;
         title = "Unsupported card";
-        detail = "This card cannot be read\n"
-                 "by Flipso. It may be a\n"
-                 "MIFARE Classic, a hotel\n"
-                 "or building key, or an\n"
-                 "older kind of ITSO card.\n\n"
-                 "Flipso reads DESFire and\n"
-                 "ISO 7816 ITSO cards.";
+        if(app->card.shell_valid) {
+            /* Only the Type 2 transport decodes a shell and still calls the card
+             * unsupported: an ITSO card on NTAG or Ultralight EV1 media (CMD9,
+             * CMD10), whose full directory Flipso does not walk. Saying it is
+             * ITSO is the useful part - it tells the holder the card is not
+             * faulty, and whoever files the bug which media to add. */
+            built = furi_string_alloc_printf(
+                "This is an ITSO card, on\n"
+                "a kind of NFC tag (CMD%u)\n"
+                "that Flipso cannot read\n"
+                "yet.\n\n"
+                "Flipso reads DESFire and\n"
+                "ISO 7816 ITSO cards, and\n"
+                "ITSO paper tickets.",
+                app->card.fvc);
+            detail = furi_string_get_cstr(built);
+        } else {
+            detail = "This card cannot be read\n"
+                     "by Flipso. It may be a\n"
+                     "MIFARE Classic, a hotel\n"
+                     "or building key, or an\n"
+                     "older kind of ITSO card.\n\n"
+                     "Flipso reads DESFire and\n"
+                     "ISO 7816 ITSO cards, and\n"
+                     "ITSO paper tickets.";
+        }
         break;
     case FlipsoReaderStatusBadShell:
         icon = &I_bad_shell_14px;

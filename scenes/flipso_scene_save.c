@@ -110,11 +110,17 @@ static void flipso_scene_save_ask_update(Flipso* app, uint32_t read_at) {
 
 /** The name screen, for a card with no record yet. */
 static void flipso_scene_save_ask_name(Flipso* app) {
+    /* Named from the same identity the save matches on, so that two paper
+     * tickets - whose card numbers are identical - are offered different names. */
+    char number[ITSO_ISRN_DIGITS + 1] = "";
+    if(!flipso_capture_card_number(app->capture, number)) {
+        snprintf(number, sizeof(number), "%s", app->card.isrn);
+    }
     flipso_saved_suggest_name(
         app->save_name,
         sizeof(app->save_name),
-        &app->card,
-        flipso_operators_brand(app->operators, app->card.oid));
+        number,
+        flipso_operators_brand(app->operators, itso_card_issuer_oid(&app->card)));
 
     text_input_reset(app->text_input);
     text_input_set_header_text(app->text_input, "Name this card");

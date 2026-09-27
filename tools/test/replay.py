@@ -53,7 +53,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 
 
-SAVED_KEYS = {"shell": "SHELL", "directory": "DIR", "log": "LOG"}
+SAVED_KEYS = {"shell": "SHELL", "directory": "DIR", "log": "LOG", "type 2": "TYPE2"}
 
 
 def parse_saved(path):
@@ -136,6 +136,7 @@ def write_header(blocks, path):
     shell = next((b[3] for b in blocks if b[0] == "SHELL"), b"")
     directory = next((b[3] for b in blocks if b[0] == "DIR"), b"")
     log = next((b[3] for b in blocks if b[0] in ("LOG", "LOGGROUP")), b"")
+    type2 = next((b[3] for b in blocks if b[0] == "TYPE2"), b"")
     groups = [b for b in blocks if b[0] in ("GROUP", "IPE")]
 
     # Generated, so exempt from ufbt lint: clang-format would split every array.
@@ -147,6 +148,7 @@ def write_header(blocks, path):
     out.append(c_array("replay_shell", shell))
     out.append(c_array("replay_dir", directory))
     out.append(c_array("replay_log", log))
+    out.append(c_array("replay_type2", type2))
     for _, index, _, data in groups:
         out.append(c_array(f"replay_group_{index}", data))
     out.append("static const ReplayBlock replay_groups[] = {")
@@ -157,7 +159,7 @@ def write_header(blocks, path):
     out.append(f"static const size_t replay_group_count = {len(groups)};")
     with open(path, "w") as fh:
         fh.write("\n".join(out) + "\n")
-    return shell, directory, log, groups
+    return shell, directory, log, groups, type2
 
 
 def main():
@@ -173,10 +175,14 @@ def main():
     if not blocks:
         sys.exit(f"{dump}: no card blocks in it")
     header = os.path.join(HERE, "replay_data.h")
-    shell, directory, log, groups = write_header(blocks, header)
-    print(f"{dump}: shell {len(shell)}B, directory {len(directory)}B, "
-          f"{len(groups)} product group(s), log {len(log)}B -> "
-          f"{os.path.relpath(header, ROOT)}")
+    shell, directory, log, groups, type2 = write_header(blocks, header)
+    if type2:
+        print(f"{dump}: Type 2 tag, {len(type2)}B of page memory -> "
+              f"{os.path.relpath(header, ROOT)}")
+    else:
+        print(f"{dump}: shell {len(shell)}B, directory {len(directory)}B, "
+              f"{len(groups)} product group(s), log {len(log)}B -> "
+              f"{os.path.relpath(header, ROOT)}")
 
     binary = os.path.join(HERE, "replay")
     # Same sanitiser flags as run.sh: a decoder bug in card data is usually an

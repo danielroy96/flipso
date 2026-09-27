@@ -153,6 +153,124 @@ def dir_entry(oid, typ, ptyp, vgp, expiry, extended=False, foreign=False):
     return bytes(e.buf)
 
 
+def compact_shell():
+    """The three bytes of a Compact ITSO Shell (TS 1000-2 table 4, CMD4)."""
+    s = Bits(3)
+    s.put(0, 6, 6)      # ShellLength = 6 blocks
+    s.put(6, 6, 0)      # ShellBitMap = 0 -> compact
+    s.put(12, 4, 1)     # ShellFormatRevision = 1
+    s.buf[2] = 4        # FVC = 4 (Ultralight CMD4)
+    return bytes(s.buf)
+
+
+def typ27_dataset(issue_date, amount, child=False, euro=False, passback=0, mop=0,
+                  flags=0, geo=0, event1=0, event2=0, last_use=0, photocard=0,
+                  expiry_offset=0, area_type=0, fare_value=False):
+    """The 28-byte logical TYP 27 (Period, space-saving) dataset (TS 1000-5 table 48).
+
+    One contiguous field sequence, before it is scattered across the card's
+    static, dynamic and OTP page regions by type2_page_memory().
+    """
+    d = Bits(28)
+    d.put(0, 6, 7)          # IPELength = 7 blocks
+    d.put(6, 6, 0)          # IPEBitMap (Seq# absent on CMD4)
+    d.put(12, 4, 1)         # IPEFormatRevision = 1
+    d.put(16, 14, issue_date)
+    d.put(30, 1, 1 if euro else 0)     # Sterling/Euro
+    d.put(31, 1, 1 if child else 0)    # Child
+    d.put(32, 4, passback)  # PassbackTime, minutes
+    d.put(36, 4, mop)       # AmountPaidMethodOfPayment
+    d.put(40, 16, amount)   # AmountPaid, VALI, in pence
+    d.put(56, 4, flags)     # TYP27PassFlags
+    # GeoValidity: 100 bits, bits 60-159 (table 50). A top nibble of zero makes
+    # the rest a reference fare code - SPT's network-wide tickets carry code 0 -
+    # or, with the bit below it set, a fare value; the low 32 bits hold either.
+    # A non-zero nibble is a LocDefType less 200, and a LOCE follows.
+    d.put(60, 4, area_type)
+    d.put(64, 1, 1 if fare_value else 0)
+    d.put(128, 32, geo)
+    d.put(160, 4, event1)   # Event1
+    d.put(164, 4, event2)   # Event2
+    d.put(168, 24, last_use)  # LastUseDTS
+    d.put(192, 24, photocard)  # PhotocardNumber (OTP)
+    d.put(216, 8, expiry_offset)  # TYP27ExpiryDate: days before the directory expiry
+    return bytes(d.buf)
+
+
+def _otp_backup(set_bits):
+    """A 32-bit one-time-programmable ScaledQtyBackup with @p set_bits set.
+
+    TS 1000-10 clause 5.11 sets them from OTP3 bit 0 upward, which read as a
+    big-endian word over page 3 is from its least significant bit - so a return
+    with one ride left (31 set) is 7F FF FF FF, as Ryan Murphy's dump shows.
+    """
+    set_bits = max(0, min(32, set_bits))
+    return (1 << set_bits) - 1
+
+
+def typ28_dataset(issue_date, amount, passback=0, mop=0, flags=0, last_use=0,
+                  ticks=(0, 0, 0, 0, 0, 0), issue_day=False, expiry_day=False):
+    """The 28-byte logical TYP 28 (Carnet of day passes) dataset (TS 1000-5 table 51).
+
+    @p ticks are the six ExpiryTicks: days before the directory expiry that a pass
+    was used, 0 for one still to use and 31 for one never sold.
+    """
+    d = Bits(28)
+    d.put(0, 6, 7)
+    d.put(6, 6, 0)          # IPEBitMap: no Seq# on CMD4
+    d.put(12, 4, 1)         # IPEFormatRevision = 1
+    d.put(16, 14, issue_date)
+    d.put(32, 4, passback)
+    d.put(36, 4, mop)
+    d.put(40, 16, amount)
+    d.put(56, 4, flags)     # TYP28PassFlags
+    d.put(168, 24, last_use)
+    for i, tick in enumerate(ticks):
+        d.put(192 + i * 5, 5, tick)
+    d.put(222, 1, 1 if issue_day else 0)    # NDoIE
+    d.put(223, 1, 1 if expiry_day else 0)   # NDoEE
+    return bytes(d.buf)
+
+
+def typ29_dataset(issue_date, rides_left, amount=0, mop=0, coupons=False,
+                  flags=0, usage_code=0, usage=b"\0\0\0\0", last_use=0, rev=1,
+                  passback=0, max_daily=0, max_transfers=0, journey_start=0,
+                  transfers=0, daily=0):
+    """The 28-byte logical TYP 29 (Multi-Use) dataset (TS 1000-5 tables 55, 55a).
+
+    Revision 1 is a carnet of single tickets or coupons, the SPT Subway single and
+    return; revision 2 is multi-leg journeys. QtyRemaining counts up from 8191 (or
+    255) minus the number bought, and the ScaledQtyBackup in page 3 keeps a bit per
+    ride at a scaling factor of 1.
+    """
+    d = Bits(28)
+    d.put(0, 6, 7)
+    d.put(6, 6, 0b001000)   # IPEBitMap bit 3: the ScaledQtyBackup is in use
+    d.put(12, 4, rev)
+    d.put(16, 14, issue_date)
+    d.put(56, 4, flags)     # TYP29PassFlags
+    if rev == 1:
+        d.put(31, 1, 1 if coupons else 0)
+        d.put(32, 4, 1)     # ScalingFactor 1: one backup bit per ride
+        d.put(36, 4, mop)
+        d.put(40, 16, amount)
+        d.put(144, 3, usage_code)            # TYP29UsageRecCode
+        d.put(147, 13, 8191 - rides_left)    # QtyRemaining
+        d.putb(20, usage)                    # UsageRec, a 4-byte LOCE
+    else:
+        d.put(32, 4, passback)
+        d.put(36, 4, max_daily)
+        d.put(40, 4, max_transfers)
+        d.put(44, 4, 1)     # ScalingFactor 1
+        d.put(128, 24, journey_start)        # JnyComDTS
+        d.put(152, 8, 255 - rides_left)      # QtyRemaining
+        d.put(160, 4, transfers)
+        d.put(164, 4, daily)
+        d.put(168, 24, last_use)
+    d.put(192, 32, _otp_backup(32 - rides_left))
+    return bytes(d.buf)
+
+
 def log_entry(ptr, eei, when, record_offset, passback, normal_mode=True):
     """The Log Directory Entry (TS 1000-2 clause 8.1)."""
     e = Bits(5)
@@ -174,6 +292,50 @@ def instance_and_seal(kid=1, inp=1, isam_id=0x01020304, isam_seq=1, seal=0xDE):
     return (bytes([((kid & 0x0F) << 4) | (inp & 0x0F)]) +
             isam_id.to_bytes(4, "big") + isam_seq.to_bytes(3, "big") +
             bytes([seal]) * 8)
+
+
+# The InstanceID a synthetic paper ticket carries (TS 1000-10 clause 5.6.1): key
+# 0, iteration 0, as a real SPT ticket has, from an invented ISAM registered to
+# SPT's extended-range OID 8323 (so "Created by" names SPT), sequence invented.
+T2_INSTANCE = instance_and_seal(kid=0, inp=0, isam_id=0x041C0099, isam_seq=0x001234)[:8]
+# The Seal is a MAC nobody without the key can check, so filler - but not zero,
+# which is how a CMD4 product is blocked (TS 1000-10 clause 5.16).
+T2_SEAL = bytes([0x5E, 0xA1, 0x5E, 0xA1, 0x5E, 0xA1, 0x5E, 0xA1])
+
+
+# The lock bytes of an issued CMD4 (page 2, bytes 2-3): pages 6-13 read-only,
+# as TS 1000-10 clause 5.10.2 requires and as real SPT tickets have them.
+T2_LOCKS = bytes([0xC0, 0x3F])
+
+
+def type2_page_memory(uid, entry, dataset=None, instance=T2_INSTANCE, seal=T2_SEAL,
+                      shell=None, locks=T2_LOCKS):
+    """A CMD4 tag's 64-byte page memory: shell at page 6, entry at 6.3, IPE spread.
+
+    @p uid is the 7-byte chip serial, @p entry the 5-byte IPE Directory Entry, and
+    @p dataset the 28-byte logical Space Saving IPE (or None to leave it blank).
+    The dataset is scattered to the physical regions TS 1000-10 section 5 defines:
+    static in pages 10-13, dynamic Data0-7 in pages 4-5, OTP0-3 in page 3. The
+    InstanceID goes in pages 8-9 and the Seal in pages 14-15; an all-zero @p seal
+    is a blocked product. @p shell replaces the compact shell at page 6, and
+    @p locks are the two static lock bytes (MIFARE Ultralight layout).
+    """
+    p = bytearray(64)
+    p[0:3] = uid[0:3]
+    p[3] = 0x88 ^ uid[0] ^ uid[1] ^ uid[2]      # BCC0 (cascade tag 0x88)
+    p[4:8] = uid[3:7]
+    p[8] = uid[3] ^ uid[4] ^ uid[5] ^ uid[6]    # BCC1
+    p[10:12] = locks                            # page 2 bytes 2-3: lock bytes
+    p[24:27] = compact_shell() if shell is None else shell  # page 6
+    p[27:32] = entry                            # page 6 byte 3 to page 7
+    p[32:40] = instance                         # pages 8-9: IPE InstanceID
+    p[56:64] = seal                             # pages 14-15: the Seal
+    if dataset is not None:
+        assert len(dataset) == 28, "a TYP 27 dataset is 28 logical bytes"
+        p[40:56] = dataset[0:16]                # static -> pages 10-13
+        p[16:24] = dataset[16:24]               # dynamic Data0-7 -> pages 4-5
+        p[12:16] = dataset[24:28]               # dynamic OTP0-3 -> page 3
+    return bytes(p)
 
 
 # ---------------------------------------------------------------- Value records

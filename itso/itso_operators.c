@@ -75,8 +75,8 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * rather than the council's, so the brand is the issuer's name: it tells
      * the holder whose pass it is, where "ITSO Card" would tell them nothing. */
     {165, "Reading Borough Council", "Reading Borough Council"},
-    /* Shell owner of an SPT Subway card, read 2026-09-17. The only CMD2 card in
-     * the table: the Subway is the one ITSO scheme still on ISO 7816 media. */
+    /* Shell owner of an SPT Subway card, read 2026-09-17. The Subway's reusable
+     * smartcard is the one ITSO scheme still on ISO 7816 media (CMD2). */
     {196, "SPT (Strathclyde)", "SPT Subway"},
     /* Shell owner of a Freedom Pass, read 2026-09-17. The scheme is run by
      * London Councils for the London boroughs; the name is from that, the OID
@@ -115,6 +115,14 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * the two that product is, 96 already has provenance ("read from an ENCTS
      * concessionary pass") and this one still has none. */
     {8288, "Greater London", NULL},
+    /* Owner of the Period ticket on an SPT Subway paper day-ticket, read
+     * 2026-09-27. The ticket is a compact-shell Type 2 tag (CMD4), whose shell
+     * OID is the generic 8189 reserved for compact shells, so this - the product
+     * owner, in the extended range - is the only OID on it that names the
+     * operator, and it brands the ticket in the shell owner's place (see
+     * itso_card_issuer_oid()). The brand is the one the Subway's own smartcard
+     * carries. */
+    {8323, "SPT (Strathclyde)", "SPT Subway"},
 };
 
 /*
