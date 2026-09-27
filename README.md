@@ -4,18 +4,17 @@
 
 **Read UK ITSO public transport smartcards with a Flipper Zero.**
 
-Tap your bus pass or rail smartcard against the back of a Flipper and see what is
-actually stored on it — the card number, the balance, your entitlement, the last
-gate you went through, and every ticket loaded onto it.
+Tap your bus pass or rail smartcard on the back of your Flipper and see the
+tickets, passes, entitlements, journeys and pay-as-you-go balance stored on it.
 
 ![Language](https://img.shields.io/badge/language-C-555555?style=flat-square)
 ![Build](https://img.shields.io/badge/build-ufbt-informational?style=flat-square)
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/idle.png" width="250" alt="Idle screen: Ready to read a card"></td>
-    <td><img src="docs/screenshots/scanning.png" width="250" alt="Scanning: Hold an ITSO smartcard against the back"></td>
-    <td><img src="docs/screenshots/menu.png" width="250" alt="Menu listing Card, Pay as you go, ID and entitlement"></td>
+    <td><img src="docs/screenshots/menu.png" width="250" alt="Card menu: Summary, Card, Pay as you go £24.15"></td>
+    <td><img src="docs/screenshots/payg.png" width="250" alt="Pay as you go: balance £24.15, operator Southeastern"></td>
+    <td><img src="docs/screenshots/journeys.png" width="250" alt="Last tap: inside ticket gates, product and time"></td>
   </tr>
 </table>
 
@@ -24,129 +23,46 @@ gate you went through, and every ticket loaded onto it.
 ## What is Flipso?
 
 **ITSO** is the UK's national standard for interoperable public transport
-ticketing. If you have an English concessionary bus pass, a London Freedom Pass,
-a season ticket on a rail smartcard, or a local authority travel card, it is
-almost certainly an ITSO card. The standard is what lets a card issued by one
-operator be accepted by another.
+ticketing. If you carry an ENCTS or Freedom Pass, a season ticket on a bus or
+rail smartcard, or a local authority travel card, it is almost certainly an
+ITSO card.
 
-**Flipso is a Flipper Zero app that reads ITSO cards.** Press OK, hold the card against
-the back of the Flipper, and it decodes the ITSO Shell and shows you everything
-on it. The menu is titled with the card's own branding — Freedom Pass, SPT
-Subway — where the operator that issued the shell is one Flipso can name, and
-"ITSO Card" where it is not.
-
-### Why this is possible without keys
-
-ITSO protects card data with **cryptographic seals for integrity, not encryption
-for confidentiality**. The seals stop you forging a ticket; they do not stop you
-reading one. Every data group on an ITSO card is readable without authentication,
-so Flipso needs no special keys to work.
+Flipso reads that card over NFC and decodes what is on it — no account, no app,
+no operator to log in to. Everything it shows comes straight off the card in
+your hand.
 
 ## What it shows you
 
-A card opens on its **Summary**: whether it is active, what each product is
-worth or runs until, the holder, and where it was last tapped. The rows below it
-say the balance and the number of products at a glance, and each opens the
-detail. Every screen is written the same way — `Label: Value`, a detail of the
-line above indented beneath it, amounts in pounds — and Left and Right page a
-long one a screen at a time. **About**, on the scan screen, gives the version and
-says whether the station and bus stop tables are installed.
+An ITSO card packs a surprising amount into its 4 KB, all laid out by the ITSO
+TS 1000 specification. Flipso decodes as much of it as it can:
 
-Flipso reads the full ITSO Shell and is implemented to follow the ITSO 
-specification.
+* **Tickets** — journey, period and carnet products, with operator, validity and the stations they cover
+* **Pay as you go** — balance, owning operator and purse, and the most recent transactions
+* **Cardholder** — name, date of birth, concession and entitlements
+* **Journeys** — recent taps and completed journeys, with origin, destination, fare and whether you were inside the gates
+
+Station and operator names are resolved on the device from bundled reference
+data, so a card that stores nothing but a code still shows a place you
+recognise.
 
 <table>
   <tr>
-    <td align="center" width="33%"><img src="docs/screenshots/card.png" width="250" alt="Card screen showing an 18-digit card number and expiry"><br><b>Card</b><br><sub>18-digit ISRN with check-digit validation, expiry, issuer, media type, shell layout and the shell checksum</sub></td>
-    <td align="center" width="33%"><img src="docs/screenshots/payg.png" width="250" alt="Pay as you go screen showing balance and operator"><br><b>Pay as you go</b><br><sub>Balance and currency, owning operator, retailer, last transaction and journey in progress</sub></td>
-    <td align="center" width="33%"><img src="docs/screenshots/payg-terms.png" width="250" alt="Purse terms showing last action, expiry and status"><br><b>Purse terms</b><br><sub>Ceiling, overdraft, auto-top-up rule, deposit, the "No expiry" that a stored zero really means, and the transactions before the last one</sub></td>
+    <td align="center" width="50%"><img src="docs/screenshots/card.png" width="250" alt="Card number 633597 0289 0100 0016 and expiry"><br><b>Card</b><br><sub>The 18-digit ISRN, its issuer and expiry, validated on the device</sub></td>
+    <td align="center" width="50%"><img src="docs/screenshots/id.png" width="250" alt="ITSO ID: name, date of birth, gender and operator"><br><b>ID &amp; entitlement</b><br><sub>Holder identity, concession and entitlement, validity and companion rules</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/entitlement.png" width="250" alt="Entitlement screen showing Limited free ride and class Disabled"><br><b>ID &amp; entitlement</b><br><sub>Holder details, entitlement type, concessionary class, validity dates and area, companion and photo flags</sub></td>
-    <td align="center"><img src="docs/screenshots/journey-log.png" width="250" alt="Journey log showing tap out from Feltham to Woking"><br><b>Journeys</b><br><sub>Whether you are inside ticket gates, the product used, and the journey log with origin, destination, fare and journey time</sub></td>
-    <td align="center"><img src="docs/screenshots/products.png" width="250" alt="Products list with per-type icons and status flags"><br><b>Products</b><br><sub>Every product in the directory, flagged expired / blocked / unused, each with an icon from its ITSO type — and, on a saved card, the ones it no longer carries</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/product-detail.png" width="250" alt="Period ticket detail showing operator, status, expiry and from station"><br><b>Product detail</b><br><sub>Operator, validity window, from/to stations, counters, and the instance identity of that one ticket</sub></td>
-    <td align="center"><img src="docs/screenshots/oyster.png" width="250" alt="TfL Oyster Card recognition screen"><br><b>Oyster recognition</b><br><sub>Not an ITSO card. Flipso says so and explains why, rather than reporting an unreadable card - and any other DESFire card gets the same chip description</sub></td>
-    <td align="center"><img src="docs/screenshots/media-chip.png" width="250" alt="Card media screen showing DESFire EV1 chip details and UID"><br><b>Card media</b><br><sub>What any card will say about itself with no key involved: chip, UID, storage, manufacture date, applications and files</sub></td>
+    <td align="center"><img src="docs/screenshots/products.png" width="250" alt="Products list with a per-type icon on each row"><br><b>Products</b><br><sub>Every product on the card, each with an icon for its type and a flag for expired, blocked or unused</sub></td>
+    <td align="center"><img src="docs/screenshots/product-detail.png" width="250" alt="Period ticket: passes left, operator, status and expiry"><br><b>Product detail</b><br><sub>Operator, status, validity window, remaining passes and the stations a ticket covers</sub></td>
   </tr>
 </table>
-
-### Saving a card
-
-A card only reads while it is against the back of the Flipper. **Save card** at
-the bottom of a card's menu writes it to the SD card, and **Saved** on the scan
-screen opens the ones already there — the same screens, without the card.
-
-What is saved is not the decoded screens but *what the card said*: the Shell
-Environment, the Directory, each product's sector chain and the journey log,
-exactly as they came off the card — and, for a DESFire, what the chip said about
-itself, so a saved card's Card screen still names its chip. Loading one runs those bytes back through the
-decoder in the build that is running, so a saved card shows whatever the current
-Flipso can make of it, and a decoder fix reaches the cards already on the card.
-
-An open saved card can be renamed or deleted from its own menu. The name is the
-only part of the file that is yours rather than the card's, so it is the only
-part there is anything to change. Deleting one takes you back to the list of
-saved cards, so clearing out several is one after another.
-
-Reading a card you have saved before updates that record instead of making a
-second copy. Cards are matched by card number rather than by file name, so the
-card you called "Mum's bus pass" stays called that, and its balance, season
-ticket and journey log come up to date. Flipso says which record it is about to
-replace and when that one was read, plus how many journeys and transactions are
-new since, before it does it.
-
-**A saved card ends up remembering more than the card does.** A card keeps four
-journeys and two transactions per product, writing each new one over the oldest,
-so a second read cannot see what the first one saw. Updating a record therefore
-keeps the records that have rolled off the card since — as the raw bytes they
-were, decoded by the build that is running like everything else in the file — so
-the journey log and the balance history grow with every read, past what the card
-itself has room for.
-
-Whole products are kept the same way. A directory entry is freed when a ticket
-expires and is removed, and reused when the next one is sold, so the card's
-account of what it carries is only ever the present tense. A record that saw the
-ticket keeps it, and the product list shows it below the ones the card still
-holds — with a clock for an icon instead of its own, **Off card** at the end of
-its row, and the date of the last read that found it on the card at the top of its
-detail screen. The same distinction runs through a product's transactions: what
-is still in its value records is listed under **Earlier on card**, and what only
-the file remembers under **Off card**. The screens that describe the card
-as it is — the purse, the ID, the product count on the card's own menu — count
-only what is on it.
-
-Saving writes the new file alongside the old one and swaps it in only once it is
-complete, so a full SD card never costs you a record you already had.
-
-Each of the three outcomes has its own chirp, because they happen seconds apart
-and you are usually looking at the card rather than the screen: a card **read**
-is the firmware's four rising notes in green, a card **kept** is two quick notes
-rising, in blue, and a card **thrown out** is the same two falling, in magenta.
-
-They live in `/ext/apps_data/flipso/cards/` as `<name>.flipso`, and the same
-file can be replayed through the decoder on a PC:
-
-```bash
-tools/test/replay.py card.flipso
-```
-
-> A saved card carries the card number, and the holder's name where the card has
-> an ITSO ID on it. They are your own cards and the files stay on your SD card,
-> but that is what is in them — think before sharing one.
-
----
 
 ## Getting started
 
 ### Requirements
 
-- A **Flipper Zero** 
-- [**ufbt**](https://github.com/flipperdevices/flipperzero-ufbt), the Flipper
-  micro-build tool: `pip install --upgrade ufbt`
-- A UK ITSO smartcard to point it at
+- A **Flipper Zero**
+- [**ufbt**](https://github.com/flipperdevices/flipperzero-ufbt)
+- A UK ITSO smartcard
 
 ### Build and install
 
@@ -155,122 +71,31 @@ ufbt
 ufbt launch
 ```
 
-Station names are packaged with the app and work immediately.
-
 ### Bus stop names
 
-The stop table — every active NaPTAN stop in Great Britain — ships ready built
-as `data/naptan.dat`, but it is 21 MB and goes on the SD card rather than inside
-the `.fap`, because a packaged file is re-uploaded over USB on every install.
-Power the Flipper down, take the microSD out, and copy it to:
-
-```
-<SD card>/apps_data/flipso/naptan.dat
-```
-
-Over USB instead, if you would rather not touch the card — same transfer, about
-ten minutes:
-
-```bash
-tools/flipper/flipctl push data/naptan.dat /ext/apps_data/flipso/naptan.dat
-```
-
-Until it is there, bus locations show as their bare stop codes; nothing else
-changes. If you only ever use one area, build that one instead and it will be a
-few hundred kilobytes:
-
-```bash
-python3 tools/naptan/build_naptan.py --list-areas          # find your area
-python3 tools/naptan/build_naptan.py --area 180 -o naptan.dat
-```
-
-See [data/README.md](data/README.md) for the detail, and
-[tools/naptan/SOURCES.md](tools/naptan/SOURCES.md) for the Open Government
-Licence terms the data comes under.
-
-## How it works
-
-### ITSO media types
-
-ITSO defines several customer media and they do not share a command set, so
-Flipso has two transports and tries them in turn.
-
-- **DESFire (CMD7 and CMD12 - National Rail, ENCTS)** — select the ITSO
-  application, read the Shell Environment, walk the directory, follow the Sector
-  Chain Table to read only the files that hold a product. Typically six to ten
-  short reads.
-- **ISO 7816 (CMD2 - SPT Subway)** — the ITSO application lives in a file system 
-  instead.
-
-### Memory
-
-The Flipper has a **190 KB heap**, and a `.fap` is loaded into it whole before
-`main()` runs, so we have to be a bit careful particularly with the station table.
-
-```
-dist/flipso.fap       203,544 bytes on disk
-  .fapassets           78,859   ← station table, never mapped into RAM
-  .text                45,864   ← in RAM
-  .rodata              13,871   ← in RAM
-  (symbols, relocs)    64,950   ← not loaded
-  ──────────────────────────
-  TOTAL IN RAM         59,735   31% of the heap
-```
-
-A card being saved costs a little on top of that, and only while a card is on
-screen: the raw blocks are kept in one buffer that grows to fit the card, which
-is about a kilobyte for a typical CMD7 one, plus the records an earlier read of
-it left in the file. It is released when the scan screen comes back.
-
-Both reference tables stay on the SD card and are binary-searched in place, so a
-lookup costs a handful of short reads and no memory that grows with the table.
-That is what lets the stop table be a hundred times the size of the packaged
-station one without costing a byte more to use — the 21 MB is a question of
-where the file lives, not of what it costs to read.
-
-## Development
-
-### Tests
-
-```bash
-tools/test/run.sh
-```
-
-Ten binaries are built and run under **ASan and UBSan**, plus a Python test for
-`flipctl`'s serial recovery that needs no Flipper: the decoder against
-spec-accurate synthetic CMD7 and CMD2 cards, the save/load round trip against
-the same cards and against deliberately broken files, the station table reader
-against tables the builder wrote, the stop table reader against both of its
-indexes, the operator table and the user's operators file, the card media screen
-against a captured Oyster, the text of every screen of every demo card against
-the house style (capitalised values, labelled detail lines, amounts in pounds),
-and the icon list and scrolling text views against an ASCII framebuffer — which
-is how their layout, wrapping and scrolling are checked without a device.
-
-### Formatting
-
-```bash
-ufbt format
-```
-
-C follows the Flipper firmware's clang-format style. `ufbt lint` checks it.
-
-### CI
-
-GitHub Actions runs the tests, `ufbt lint` and a release-SDK build on every
-push. Each run keeps the built `.fap` as a downloadable artifact.
+Copy `data/naptan.dat` to `apps_data/flipso/naptan.dat` on the SD card if you
+want Flipso to decode bus-stop NaPTANs. There are nearly half a million bus
+stops in the UK (21 MB), so this data set is shipped alongside the app rather
+than bundled into it.
 
 ## Contributing
 
-Contributions are welcome — particularly **other media types**, **operator names
-and card branding**, **station codes**, and **fixes for cards that do not read**.
+Contributions are welcome — particularly **other media types**, **operator
+names and card branding**, **station codes**, and **fixes for cards that do not
+read**.
 
-An operator entry needs the OID, which the Card screen shows under Issuer. A
-brand needs a card that has actually been read, checked against what is printed
-on it: the brand is the app's title bar, and a card titled with someone else's
-scheme is worse than one titled "ITSO Card".
+## Licensing
 
-## ITSO Specification
+### NLC codes
+
+Railway NLC codes kindly provided by
+[railwaycodes.org.uk](https://www.railwaycodes.org.uk). A small donation has
+been made to [Swindon Food Collective](https://www.swindonfoodcollective.org)
+in exchange for the use of this dataset.
+
+### ITSO specification
 
 Field offsets are taken from ITSO TS 1000 version 2.1.5 (March 2025), published
 by ITSO Ltd under the Open Government Licence.
+</content>
+</invoke>
