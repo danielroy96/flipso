@@ -13,6 +13,17 @@ ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
 ./test_parse
 
 echo
+echo "Scan session"
+# The transport and retry policy, which is pure C: every path a card can take
+# through a scan, without a card.
+${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
+  -fsanitize=address,undefined \
+  -I"$ROOT" \
+  test_scan_session.c "$ROOT/flipso_scan_session.c" \
+  -o test_scan_session
+./test_scan_session
+
+echo
 echo "Saved cards"
 # The save/load round trip, which is the decoder's other entry point: a saved
 # card is raw blocks, so loading one runs the same parsers a tap does.
@@ -83,7 +94,8 @@ python3 "$ROOT/tools/demo/build_demo_cards.py" "$DEMO" >/dev/null
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT" -I"$ROOT/itso" -I. -Istub \
-  test_format.c "$ROOT/flipso_format.c" "$ROOT/flipso_capture.c" "$ROOT/flipso_media.c" \
+  test_format.c "$ROOT/flipso_format.c" "$ROOT/flipso_format_product.c" \
+  "$ROOT/flipso_format_card.c" "$ROOT/flipso_format_journeys.c" "$ROOT/flipso_capture.c" "$ROOT/flipso_media.c" \
   "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
   "$ROOT/itso/itso_operators.c" \
   -o test_format
@@ -95,7 +107,8 @@ echo "Card media"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT" -I"$ROOT/itso" -I. -Istub \
-  test_media.c "$ROOT/flipso_media.c" "$ROOT/flipso_format.c" "$ROOT/flipso_capture.c" \
+  test_media.c "$ROOT/flipso_media.c" "$ROOT/flipso_format.c" "$ROOT/flipso_format_product.c" \
+  "$ROOT/flipso_format_card.c" "$ROOT/flipso_format_journeys.c" "$ROOT/flipso_capture.c" \
   "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
   "$ROOT/itso/itso_operators.c" \
   -o test_media

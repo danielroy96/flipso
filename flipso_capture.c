@@ -677,6 +677,76 @@ static void flipso_carry_gone_products(
     }
 }
 
+/**
+ * The IPE half of a product block: everything before its value group, or the
+ * whole block when it has none. Value records are counted on their own, so this
+ * is the part whose change the counts would otherwise miss.
+ */
+static size_t flipso_capture_ipe_len(
+    const FlipsoCapture* capture,
+    const FlipsoCaptureBlock* group,
+    uint8_t sector_size) {
+    size_t offset = 0;
+    if(sector_size &&
+       itso_value_records(capture->bytes + group->offset, group->len, sector_size, &offset)) {
+        return offset - 2; /* Back over the value group's two-byte header. */
+    }
+    return group->len;
+}
+
+/**
+ * Count what this read holds that the record did not, beyond records: products
+ * new to the card, and products whose own data has changed.
+ */
+static void flipso_count_product_changes(
+    const FlipsoCapture* capture,
+    const FlipsoCapture* previous,
+    FlipsoCaptureDiff* found) {
+    /* A Type 2 tag is one block of pages and one product. Any difference in it
+     * is the ticket changing - a ride used, a gate passed. */
+    const FlipsoCaptureBlock* pages = flipso_capture_find(capture, FlipsoBlockType2, 0);
+    const FlipsoCaptureBlock* was_pages = flipso_capture_find(previous, FlipsoBlockType2, 0);
+    if(pages && was_pages) {
+        if(pages->len != was_pages->len ||
+           memcmp(
+               capture->bytes + pages->offset, previous->bytes + was_pages->offset, pages->len) !=
+               0) {
+            found->changed_products = 1;
+        }
+        return;
+    }
+
+    const FlipsoCaptureBlock* shell = flipso_capture_find(capture, FlipsoBlockShell, 0);
+    const FlipsoCaptureBlock* was_shell = flipso_capture_find(previous, FlipsoBlockShell, 0);
+    uint8_t sector_size =
+        shell ? itso_shell_sector_size(capture->bytes + shell->offset, shell->len) : 0;
+    uint8_t was_sector_size =
+        was_shell ? itso_shell_sector_size(previous->bytes + was_shell->offset, was_shell->len) :
+                    0;
+
+    for(uint8_t entry = 1; entry <= ITSO_MAX_PRODUCTS; entry++) {
+        /* Only entries this read found a product in; the last entry can be the
+         * Log Directory Entry, and no reader writes a group for that. */
+        const FlipsoCaptureBlock* group = flipso_capture_find(capture, FlipsoBlockProduct, entry);
+        if(!group) continue;
+
+        if(!flipso_capture_same_entry(capture, previous, entry)) {
+            found->new_products++;
+            continue;
+        }
+
+        const FlipsoCaptureBlock* was_group =
+            flipso_capture_find(previous, FlipsoBlockProduct, entry);
+        if(!was_group) continue;
+        size_t len = flipso_capture_ipe_len(capture, group, sector_size);
+        size_t was_len = flipso_capture_ipe_len(previous, was_group, was_sector_size);
+        if(len != was_len ||
+           memcmp(capture->bytes + group->offset, previous->bytes + was_group->offset, len) != 0) {
+            found->changed_products++;
+        }
+    }
+}
+
 /** True for the blocks a merge adds, as opposed to the ones a read produced. */
 static bool flipso_capture_is_history(uint8_t kind) {
     return kind == FlipsoBlockLogHistory || kind == FlipsoBlockValueHistory ||
@@ -769,6 +839,7 @@ void flipso_capture_merge_history(
     }
 
     flipso_merge_value_records(capture, previous, &found);
+    flipso_count_product_changes(capture, previous, &found);
     flipso_carry_gone_products(capture, previous, &found);
 
     if(diff) *diff = found;

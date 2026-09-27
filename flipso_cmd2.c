@@ -38,11 +38,10 @@ static const uint8_t flipso_cmd2_aid[] =
 #define FLIPSO_CMD2_SFI_DEFAULT 0x01 /* Storage EF short id, parameter tag C3. */
 #define FLIPSO_CMD2_PARAM_SFI   0x0F /* Parameter EF, fixed by clause 3.7.2.1. */
 
-#define FLIPSO_CMD2_APDU_MAX       32
-#define FLIPSO_CMD2_RESP_MAX       264 /* Largest sector or directory, plus slack. */
-#define FLIPSO_CMD2_PATH_MAX       8
-#define FLIPSO_CMD2_DIR_MAX        256
-#define FLIPSO_CMD2_MAX_CHAIN_HOPS 6
+#define FLIPSO_CMD2_APDU_MAX 32
+#define FLIPSO_CMD2_RESP_MAX 264 /* Largest sector or directory, plus slack. */
+#define FLIPSO_CMD2_PATH_MAX 8
+#define FLIPSO_CMD2_DIR_MAX  256
 
 struct FlipsoCmd2 {
     BitBuffer* tx;
@@ -359,36 +358,6 @@ static bool
     return cmd2->dir_len && itso_parse_directory(card, cmd2->dir, cmd2->dir_len);
 }
 
-/** Follow one data group's sector chain, concatenating the sectors it occupies. */
-static size_t flipso_cmd2_read_group(
-    FlipsoCmd2* cmd2,
-    Iso14443_4aPoller* poller,
-    const ItsoCard* card,
-    uint8_t start_sector) {
-    size_t total = 0;
-    uint8_t sector = start_sector;
-
-    for(uint8_t hop = 0; hop < FLIPSO_CMD2_MAX_CHAIN_HOPS; hop++) {
-        if(sector == 0 || sector >= card->sector_count) break;
-        if(total + card->sector_size > ITSO_MAX_GROUP_LEN) break;
-
-        size_t read = flipso_cmd2_read_sector(
-            cmd2, poller, sector, cmd2->group + total, ITSO_MAX_GROUP_LEN - total);
-        if(read == 0) break;
-        total += read;
-
-        uint8_t next = itso_sct_entry(card, cmd2->dir, cmd2->dir_len, sector);
-        /* Terminators: itself (unused), S-2 (blocked) or S-1 (in use). */
-        if(next == sector || next == 0 || next == card->sector_count - 2 ||
-           next == card->sector_count - 1) {
-            break;
-        }
-        sector = next;
-    }
-
-    return total;
-}
-
 /* The CMD2 side of a FlipsoGroupSource. */
 typedef struct {
     FlipsoCmd2* cmd2;
@@ -396,10 +365,26 @@ typedef struct {
     const ItsoCard* card;
 } FlipsoCmd2Source;
 
+/* One Storage Sector DF per logical sector, for itso_read_chain(). */
+static size_t
+    flipso_cmd2_source_sector(void* context, uint8_t sector, uint8_t* out, size_t capacity) {
+    FlipsoCmd2Source* source = context;
+    return flipso_cmd2_read_sector(source->cmd2, source->poller, sector, out, capacity);
+}
+
 static size_t flipso_cmd2_source_group(void* context, uint8_t sector, const uint8_t** data) {
     FlipsoCmd2Source* source = context;
-    *data = source->cmd2->group;
-    return flipso_cmd2_read_group(source->cmd2, source->poller, source->card, sector);
+    FlipsoCmd2* cmd2 = source->cmd2;
+    *data = cmd2->group;
+    return itso_read_chain(
+        source->card,
+        cmd2->dir,
+        cmd2->dir_len,
+        sector,
+        flipso_cmd2_source_sector,
+        source,
+        cmd2->group,
+        ITSO_MAX_GROUP_LEN);
 }
 
 static size_t flipso_cmd2_source_log(void* context, const uint8_t** data) {
@@ -476,9 +461,11 @@ FlipsoReaderStatus flipso_cmd2_read(
     }
 
     if(!shell_ok) {
+        /* CardLost rather than CardError: the application selected, so this is
+         * the right transport and the card simply went (see the status). */
         if(cmd2->link_error) {
             FURI_LOG_D(TAG, "Card left the field before the shell was read (CMD2)");
-            return FlipsoReaderStatusCardError;
+            return FlipsoReaderStatusCardLost;
         }
         FURI_LOG_W(TAG, "ITSO application present but no readable shell (CMD2)");
         return FlipsoReaderStatusBadShell;

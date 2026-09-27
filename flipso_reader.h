@@ -11,7 +11,7 @@
  * firmware's NFC scanner, which decides which of those a card could be before any
  * transport commits to it - a -4 poller started on a Type 2 tag would hang.
  * Each transport needs its own poller, so switching between them means stopping
- * one and starting the next - see flipso_reader_next_transport().
+ * one and starting the next; which comes next is flipso_scan_session.h's to say.
  *
  * The reader owns the NFC stack. Polling runs on the NFC worker thread; the
  * result callback is invoked from that thread, so it must only signal the UI
@@ -21,6 +21,7 @@
 
 #include "flipso_capture.h"
 #include "flipso_media.h"
+#include "flipso_scan_session.h"
 #include "itso/itso.h"
 
 #ifdef __cplusplus
@@ -45,37 +46,6 @@ extern "C" {
  * Re-read rather than concluding the app stopped where the text does.
  */
 void flipso_log_shell_owner(const ItsoCard* card);
-
-typedef enum {
-    FlipsoReaderStatusIdle,
-    FlipsoReaderStatusSuccess, /**< A complete ITSO Shell was decoded. */
-    FlipsoReaderStatusNotItso, /**< No ITSO application in this transport. */
-    FlipsoReaderStatusBadShell, /**< The ITSO application is present but unreadable. */
-    FlipsoReaderStatusCardError, /**< The card moved away or the read failed. */
-    /**
-     * The card moved away part way through an ITSO read.
-     *
-     * Distinct from CardError because of what has already been proved by the
-     * time it happens: the ITSO application selected, so this is an ITSO card
-     * in this transport and there is no point asking another one. CardError can
-     * arrive before anything is known about the card, which is why that one
-     * does move on. Both are worth retrying.
-     */
-    FlipsoReaderStatusCardLost,
-    FlipsoReaderStatusOyster, /**< A TfL Oyster: known, and deliberately not decoded. */
-    /**
-     * A card is on the reader and it does not speak ISO 14443-4, which every
-     * ITSO medium Flipso reads does: a MIFARE Classic or Ultralight, a hotel
-     * key, an older ITSO card type. Without this the scan would wait for ever
-     * on a card that can never answer.
-     */
-    FlipsoReaderStatusUnsupported,
-    /**
-     * The first stage of a scan found an ISO 14443-4 card on the reader. Not a
-     * result: advance to the next transport and start again, as for NotItso.
-     */
-    FlipsoReaderStatusFound,
-} FlipsoReaderStatus;
 
 typedef struct FlipsoReader FlipsoReader;
 
@@ -111,19 +81,22 @@ FlipsoReaderStatus flipso_reader_read_groups(
     FlipsoCapture* capture,
     const FlipsoGroupSource* source);
 
-/** Invoked from the NFC worker thread once a card has been processed. */
-typedef void (*FlipsoReaderCallback)(FlipsoReaderStatus status, void* context);
+/**
+ * Invoked from the NFC worker thread each time a transport has reported. It
+ * must only signal the UI thread, which then calls flipso_reader_advance().
+ */
+typedef void (*FlipsoReaderCallback)(void* context);
 
 FlipsoReader* flipso_reader_alloc(void);
 void flipso_reader_free(FlipsoReader* reader);
 
 /**
- * Begin polling. The decoded card is written into @p card and, for a card that
- * turns out not to be an ITSO one, whatever it will say about itself is written
- * into @p media. The raw bytes behind the decode are kept in @p capture, so
- * that a card can be saved and read back later; it is emptied at the start of
- * every read attempt. All three must outlive the read. The callback fires once
- * per card presented.
+ * Begin a scan, from the detect stage. The decoded card is written into
+ * @p card and, for a card that turns out not to be an ITSO one, whatever it
+ * will say about itself is written into @p media. The raw bytes behind the
+ * decode are kept in @p capture, so that a card can be saved and read back
+ * later; it is emptied at the start of every read attempt. All three must
+ * outlive the scan. The callback fires each time a transport reports.
  */
 void flipso_reader_start(
     FlipsoReader* reader,
@@ -133,23 +106,21 @@ void flipso_reader_start(
     FlipsoReaderCallback callback,
     void* context);
 
+/**
+ * Act on the report the callback announced: stop that transport, and either
+ * start the next read - another transport, or the same one again - or finish.
+ *
+ * Call from the thread that starts and stops the reader, never from the
+ * callback: the poller cannot stop itself.
+ *
+ * @param[out] status the scan's result, when it is over.
+ * @return true while the scan goes on, with the card still on the reader and
+ *         nothing for the user to do; false when it is over.
+ */
+bool flipso_reader_advance(FlipsoReader* reader, FlipsoReaderStatus* status);
+
 /** Stop polling. Safe to call when not started. Must not be called from the callback. */
 void flipso_reader_stop(FlipsoReader* reader);
-
-/**
- * Advance to the next transport after a FlipsoReaderStatusNotItso result.
- *
- * Call it from the same thread that starts and stops the reader, between a stop
- * and a start: the card is still on the reader, so the next transport picks it
- * up without the user doing anything.
- *
- * @return false once every transport has been tried, leaving the reader ready to
- *         start again from the first.
- */
-bool flipso_reader_next_transport(FlipsoReader* reader);
-
-/** Go back to the first transport, ready for a fresh scan. */
-void flipso_reader_reset_transport(FlipsoReader* reader);
 
 #ifdef __cplusplus
 }

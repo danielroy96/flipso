@@ -114,6 +114,9 @@ static const Icon* const flipso_icons[FlipsoIconCount - 1] = {
     [FlipsoIconInfo - 1] = &I_info_10px,
 };
 _Static_assert(
+    FLIPSO_MENU_MAX_ITEMS <= FlipsoCustomEventListRowLast + 1,
+    "a list row's id must not collide with the app's own events");
+_Static_assert(
     COUNT_OF(flipso_icons) <= FLIPSO_TEXT_MAX_ICONS,
     "the text view cannot number this many heading icons");
 
@@ -143,6 +146,11 @@ void flipso_reset_card_menus(Flipso* app) {
 void flipso_show_text(Flipso* app, const FuriString* text) {
     flipso_text_view_set_text(app->text_view, furi_string_get_cstr(text));
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipsoViewText);
+}
+
+void flipso_open_text(Flipso* app, FlipsoTextScreen screen) {
+    scene_manager_set_scene_state(app->scene_manager, FlipsoSceneText, screen);
+    scene_manager_next_scene(app->scene_manager, FlipsoSceneText);
 }
 
 /* ------------------------------------------------------------------ */
@@ -192,6 +200,10 @@ static Flipso* flipso_alloc(void) {
     view_dispatcher_add_view(app->view_dispatcher, FlipsoViewWidget, widget_get_view(app->widget));
     view_dispatcher_add_view(
         app->view_dispatcher, FlipsoViewTextInput, text_input_get_view(app->text_input));
+
+    /* Before anything lists the saved cards: a save that a power cut stopped
+     * half way is finished or undone, so it never shows as a missing card. */
+    flipso_saved_recover();
 
     app->reader = flipso_reader_alloc();
     app->capture = flipso_capture_alloc();

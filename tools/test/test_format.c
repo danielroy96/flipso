@@ -234,6 +234,38 @@ static bool load(FlipsoCapture* capture, const char* path) {
 /* 2060-01-01: past the expiry of every card and product the tests build. */
 #define FLIPSO_TEST_LATER 2840140800u
 
+/* Wording pinned against the demo card that carries every product type. */
+static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
+    FuriString* text = furi_string_alloc();
+
+    flipso_format_summary(text, f, card);
+    check("an ITSO ID is summed up by its concession", shows(text, "ITSO ID: Commuter\n"));
+
+    furi_string_reset(text);
+    flipso_format_taps(text, f, card);
+    check(
+        "the products a gate checked are one line",
+        shows(text, "  Products checked: Journey ticket, Pay as you go, Period ticket\n"));
+    check(
+        "a reader names its machine, then its operator",
+        shows(text, "  Tap-in reader: 01020304\n    Operator: "));
+    check("passback is called passback", shows(text, "Passback timeout: 20 min\n"));
+
+    /* Its reserved journey is in use as far as the card's chain says, and out
+     * of date as far as its expiry, 31/03/2026, says: the second is the one to
+     * show. Checked on 2026-09-21, after that expiry. */
+    FlipsoFormat after = *f;
+    after.now = 1790000000u;
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        if(card->products[i].typ != ItsoTypReservationTicket) continue;
+        furi_string_reset(text);
+        flipso_format_product(text, &after, card, &card->products[i]);
+        check("an expired product is not called active", shows(text, "Status: Expired\n"));
+        check("and says so once", !shows(text, "Status: Active\n"));
+    }
+    furi_string_free(text);
+}
+
 int main(int argc, char** argv) {
     printf("Screen text\n");
 
@@ -328,7 +360,7 @@ int main(int argc, char** argv) {
               "Ends at: Set by the operator\n",
               "Off-peak only: No\n",
               "Event 2: Tap out\n",
-              "Created by: SPT (Strathclyde)\n"}},
+              "  Operator: SPT (Strathclyde)\n"}},
             {"TYP 29 return",
              cmd4_return,
              sizeof(cmd4_return),
@@ -365,7 +397,7 @@ int main(int argc, char** argv) {
               "1.75\n",
               "Event 1: Tap in\n",
               "Photocard number: 424242\n",
-              "Re-use wait: Set by the operator\n",
+              "Passback timeout: Set by the operator\n",
               "Travellers: 1 adult\n"}},
             {"TYP 27 by location",
              cmd4_location,
@@ -402,7 +434,10 @@ int main(int argc, char** argv) {
         itso_parse_type2(&t2, cmd4_pages, sizeof(cmd4_pages));
         furi_string_reset(text);
         flipso_format_card(text, &f, &t2, NULL, 0);
-        check("a paper ticket's number is marked shared", shows(text, "  Shared by: "));
+        check(
+            "a paper ticket's number is with its chip, for what it is",
+            shows(text, "Card number: 633597 8189 0000 0003\n(Compact ITSO Shell Ticket)\n"));
+        check("and is not the screen's headline", !shows(text, "Card number\n"));
         check("a paper ticket shows its UID", shows(text, "UID: 04A2B3C4D5E6F7\n"));
         check("and its chip maker", shows(text, "Maker: NXP\n"));
         check("and its memory", shows(text, "Memory: 64 bytes\n"));
@@ -423,7 +458,7 @@ int main(int argc, char** argv) {
         check("an expired paper ticket says so", shows(text, "Status: Expired "));
         furi_string_reset(text);
         flipso_format_summary(text, &later, &t2);
-        check("and its summary says so", shows(text, "Card: Expired "));
+        check("and its summary says so, of a ticket", shows(text, "Ticket: Expired "));
         check("with no card expiry line", !shows(text, "Card expires"));
 
         itso_card_reset(&t2);
@@ -445,14 +480,14 @@ int main(int argc, char** argv) {
         itso_parse_type2(&t2, cmd4_spent, sizeof(cmd4_spent));
         furi_string_reset(text);
         flipso_format_summary(text, &f, &t2);
-        check("a ticket with no rides left is used up", shows(text, "Card: Used up\n"));
+        check("a ticket with no rides left is used up", shows(text, "Ticket: Used up\n"));
 
         itso_card_reset(&t2);
         itso_parse_type2(&t2, cmd4_blocked, sizeof(cmd4_blocked));
         every_screen("blocked paper ticket", &f, &t2);
         furi_string_reset(text);
         flipso_format_summary(text, &f, &t2);
-        check("a zero-Seal ticket is blocked", shows(text, "Card: Blocked\n"));
+        check("a zero-Seal ticket is blocked", shows(text, "Ticket: Blocked\n"));
     }
     furi_string_reset(text);
     flipso_format_summary(text, &later, &card);
@@ -557,6 +592,7 @@ int main(int argc, char** argv) {
             }
             f.media = &demo_media;
             every_screen(entry->d_name, &f, &demo_card);
+            if(strncmp(entry->d_name, "Demo 1", 6) == 0) demo_one(&f, &demo_card);
             f.media = NULL;
             FlipsoFormat expired = f;
             expired.now = FLIPSO_TEST_LATER;

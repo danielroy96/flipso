@@ -554,6 +554,7 @@ static void merge_history(void) {
         diff.kept_values);
     check("one journey is new since the file was written", diff.new_taps == 1);
     check("one transaction is new", diff.new_values == 1);
+    check("no product is new or changed", diff.new_products == 0 && diff.changed_products == 0);
     check("the journey that rolled off is kept", diff.kept_taps == 1);
     check("so is the value record that rolled off", diff.kept_values == 1);
 
@@ -696,6 +697,7 @@ static void merge_replaced_product(void) {
     ItsoCard merged;
     flipso_capture_decode(now, &merged);
     check("a replaced product keeps no history", diff.kept_values == 0);
+    check("the product in its slot counts as new", diff.new_products == 1);
     /* Its records are not the new product's, but the product itself is still
      * one the card used to carry, so it is kept beside the one in its slot. */
     check("but the product itself is kept", diff.kept_products == 1);
@@ -963,6 +965,87 @@ static void gone_product_cap(void) {
  * distinction is worth a test because the two look alike from here: in both
  * cases this read has no entry to compare the old one against.
  */
+/*
+ * A product sold since the record was written, in an entry the record had
+ * empty. It brings no journey and, here, no transaction of its own that the
+ * record lacks - so without counting products the save screen would call the
+ * card unchanged.
+ */
+static void merge_new_product(void) {
+    ItsoCard reference;
+    reference_decode(&reference);
+
+    static uint8_t dir_then[sizeof(card_dir)];
+    memcpy(dir_then, card_dir, sizeof(card_dir));
+    memset(dir_then + 2 + ITSO_DIR_ENTRY_LEN, 0, ITSO_DIR_ENTRY_LEN); /* Entry 2 empty. */
+
+    FlipsoCapture* previous = flipso_capture_alloc();
+    flipso_capture_add(previous, FlipsoBlockShell, 0, card_shell, sizeof(card_shell));
+    flipso_capture_add(previous, FlipsoBlockDirectory, 0, dir_then, sizeof(dir_then));
+    for(uint8_t i = 0; i < reference.product_count && i < 5; i++) {
+        if(reference.products[i].dir_index == 2) continue;
+        flipso_capture_add(
+            previous,
+            FlipsoBlockProduct,
+            reference.products[i].dir_index,
+            groups[i].data,
+            groups[i].len);
+    }
+    flipso_capture_add(previous, FlipsoBlockLog, 0, card_log, sizeof(card_log));
+
+    FlipsoCapture* now = flipso_capture_alloc();
+    fill(now, &reference);
+
+    FlipsoCaptureDiff diff;
+    flipso_capture_merge_history(now, previous, &diff);
+    check("a product sold since is counted as new", diff.new_products == 1);
+    check("and nothing else is said to have changed", diff.changed_products == 0);
+    check("nor is any journey new", diff.new_taps == 0);
+
+    /* The same card again, identical: nothing to report at all. */
+    FlipsoCapture* again = flipso_capture_alloc();
+    fill(again, &reference);
+    FlipsoCapture* same = flipso_capture_alloc();
+    fill(same, &reference);
+    flipso_capture_merge_history(same, again, &diff);
+    check(
+        "an unchanged card reports nothing new",
+        !diff.new_taps && !diff.new_values && !diff.new_products && !diff.changed_products);
+
+    flipso_capture_free(same);
+    flipso_capture_free(again);
+    flipso_capture_free(now);
+    flipso_capture_free(previous);
+}
+
+/*
+ * A paper ticket read again after a ride. It has no journey log and no value
+ * records, so the only sign of the ride is that its pages differ.
+ */
+static void merge_type2(void) {
+    FlipsoCapture* previous = flipso_capture_alloc();
+    flipso_capture_add(previous, FlipsoBlockType2, 0, cmd4_pages, sizeof(cmd4_pages));
+
+    static uint8_t pages_now[sizeof(cmd4_pages)];
+    memcpy(pages_now, cmd4_pages, sizeof(cmd4_pages));
+    pages_now[16] ^= 0x01; /* Rewritable dynamic data, where a ride is counted. */
+    FlipsoCapture* now = flipso_capture_alloc();
+    flipso_capture_add(now, FlipsoBlockType2, 0, pages_now, sizeof(pages_now));
+
+    FlipsoCaptureDiff diff;
+    flipso_capture_merge_history(now, previous, &diff);
+    check("a paper ticket whose pages changed is reported changed", diff.changed_products == 1);
+
+    FlipsoCapture* same = flipso_capture_alloc();
+    flipso_capture_add(same, FlipsoBlockType2, 0, cmd4_pages, sizeof(cmd4_pages));
+    flipso_capture_merge_history(same, previous, &diff);
+    check("and one read again unchanged is not", diff.changed_products == 0);
+
+    flipso_capture_free(same);
+    flipso_capture_free(now);
+    flipso_capture_free(previous);
+}
+
 static void gone_needs_a_directory(void) {
     ItsoCard reference;
     reference_decode(&reference);
@@ -1004,6 +1087,8 @@ int main(void) {
     merge_history();
     merge_replaced_product();
     merge_cap();
+    merge_new_product();
+    merge_type2();
     printf("\nProducts the card has dropped\n");
     merge_gone_product();
     gone_product_cap();

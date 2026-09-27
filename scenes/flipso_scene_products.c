@@ -81,7 +81,7 @@ bool flipso_scene_products_on_event(void* context, SceneManagerEvent event) {
 
     app->selected_product = (uint8_t)event.event;
     scene_manager_set_scene_state(app->scene_manager, FlipsoSceneProducts, event.event);
-    scene_manager_next_scene(app->scene_manager, FlipsoSceneProduct);
+    flipso_open_text(app, FlipsoTextProduct);
     return true;
 }
 

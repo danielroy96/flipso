@@ -90,7 +90,7 @@ in the record, and the result looks plausible rather than obviously broken.
   product owner (`itso_card_issuer_oid()`), not the shell's generic OID 8189.
 - **Never start an ISO 14443-4 poller on a Type 2 tag.** It sends a RATS the tag
   cannot answer and polls for ever. The detect stage routes Type A cards that do
-  not speak -4 straight to the Type 2 transport (`flipso_reader_next_transport()`).
+  not speak -4 straight to the Type 2 transport (`flipso_scan_session_next_transport()` in `flipso_scan_session.c`).
 - **A Type 2 read shorter than 64 bytes is a failed read**, not a small card:
   `itso_type2_kind()` calls it incomplete, so it is retried instead of being
   shown - or saved over a good copy - half decoded.

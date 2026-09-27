@@ -78,7 +78,7 @@ the picture is unmistakable, and all three of these have been captured:
 | --- | --- |
 | the dolphin | the app is not on screen, whatever `loader info` says |
 | "Ready to read a card" with a `Scan` button | app up, **reader off** - a tap does nothing |
-| "Hold an ITSO smartcard against the back" | armed |
+| "Hold a card or ticket against the back" | armed |
 
 So screenshot freely, and show the user the armed one. Just do not use a
 screenshot *instead of* `arm`: the middle row is the trap, because it looks

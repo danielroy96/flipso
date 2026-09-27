@@ -14,6 +14,7 @@ App(
     sources=[
         "flipso.c",
         "flipso_reader.c",
+        "flipso_scan_session.c",
         "flipso_cmd2.c",
         "flipso_type2.c",
         "flipso_media.c",
@@ -23,6 +24,9 @@ App(
         "flipso_stations.c",
         "flipso_naptan.c",
         "flipso_format.c",
+        "flipso_format_product.c",
+        "flipso_format_card.c",
+        "flipso_format_journeys.c",
         "itso/*.c",
         "scenes/*.c",
         "views/*.c",

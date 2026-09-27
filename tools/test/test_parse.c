@@ -784,9 +784,105 @@ static void shell_reject_reasons(void) {
         card.secrc_checked && !card.secrc_valid);
     free(geometry);
 
+    /* A card number digit that is not decimal: the operator number would be
+     * worked out from it as though it were. Byte 5 holds OID digits 1 and 2. */
+    uint8_t* hex_digit = malloc(sizeof(card_shell));
+    memcpy(hex_digit, card_shell, sizeof(card_shell));
+    hex_digit[5] = (uint8_t)((hex_digit[5] & 0x0F) | 0xA0);
+    itso_card_reset(&card);
+    check(
+        "a non-decimal card number digit is rejected as such",
+        !itso_parse_shell(&card, hex_digit, sizeof(card_shell)) &&
+            card.shell_reject == ItsoShellRejectNumber);
+    check("and no operator number is made up from it", card.oid == 0);
+    free(hex_digit);
+
     /* Nothing offered at all reads as "not read", not as an accepted shell. */
     itso_card_reset(&card);
     check("an untouched card reports no shell", card.shell_reject == ItsoShellRejectNone);
+}
+
+/* A fake card for itso_read_chain(): sector n reads as sector_size bytes of n,
+ * unless it is the one told to fail. */
+typedef struct {
+    uint8_t sector_size;
+    uint8_t fail_at;
+    uint8_t reads;
+} ChainSource;
+
+static size_t chain_read(void* context, uint8_t sector, uint8_t* out, size_t capacity) {
+    ChainSource* source = context;
+    source->reads++;
+    if(sector == source->fail_at) return 0;
+    size_t len = source->sector_size < capacity ? source->sector_size : capacity;
+    memset(out, sector, len);
+    return len;
+}
+
+/* Write SCT element @p sector (1-based) as @p value, psi bits wide. */
+static void chain_set(uint8_t* dir, const ItsoCard* card, uint8_t sector, uint8_t value) {
+    uint8_t psi = itso_sct_bits(card->sector_count);
+    uint32_t bit =
+        (uint32_t)(2 + ITSO_DIR_ENTRY_LEN * card->dir_entries) * 8 + (uint32_t)(sector - 1) * psi;
+    for(uint8_t i = 0; i < psi; i++) {
+        uint32_t at = bit + i;
+        uint8_t mask = (uint8_t)(0x80 >> (at % 8));
+        if(value & (1u << (psi - 1 - i))) {
+            dir[at / 8] |= mask;
+        } else {
+            dir[at / 8] &= (uint8_t)~mask;
+        }
+    }
+}
+
+static void sector_chains(void) {
+    ItsoCard card;
+    itso_card_reset(&card);
+    card.sector_count = 16;
+    card.sector_size = 32;
+    card.dir_entries = 8;
+    card.sct_len = 8; /* 16 four-bit elements. */
+    uint8_t dir[2 + 8 * 5 + 8 + 1];
+    memset(dir, 0, sizeof(dir));
+    uint8_t out[ITSO_MAX_GROUP_LEN];
+
+    /* 3 -> 5 -> 6, then S-1: an in-use product over three sectors. */
+    chain_set(dir, &card, 3, 5);
+    chain_set(dir, &card, 5, 6);
+    chain_set(dir, &card, 6, 15);
+    ChainSource source = {32, 0, 0};
+    size_t len =
+        itso_read_chain(&card, dir, sizeof(dir), 3, chain_read, &source, out, sizeof(out));
+    check("a chain is read to its terminator", len == 96 && source.reads == 3);
+    check("in chain order", out[0] == 3 && out[32] == 5 && out[64] == 6);
+
+    /* A sector that will not read ends the chain with what came before it. */
+    ChainSource failing = {32, 5, 0};
+    len = itso_read_chain(&card, dir, sizeof(dir), 3, chain_read, &failing, out, sizeof(out));
+    check("a sector that will not read ends the chain", len == 32);
+
+    /* An unused product points at itself. */
+    chain_set(dir, &card, 2, 2);
+    source.reads = 0;
+    len = itso_read_chain(&card, dir, sizeof(dir), 2, chain_read, &source, out, sizeof(out));
+    check("a self-terminated chain is one sector", len == 32 && source.reads == 1);
+
+    /* A loop is cut off by the hop cap rather than spinning. */
+    chain_set(dir, &card, 7, 8);
+    chain_set(dir, &card, 8, 7);
+    source.reads = 0;
+    len = itso_read_chain(&card, dir, sizeof(dir), 7, chain_read, &source, out, sizeof(out));
+    check("a looping chain stops at the hop cap", source.reads == ITSO_MAX_CHAIN_HOPS);
+
+    /* And by the buffer: the next sector would not fit. */
+    source.reads = 0;
+    len = itso_read_chain(&card, dir, sizeof(dir), 3, chain_read, &source, out, 70);
+    check("a chain stops before overrunning the buffer", len == 64);
+
+    /* Sector zero is the shell and never part of a chain. */
+    check(
+        "sector zero is not a chain",
+        itso_read_chain(&card, dir, sizeof(dir), 0, chain_read, &source, out, sizeof(out)) == 0);
 }
 
 static void oversized_directory(void) {
@@ -1464,6 +1560,7 @@ int main(void) {
     printf("\n== Robustness ==\n");
     bus_stop_locations();
     shell_reject_reasons();
+    sector_chains();
     oversized_directory();
     robustness();
 

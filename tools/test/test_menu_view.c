@@ -7,10 +7,12 @@
  * Rendering goes to an ASCII framebuffer so the layout can be eyeballed too.
  */
 #include "flipso_menu_view.h"
+#include "flipso_glyphs.h"
 
 #include <gui/elements.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int failures = 0;
 
@@ -343,6 +345,26 @@ int main(void) {
     check("overflowing the list is capped, not written past", last_id < FLIPSO_MENU_MAX_ITEMS);
 
     flipso_menu_view_free(menu);
+
+    /* Copying into the fixed-size label, tag and header buffers: a two-byte
+     * pound sign straddling the cut goes whole or not at all. */
+    {
+        char out[6];
+        flipso_glyphs_copy(
+            out,
+            sizeof(out),
+            "abcd\xC2\xA3"
+            "5");
+        check("a symbol that does not fit is left out whole", strcmp(out, "abcd") == 0);
+        flipso_glyphs_copy(
+            out,
+            sizeof(out),
+            "abc\xC2\xA3"
+            "5");
+        check("one that fits is kept whole", strcmp(out, "abc\xC2\xA3") == 0);
+        flipso_glyphs_copy(out, sizeof(out), "ab");
+        check("short text is copied as it is", strcmp(out, "ab") == 0);
+    }
 
     printf("\n%s\n", failures ? "MENU VIEW TESTS FAILED" : "All icon list tests passed");
     return failures ? 1 : 0;

@@ -16,16 +16,9 @@
 #include "../flipso.h"
 #include "flipso_icons.h"
 
-/* Distinct from the app-wide events so a stray one cannot be mistaken for it.
- * Which of the two screens is up does not need recording anywhere: only that
- * screen's own buttons can post, so the event says which path this is. */
-#define FlipsoSaveEventCommit  300
-#define FlipsoSaveEventReplace 301
-#define FlipsoSaveEventCancel  302
-
 static void flipso_scene_save_input_callback(void* context) {
     Flipso* app = context;
-    view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoSaveEventCommit);
+    view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventSaveCommit);
 }
 
 static void
@@ -33,9 +26,9 @@ static void
     Flipso* app = context;
     if(type != InputTypeShort) return;
     if(result == GuiButtonTypeRight) {
-        view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoSaveEventReplace);
+        view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventSaveReplace);
     } else if(result == GuiButtonTypeLeft) {
-        view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoSaveEventCancel);
+        view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventSaveCancel);
     }
 }
 
@@ -67,11 +60,25 @@ static void flipso_scene_save_ask_update(Flipso* app, uint32_t read_at) {
      * transactions that have rolled off the card since it was written are kept
      * - so what changes is that this read's are added to them. */
     const FlipsoCaptureDiff* diff = &app->save_diff;
-    if(diff->new_taps || diff->new_values) {
+    const bool ticket = app->card.shell_compact;
+    if(diff->new_taps || diff->new_values || diff->new_products || diff->changed_products) {
         flipso_scene_save_cat_count(text, diff->new_taps, "journey", "journeys");
         flipso_scene_save_cat_count(text, diff->new_values, "transaction", "transactions");
+        flipso_scene_save_cat_count(text, diff->new_products, "product", "products");
+        /* A paper ticket is its one product, and changing is all it can do: it
+         * keeps no journeys or transactions to count. */
+        if(diff->changed_products && ticket) {
+            furi_string_cat(text, "\nThe ticket has changed");
+        } else if(diff->changed_products) {
+            furi_string_cat_printf(
+                text,
+                "\n%u product%s changed",
+                diff->changed_products,
+                diff->changed_products == 1 ? "" : "s");
+        }
     } else {
-        furi_string_cat(text, "\nNothing new on the card");
+        furi_string_cat(
+            text, ticket ? "\nNothing new on the ticket" : "\nNothing new on the card");
     }
 
     uint16_t kept = (uint16_t)(diff->kept_taps + diff->kept_values);
@@ -194,21 +201,23 @@ static void flipso_scene_save_commit(Flipso* app) {
 bool flipso_scene_save_on_event(void* context, SceneManagerEvent event) {
     Flipso* app = context;
 
+    /* Which of the two screens is up does not need recording anywhere: only
+     * that screen's own buttons can post, so the event says which path this is. */
     if(event.type != SceneManagerEventTypeCustom) return false;
 
     switch(event.event) {
-    case FlipsoSaveEventCommit:
+    case FlipsoCustomEventSaveCommit:
         /* The name screen wrote into app->save_name; turn it into a path. */
         flipso_saved_path(app->save_path, app->save_name);
         flipso_scene_save_commit(app);
         return true;
 
-    case FlipsoSaveEventReplace:
+    case FlipsoCustomEventSaveReplace:
         /* app->save_path is already the record that was found. */
         flipso_scene_save_commit(app);
         return true;
 
-    case FlipsoSaveEventCancel:
+    case FlipsoCustomEventSaveCancel:
         scene_manager_previous_scene(app->scene_manager);
         return true;
 

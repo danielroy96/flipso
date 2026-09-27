@@ -146,6 +146,16 @@ typedef struct {
     uint8_t new_values; /**< Transactions on products since that record. */
     uint8_t kept_values; /**< Older transactions carried forward. */
     uint8_t kept_products; /**< Products carried forward that the card has dropped. */
+    /** Directory entries holding a product the record did not: one sold since,
+     *  including one that took over a freed entry. */
+    uint8_t new_products;
+    /**
+     * Products the record also holds whose own data has changed in a way the
+     * counts above do not show: an IPE rewritten with no transaction behind it,
+     * or - the case that matters - a paper ticket, which keeps no journey log or
+     * value records at all, so a ride used shows up only as its pages changing.
+     */
+    uint8_t changed_products;
 } FlipsoCaptureDiff;
 
 typedef struct FlipsoCapture FlipsoCapture;

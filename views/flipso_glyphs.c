@@ -71,6 +71,21 @@ size_t flipso_glyphs_char_len(const char* text) {
     return len;
 }
 
+void flipso_glyphs_copy(char* out, size_t out_len, const char* text) {
+    if(out_len == 0) return;
+    size_t len = strlen(text);
+    if(len >= out_len) {
+        len = out_len - 1;
+        /* text[len] is the first byte left out. If it continues a sequence,
+         * the start of that sequence is on this side of the cut, and goes too. */
+        while(len && flipso_glyphs_is_continuation(text[len])) {
+            len--;
+        }
+    }
+    memcpy(out, text, len);
+    out[len] = '\0';
+}
+
 /**
  * Walk @p text as runs of font text and hand-drawn glyphs, drawing each when
  * @p draw is set, and return the width of the whole.

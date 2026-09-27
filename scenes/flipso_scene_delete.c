@@ -9,18 +9,14 @@
 #include "../flipso.h"
 #include "flipso_icons.h"
 
-/* Distinct from the app-wide events so a stray one cannot be mistaken for it. */
-#define FlipsoDeleteEventConfirm 310
-#define FlipsoDeleteEventCancel  311
-
 static void
     flipso_scene_delete_button_callback(GuiButtonType result, InputType type, void* context) {
     Flipso* app = context;
     if(type != InputTypeShort) return;
     if(result == GuiButtonTypeRight) {
-        view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoDeleteEventConfirm);
+        view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventDeleteConfirm);
     } else if(result == GuiButtonTypeLeft) {
-        view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoDeleteEventCancel);
+        view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventDeleteCancel);
     }
 }
 
@@ -60,12 +56,12 @@ bool flipso_scene_delete_on_event(void* context, SceneManagerEvent event) {
 
     if(event.type != SceneManagerEventTypeCustom) return false;
 
-    if(event.event == FlipsoDeleteEventCancel) {
+    if(event.event == FlipsoCustomEventDeleteCancel) {
         scene_manager_previous_scene(app->scene_manager);
         return true;
     }
 
-    if(event.event != FlipsoDeleteEventConfirm) return false;
+    if(event.event != FlipsoCustomEventDeleteConfirm) return false;
 
     if(flipso_saved_delete(furi_string_get_cstr(app->loaded_path))) {
         notification_message(app->notifications, &flipso_sequence_deleted);

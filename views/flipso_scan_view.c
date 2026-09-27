@@ -97,7 +97,8 @@ static void flipso_scan_view_draw(Canvas* canvas, void* model) {
             if(i < active) flipso_draw_arc(canvas, card_x, card_y + card_h / 2, 8 + i * 7);
         }
 
-        canvas_draw_str_aligned(canvas, 64, 47, AlignCenter, AlignTop, "Hold an ITSO smartcard");
+        /* Card or ticket: ITSO's paper tickets read as well as its cards. */
+        canvas_draw_str_aligned(canvas, 64, 47, AlignCenter, AlignTop, "Hold a card or ticket");
         canvas_draw_str_aligned(canvas, 64, 56, AlignCenter, AlignTop, "against the back");
     } else {
         /* Idle: the reader is off until the user asks for it. */

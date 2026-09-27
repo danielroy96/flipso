@@ -37,19 +37,59 @@ typedef enum {
     FlipsoViewTextInput,
 } FlipsoView;
 
+/**
+ * Every custom event the view dispatcher carries, in one place.
+ *
+ * The list scenes post a row's id as the event itself - a menu row, or the
+ * index of a product - so 0 to 99 belong to them, and everything else is kept
+ * above that. Each scene's own events have a block of their own, so an event
+ * that arrives after its scene has gone cannot be mistaken for another's.
+ */
 typedef enum {
-    /* Posted from the scan view when the user presses OK on the idle prompt. */
+    /** Row ids a list scene posts: menu rows, product indices. */
+    FlipsoCustomEventListRowLast = 99,
+
+    /* The app: scanning and the saved-card browser. */
+    /** Posted from the scan view when the user presses OK on the idle prompt. */
     FlipsoCustomEventStartScan = 100,
-    /* Posted from the NFC worker thread when a card has been processed. */
+    /** Posted from the NFC worker thread each time a transport has reported. */
     FlipsoCustomEventReaderDone,
-    /* Posted from the scan view when the user asks for the saved cards. */
+    /** Posted from the scan view when the user asks for the saved cards. */
     FlipsoCustomEventOpenSaved,
-    /* Posted from the scan view when the user asks about the app. */
+    /** Posted from the scan view when the user asks about the app. */
     FlipsoCustomEventOpenAbout,
-    /* Posted by the saved-card scene once the file browser has closed. */
+    /** Posted by the saved-card scene once the file browser has closed. */
     FlipsoCustomEventSavedPicked,
     FlipsoCustomEventSavedCancelled,
+
+    /* The error screen's centre button, whichever action it carries. */
+    FlipsoCustomEventErrorRetry = 200,
+    FlipsoCustomEventErrorDetails,
+
+    /* The save screen: its name screen, and its "update the record?" screen. */
+    FlipsoCustomEventSaveCommit = 300,
+    FlipsoCustomEventSaveReplace,
+    FlipsoCustomEventSaveCancel,
+
+    /* The delete confirmation. */
+    FlipsoCustomEventDeleteConfirm = 310,
+    FlipsoCustomEventDeleteCancel,
+
+    /* The rename screen. */
+    FlipsoCustomEventRenameCommit = 320,
 } FlipsoCustomEvent;
+
+/** Which screen the text scene shows: its scene state. */
+typedef enum {
+    FlipsoTextSummary,
+    FlipsoTextCard,
+    FlipsoTextPayg,
+    FlipsoTextId,
+    FlipsoTextJourneys,
+    FlipsoTextProduct, /**< app->selected_product. */
+    FlipsoTextMedia, /**< What a card Flipso cannot decode said about itself. */
+    FlipsoTextAbout,
+} FlipsoTextScreen;
 
 typedef struct {
     Gui* gui;
@@ -108,19 +148,6 @@ typedef struct {
 
     /** Index into card.products chosen on the product list scene. */
     uint8_t selected_product;
-
-    /** Reads lost to the card leaving the field during the current scan. */
-    uint8_t card_error_retries;
-
-    /**
-     * The card dropped out at least once during this scan, on any transport.
-     *
-     * Unlike card_error_retries this is not cleared when the scan moves on to
-     * the next transport, because what it is for is the verdict at the end:
-     * a scan that never once got a clean look at the card cannot conclude
-     * anything about what the card is.
-     */
-    bool card_dropped;
 } Flipso;
 
 /**
@@ -182,6 +209,9 @@ void flipso_reset_card_menus(Flipso* app);
 
 /** Put a screen built by flipso_format.h on the text view and show it. */
 void flipso_show_text(Flipso* app, const FuriString* text);
+
+/** Open one of the scrolling text screens on top of the current scene. */
+void flipso_open_text(Flipso* app, FlipsoTextScreen screen);
 
 #ifdef __cplusplus
 }

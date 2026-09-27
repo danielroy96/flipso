@@ -33,6 +33,13 @@ void flipso_glyphs_draw(Canvas* canvas, int32_t x, int32_t y, const char* text);
  */
 size_t flipso_glyphs_char_len(const char* text);
 
+/**
+ * Copy @p text into @p out, truncating to fit @p out_len as snprintf does but
+ * never part way through a UTF-8 sequence: a symbol that does not fit whole is
+ * left out whole.
+ */
+void flipso_glyphs_copy(char* out, size_t out_len, const char* text);
+
 /** True when @p byte continues a UTF-8 sequence rather than starting one. */
 static inline bool flipso_glyphs_is_continuation(char byte) {
     return ((uint8_t)byte & 0xC0) == 0x80;

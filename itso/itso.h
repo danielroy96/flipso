@@ -113,6 +113,7 @@ typedef enum {
     ItsoShellRejectIin, /**< Bytes 2-4 are not ITSO's 63 35 97. */
     ItsoShellRejectCompact, /**< Bitmap bit 0 clear: no directory to walk. */
     ItsoShellRejectGeometry, /**< Sector or directory sizes out of range. */
+    ItsoShellRejectNumber, /**< The card number holds a digit that is not 0-9. */
     ItsoShellAccepted,
 } ItsoShellReject;
 
@@ -873,6 +874,39 @@ uint8_t itso_sct_entry(const ItsoCard* card, const uint8_t* dir, size_t dir_len,
 
 /** Number of bits per SCT element: the smallest psi with S <= 2^psi. */
 uint8_t itso_sct_bits(uint8_t sector_count);
+
+/* Sectors one data group may chain across. A cap rather than a spec limit, so
+ * that a corrupt chain cannot spin or overrun the group buffer. */
+#define ITSO_MAX_CHAIN_HOPS 6
+
+/**
+ * Read one logical sector for itso_read_chain().
+ *
+ * @return bytes written to @p out, or 0 when the sector could not be read - a
+ *         sector the card does not have, or a card that stopped answering.
+ */
+typedef size_t (*ItsoSectorRead)(void* context, uint8_t sector, uint8_t* out, size_t capacity);
+
+/**
+ * Follow one data group's sector chain from @p start, concatenating the sectors
+ * it occupies into @p out (TS 1000-2 clause 5.1.5).
+ *
+ * The chain ends at a terminator - the sector itself (unused), S-2 (blocked) or
+ * S-1 (in use) - at a free entry, at a sector that will not read, or when the
+ * next sector would not fit in @p capacity. Every transport walks a chain this
+ * way; only how a sector is fetched differs, which is what @p read is for.
+ *
+ * @return bytes gathered, 0 when the first sector would not read.
+ */
+size_t itso_read_chain(
+    const ItsoCard* card,
+    const uint8_t* dir,
+    size_t dir_len,
+    uint8_t start,
+    ItsoSectorRead read,
+    void* context,
+    uint8_t* out,
+    size_t capacity);
 
 /**
  * Decode the IPE Data Group (and any Value Record Data Group) for one product.

@@ -10,12 +10,9 @@
  */
 #include "../flipso.h"
 
-/* Distinct from the app-wide events so a stray one cannot be mistaken for it. */
-#define FlipsoRenameEventCommit 320
-
 static void flipso_scene_rename_input_callback(void* context) {
     Flipso* app = context;
-    view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoRenameEventCommit);
+    view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventRenameCommit);
 }
 
 void flipso_scene_rename_on_enter(void* context) {
@@ -57,7 +54,7 @@ bool flipso_scene_rename_on_event(void* context, SceneManagerEvent event) {
     Flipso* app = context;
 
     if(event.type != SceneManagerEventTypeCustom) return false;
-    if(event.event != FlipsoRenameEventCommit) return false;
+    if(event.event != FlipsoCustomEventRenameCommit) return false;
 
     flipso_saved_path(app->save_path, app->save_name);
 

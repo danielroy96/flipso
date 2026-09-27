@@ -172,14 +172,6 @@ bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
     uint8_t bitmap = itso_bits(data, 6, 6);
     card->isrn_check_ok = itso_isrn_check(card->isrn);
 
-    card->oid = (uint16_t)((card->isrn[6] - '0') * 1000 + (card->isrn[7] - '0') * 100 +
-                           (card->isrn[8] - '0') * 10 + (card->isrn[9] - '0'));
-
-    card->iin = 0;
-    for(uint8_t i = 0; i < 6; i++) {
-        card->iin = card->iin * 10 + (uint32_t)(card->isrn[i] - '0');
-    }
-
     card->format_rev = (uint8_t)itso_bits(data, 12, 4);
     card->shell_len = (uint8_t)itso_bits(data, 0, 6);
     card->fvc = data[11];
@@ -222,6 +214,23 @@ bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
         card->secrc_checked = true;
     }
 
+    /* The operator and issuer numbers are worked out from these digits, so one
+     * that is not a decimal digit - BCD a misread or a corrupt card left behind -
+     * would turn into a real-looking operator number that is nobody's. The check
+     * digit is left to the Luhn check. */
+    for(uint8_t i = 0; i < ITSO_ISRN_DIGITS - 1; i++) {
+        if(card->isrn[i] < '0' || card->isrn[i] > '9') {
+            card->shell_reject = ItsoShellRejectNumber;
+            return false;
+        }
+    }
+    card->oid = (uint16_t)((card->isrn[6] - '0') * 1000 + (card->isrn[7] - '0') * 100 +
+                           (card->isrn[8] - '0') * 10 + (card->isrn[9] - '0'));
+    card->iin = 0;
+    for(uint8_t i = 0; i < 6; i++) {
+        card->iin = card->iin * 10 + (uint32_t)(card->isrn[i] - '0');
+    }
+
     /* Sanity-check the geometry before anything downstream trusts it. */
     if(card->sector_size == 0 || card->sector_count < 4 || card->dir_entries == 0 ||
        card->dir_entries > ITSO_MAX_PRODUCTS || card->sct_len == 0 || card->sct_len > 64) {
@@ -258,6 +267,41 @@ uint8_t itso_sct_entry(const ItsoCard* card, const uint8_t* dir, size_t dir_len,
     if((bit + psi) > (uint32_t)((itso_sct_offset(card) + card->sct_len) * 8)) return 0;
     if((bit + psi) > dir_len * 8) return 0;
     return (uint8_t)itso_bits(dir, bit, psi);
+}
+
+size_t itso_read_chain(
+    const ItsoCard* card,
+    const uint8_t* dir,
+    size_t dir_len,
+    uint8_t start,
+    ItsoSectorRead read,
+    void* context,
+    uint8_t* out,
+    size_t capacity) {
+    size_t total = 0;
+    uint8_t sector = start;
+
+    for(uint8_t hop = 0; hop < ITSO_MAX_CHAIN_HOPS; hop++) {
+        if(sector == 0 || sector >= card->sector_count) break;
+        if(total + card->sector_size > capacity) break;
+
+        /* Stop on a sector that will not read as well as on a chain that has
+         * ended: the bytes gathered so far are the front of a group, and
+         * decoding them would report a half-read product as a whole one. */
+        size_t got = read(context, sector, out + total, capacity - total);
+        if(got == 0) break;
+        total += got;
+
+        uint8_t next = itso_sct_entry(card, dir, dir_len, sector);
+        /* Terminators: itself (unused), S-2 (blocked) or S-1 (in use). */
+        if(next == sector || next == 0 || next == card->sector_count - 2 ||
+           next == card->sector_count - 1) {
+            break;
+        }
+        sector = next;
+    }
+
+    return total;
 }
 
 /** Decode one 5-byte IPE Directory Entry (TS 1000-2 clause 6.1). */

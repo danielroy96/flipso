@@ -35,7 +35,7 @@ const char* itso_typ_name(uint8_t typ) {
     case ItsoTypTolling:
         return "Toll pass";
     case ItsoTypPeriodCompact:
-        return "Period pass";
+        return "Paper period ticket";
     case ItsoTypCarnet:
         return "Book of tickets";
     case ItsoTypMultiUse:
@@ -209,6 +209,8 @@ const char* itso_shell_reject_name(ItsoShellReject reject) {
         return "Compact layout";
     case ItsoShellRejectGeometry:
         return "Impossible layout";
+    case ItsoShellRejectNumber:
+        return "Card number not decimal";
     case ItsoShellAccepted:
         return "Accepted";
     default:
@@ -262,7 +264,7 @@ const char* itso_count_name(ItsoCountKind kind) {
     case ItsoCountPasses:
         return "Passes left";
     case ItsoCountTransactions:
-        return "Charges used";
+        return "Uses this period";
     case ItsoCountPoints:
         return "Points";
     case ItsoCountCoupons:

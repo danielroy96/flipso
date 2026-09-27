@@ -14,7 +14,7 @@ command matters if this step is skipped:
 tools/flipper/flipctl arm --shot /tmp/.../armed.png; echo "ARM=$?"
 ```
 
-- `ARM=0` and a screenshot reading "Hold an ITSO smartcard against the back":
+- `ARM=0` and a screenshot reading "Hold a card or ticket against the back":
   go on. Read the PNG, and show it to the user — it is the evidence that their
   tap will do something.
 - Anything else: **do not ask for a tap.** `arm` prints why and has already

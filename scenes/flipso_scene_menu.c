@@ -13,7 +13,7 @@
  *
  * The header is the card's branding where the shell owner is one we can name a
  * card for, because "Freedom Pass" is what is printed on the card in the user's
- * hand and "ITSO Card" is a fact about the standard behind it.
+ * hand and "ITSO card" is a fact about the standard behind it.
  *
  * The last row is where the card came from and where it can go: a card just
  * read can be saved, and a card opened from the SD card can be deleted. They
@@ -32,7 +32,20 @@ typedef enum {
     FlipsoMenuItemSave,
     FlipsoMenuItemRename,
     FlipsoMenuItemDelete,
+    /** A paper ticket's one product, straight from the menu. */
+    FlipsoMenuItemTicket,
 } FlipsoMenuItem;
+
+/** "3", or "3 + 8 off card": what is on the card, and what only a file keeps. */
+static void flipso_scene_menu_count(char* out, size_t len, uint8_t on_card, uint8_t past) {
+    if(past && on_card) {
+        snprintf(out, len, "%u + %u off card", (unsigned)(on_card % 100), (unsigned)(past % 100));
+    } else if(past) {
+        snprintf(out, len, "%u off card", (unsigned)(past % 100));
+    } else {
+        snprintf(out, len, "%u", on_card);
+    }
+}
 
 static void flipso_scene_menu_callback(void* context, uint32_t index) {
     Flipso* app = context;
@@ -56,12 +69,44 @@ void flipso_scene_menu_on_enter(void* context) {
      * Card would otherwise leave without learning the card is dead. */
     const char* brand = flipso_operators_brand(app->operators, itso_card_issuer_oid(&app->card));
     flipso_menu_view_set_header(
-        menu, app->card.shell_blocked ? "Blocked Card" : (brand ? brand : "ITSO Card"));
+        menu, app->card.shell_blocked ? "Blocked card" : (brand ? brand : "ITSO card"));
     flipso_menu_view_set_header_icon(
         menu, app->card.shell_blocked ? &I_warning_10px : &I_card_10px);
 
     flipso_menu_view_add_item(menu, "Summary", &I_info_10px, FlipsoMenuItemSummary);
-    flipso_menu_view_add_item(menu, "Card", &I_card_10px, FlipsoMenuItemCard);
+
+    /* A paper ticket is its one product, so the product is a row of its own
+     * rather than a list with one row in it - and it comes first, because it
+     * is what the holder wants to know about. It is tagged the way the product
+     * list would tag it, or else with what it has left. */
+    const bool ticket = app->card.shell_compact && app->card.product_count == 1;
+    if(ticket) {
+        const ItsoProduct* product = &app->card.products[0];
+        char tag[FLIPSO_MENU_TAG_LEN] = "";
+        const char* status = flipso_product_tag(product, flipso_now());
+        if(status) {
+            snprintf(tag, sizeof(tag), "%s", status);
+        } else if(itso_count_name(product->count_kind)) {
+            snprintf(tag, sizeof(tag), "%lu left", (unsigned long)(product->count % 100000));
+        }
+        flipso_menu_view_add_tagged_item(
+            menu, "Ticket", tag, flipso_icon(flipso_product_icon(product)), FlipsoMenuItemTicket);
+    }
+
+    /* The card's own state on its row, where it is anything but fine: the
+     * header says a blocked card is blocked, but nothing on this screen said an
+     * expired one had expired. A paper ticket's state is its ticket's. */
+    const char* card_tag = NULL;
+    if(!app->card.shell_compact) {
+        if(app->card.shell_blocked) {
+            card_tag = "Blocked";
+        } else if(
+            !itso_date_open(app->card.expiry) &&
+            itso_date_expired(app->card.expiry, flipso_now())) {
+            card_tag = "Expired";
+        }
+    }
+    flipso_menu_view_add_tagged_item(menu, "Card", card_tag, &I_card_10px, FlipsoMenuItemCard);
 
     const ItsoProduct* purse = flipso_find_product(&app->card, ItsoTypStoredTravelRights);
     if(purse) {
@@ -77,10 +122,22 @@ void flipso_scene_menu_on_enter(void* context) {
     }
 
     if(app->card.log_entry_valid || app->card.tap_count) {
-        flipso_menu_view_add_item(menu, "Journeys", &I_taps_10px, FlipsoMenuItemTaps);
+        /* Counted as the products are, and for the same reason: a saved card
+         * remembers journeys that have rolled off the card itself. */
+        char count[FLIPSO_MENU_TAG_LEN] = "";
+        if(app->card.tap_count) {
+            uint8_t on_card = 0;
+            for(uint8_t i = 0; i < app->card.tap_count; i++) {
+                if(app->card.taps[i].on_card) on_card++;
+            }
+            flipso_scene_menu_count(
+                count, sizeof(count), on_card, (uint8_t)(app->card.tap_count - on_card));
+        }
+        flipso_menu_view_add_tagged_item(
+            menu, "Journeys", count, &I_taps_10px, FlipsoMenuItemTaps);
     }
 
-    if(app->card.product_count) {
+    if(app->card.product_count && !ticket) {
         /* Counted apart, because the two numbers answer different questions:
          * how many products are on the card, and how many rows the list has. A
          * saved card can remember products the card has since dropped, and
@@ -95,18 +152,7 @@ void flipso_scene_menu_on_enter(void* context) {
          * count says it in the same words. A card that has dropped everything
          * says only that, rather than "0 + 3". */
         char count[FLIPSO_MENU_TAG_LEN];
-        if(past && on_card) {
-            snprintf(
-                count,
-                sizeof(count),
-                "%u + %u off card",
-                (unsigned)(on_card % 100),
-                (unsigned)(past % 100));
-        } else if(past) {
-            snprintf(count, sizeof(count), "%u off card", (unsigned)(past % 100));
-        } else {
-            snprintf(count, sizeof(count), "%u", on_card);
-        }
+        flipso_scene_menu_count(count, sizeof(count), on_card, past);
         flipso_menu_view_add_tagged_item(
             menu, "Products", count, &I_products_10px, FlipsoMenuItemProducts);
     }
@@ -148,25 +194,34 @@ bool flipso_scene_menu_on_event(void* context, SceneManagerEvent event) {
 
     if(event.type != SceneManagerEventTypeCustom) return false;
 
-    FlipsoScene next;
+    /* Rows that open a text screen say which; the rest open a scene of their
+     * own. Anything else is not one of ours - a scan event that arrived after
+     * the scene changed, for instance - and saving it as the selection would
+     * move the highlight to a row that does not exist. */
+    FlipsoTextScreen screen = FlipsoTextSummary;
+    FlipsoScene next = FlipsoSceneText;
     switch(event.event) {
     case FlipsoMenuItemSummary:
-        next = FlipsoSceneSummary;
+        screen = FlipsoTextSummary;
         break;
     case FlipsoMenuItemCard:
-        next = FlipsoSceneCard;
+        screen = FlipsoTextCard;
         break;
     case FlipsoMenuItemPayg:
-        next = FlipsoScenePayg;
+        screen = FlipsoTextPayg;
         break;
     case FlipsoMenuItemId:
-        next = FlipsoSceneId;
+        screen = FlipsoTextId;
         break;
     case FlipsoMenuItemTaps:
-        next = FlipsoSceneTaps;
+        screen = FlipsoTextJourneys;
         break;
     case FlipsoMenuItemProducts:
         next = FlipsoSceneProducts;
+        break;
+    case FlipsoMenuItemTicket:
+        app->selected_product = 0;
+        screen = FlipsoTextProduct;
         break;
     case FlipsoMenuItemSave:
         next = FlipsoSceneSave;
@@ -178,14 +233,15 @@ bool flipso_scene_menu_on_event(void* context, SceneManagerEvent event) {
         next = FlipsoSceneDelete;
         break;
     default:
-        /* Not one of ours - a scan event that arrived after the scene changed,
-         * for instance. Saving it as the selection would move the highlight to
-         * a row that does not exist. */
         return false;
     }
 
     scene_manager_set_scene_state(app->scene_manager, FlipsoSceneMenu, event.event);
-    scene_manager_next_scene(app->scene_manager, next);
+    if(next == FlipsoSceneText) {
+        flipso_open_text(app, screen);
+    } else {
+        scene_manager_next_scene(app->scene_manager, next);
+    }
     return true;
 }
 

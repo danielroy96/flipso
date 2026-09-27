@@ -88,14 +88,8 @@ static void
 
     /* Capped four short of the buffer, not one: the ellipsis below is written
      * in place at whatever the length has been trimmed to. */
-    size_t len = strlen(label);
-    if(len > out_len - 4) len = out_len - 4;
-    memcpy(out, label, len);
-    out[len] = '\0';
-
-    while(len && flipso_glyphs_is_continuation(out[len])) {
-        out[--len] = '\0';
-    }
+    flipso_glyphs_copy(out, out_len - 3, label);
+    size_t len = strlen(out);
     if(flipso_glyphs_width(canvas, out) <= width) return;
 
     /* Drop characters until the text and its ellipsis fit between the icon and
@@ -315,7 +309,7 @@ void flipso_menu_view_set_header(FlipsoMenuView* instance, const char* header) {
         FlipsoMenuModel * model,
         {
             if(header) {
-                snprintf(model->header, sizeof(model->header), "%s", header);
+                flipso_glyphs_copy(model->header, sizeof(model->header), header);
                 model->has_header = true;
             } else {
                 model->header[0] = '\0';
@@ -353,8 +347,10 @@ void flipso_menu_view_add_tagged_item(
         {
             if(model->count < FLIPSO_MENU_MAX_ITEMS) {
                 FlipsoMenuItem* item = &model->items[model->count++];
-                snprintf(item->label, sizeof(item->label), "%s", label);
-                snprintf(item->tag, sizeof(item->tag), "%s", tag ? tag : "");
+                /* Copied without splitting a UTF-8 sequence: a brand from the
+                 * user's operators file may hold one at the cut. */
+                flipso_glyphs_copy(item->label, sizeof(item->label), label);
+                flipso_glyphs_copy(item->tag, sizeof(item->tag), tag ? tag : "");
                 item->icon = icon;
                 item->id = id;
             }

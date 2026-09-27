@@ -46,8 +46,11 @@ behaviours is there because a past session lost time to it.
 
 ```
 flipso.c              app entry, the icon table, the name validator
-flipso_format.c       the text of every detail screen; host-tested by test_format.c
-flipso_reader.c       card reading: DESFire (CMD7/CMD12) and the retry logic
+flipso_format*.c      the text of every screen, one file per screen group, sharing
+                      flipso_format_i.h; host-tested by test_format.c
+flipso_reader.c       card reading: DESFire (CMD7/CMD12), and the pollers
+flipso_scan_session.c which transport next, retries and the verdict; pure C,
+                      host-tested by test_scan_session.c
 flipso_cmd2.c         ISO 7816 transport for CMD2 media
 flipso_type2.c        NFC Type 2 tag transport for CMD4 (SPT paper tickets)
 flipso_media.c        what a DESFire says about itself (incl. Oyster); the text is flipso_format.c's
@@ -57,7 +60,8 @@ flipso_operators.c    operator id -> name, built-in table plus the user's file
 flipso_stations.c     NLC -> station name, binary search over the SD card table
 flipso_naptan.c       NaptanCode/AtcoCode -> bus stop name, same design
 itso/                 the decoder: pure C, no firmware dependency, host-testable
-scenes/               one file per screen; scene list in flipso_scene_config.h
+scenes/               one file per scene; every scrolling text screen is the one
+                      text scene (flipso_open_text()); list in flipso_scene_config.h
 views/                custom views (the icon list, the text panel, the scan screen),
                       and the hand-drawn £ and € the fonts lack
 tools/flipper/        flipctl: the device driver described above
@@ -122,7 +126,7 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
   one (`TS 1000-2 table 11`). Do not narrate what the code already says.
 - New sources must be listed explicitly in `application.fam`. A bare `*.c` is
   matched recursively and would pull in the host-side tests under `tools/`.
-- Screen text is built in `flipso_format.c`, never in a scene, and follows the
+- Screen text is built in `flipso_format*.c`, never in a scene, and follows the
   house style its header sets out: `Label: Value` with the value capitalised, a
   detail indented two spaces and itself labelled, money as `£`. `test_format.c`
   holds every screen of every demo card to that, so a line that breaks it fails
@@ -185,7 +189,7 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
 - **Anything that restarts the app disarms the reader.** A deploy, a `ready`, a
   `close` or a reboot after arming all mean arming again. Arm last, then ask.
 - A screenshot *does* say which screen is up — the dolphin means the app is not
-  on screen no matter what the loader claims, and "Hold an ITSO smartcard"
+  on screen no matter what the loader claims, and "Hold a card or ticket"
   means armed. What it cannot do is prove the reader is on when the idle
   "Ready to read a card" screen is showing, which is the state that looks
   fine and reads nothing.
@@ -243,7 +247,7 @@ honest rather than hopeful:
 1. Get the build on the device (`flipctl deploy`).
 2. `tools/flipper/flipctl arm --shot <scratchpad>/armed.png`, and check the
    exit status. Non-zero means do not ask.
-3. Read the screenshot. It should say "Hold an ITSO smartcard against the back".
+3. Read the screenshot. It should say "Hold a card or ticket against the back".
 4. Arm the log stream — `Monitor` on `flipctl log` — so the scan is visible as
    it happens.
 5. *Then* ask, once, and say what should happen.

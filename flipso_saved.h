@@ -123,6 +123,15 @@ bool flipso_saved_delete(const char* path);
 bool flipso_saved_rename(const char* from, const char* to);
 
 /**
+ * Finish or undo whatever a power cut interrupted in the saved-cards folder.
+ *
+ * Saving over a card and changing the case of its name each move the card
+ * through a second name (see flipso_saved.c). Run once at start-up, before any
+ * card is listed, so a half-finished move is never seen as a missing card.
+ */
+void flipso_saved_recover(void);
+
+/**
  * Show a blocking "something went wrong" dialog with a single OK button.
  *
  * Saving and loading fail for reasons outside the app - no SD card, a full one,

@@ -13,10 +13,6 @@
 #include "../flipso.h"
 #include "flipso_icons.h"
 
-/* Distinct from the app-wide events so a stray one cannot be mistaken for it. */
-#define FlipsoErrorEventRetry   200
-#define FlipsoErrorEventDetails 201
-
 static void
     flipso_scene_error_button_callback(GuiButtonType result, InputType type, void* context) {
     Flipso* app = context;
@@ -38,12 +34,12 @@ void flipso_scene_error_on_enter(void* context) {
     FuriString* built = NULL;
     const Icon* icon;
     const char* button = "Scan again";
-    uint32_t action = FlipsoErrorEventRetry;
+    uint32_t action = FlipsoCustomEventErrorRetry;
 
     switch(app->status) {
     case FlipsoReaderStatusOyster:
         icon = &I_oyster_14px;
-        title = "TfL Oyster Card";
+        title = "TfL Oyster card";
         /* Lines are kept to what fits across 128px, as the other details are:
          * the scroll element wraps, but wrapping mid-sentence reads badly. */
         detail = "Oyster uses Transport for\n"
@@ -56,7 +52,7 @@ void flipso_scene_error_on_enter(void* context) {
         /* Rescanning would reach the same conclusion; the card details are the
          * only thing left worth pressing a button for. */
         button = "Card details";
-        action = FlipsoErrorEventDetails;
+        action = FlipsoCustomEventErrorDetails;
         break;
     case FlipsoReaderStatusNotItso:
         icon = &I_not_itso_14px;
@@ -70,7 +66,7 @@ void flipso_scene_error_on_enter(void* context) {
          * than a scan that will say the same thing again. */
         if(app->media.valid) {
             button = "Card details";
-            action = FlipsoErrorEventDetails;
+            action = FlipsoCustomEventErrorDetails;
         }
         break;
     case FlipsoReaderStatusUnsupported:
@@ -81,15 +77,16 @@ void flipso_scene_error_on_enter(void* context) {
              * unsupported: an ITSO card on NTAG or Ultralight EV1 media (CMD9,
              * CMD10), whose full directory Flipso does not walk. Saying it is
              * ITSO is the useful part - it tells the holder the card is not
-             * faulty, and whoever files the bug which media to add. */
+             * faulty. Which media it is goes last, as the bad-shell reason
+             * does: it is for whoever files the bug, not for the holder. */
             built = furi_string_alloc_printf(
                 "This is an ITSO card, on\n"
-                "a kind of NFC tag (CMD%u)\n"
-                "that Flipso cannot read\n"
-                "yet.\n\n"
-                "Flipso reads DESFire and\n"
-                "ISO 7816 ITSO cards, and\n"
-                "ITSO paper tickets.",
+                "a kind of NFC tag that\n"
+                "Flipso cannot read yet.\n\n"
+                "Flipso reads ITSO\n"
+                "smartcards and paper\n"
+                "tickets.\n\n"
+                "Reason: Media type CMD%u\n",
                 app->card.fvc);
             detail = furi_string_get_cstr(built);
         } else {
@@ -98,9 +95,9 @@ void flipso_scene_error_on_enter(void* context) {
                      "MIFARE Classic, a hotel\n"
                      "or building key, or an\n"
                      "older kind of ITSO card.\n\n"
-                     "Flipso reads DESFire and\n"
-                     "ISO 7816 ITSO cards, and\n"
-                     "ITSO paper tickets.";
+                     "Flipso reads ITSO\n"
+                     "smartcards and paper\n"
+                     "tickets.";
         }
         break;
     case FlipsoReaderStatusBadShell:
@@ -173,12 +170,12 @@ bool flipso_scene_error_on_event(void* context, SceneManagerEvent event) {
 
     if(event.type != SceneManagerEventTypeCustom) return false;
 
-    if(event.event == FlipsoErrorEventDetails) {
-        scene_manager_next_scene(app->scene_manager, FlipsoSceneMedia);
+    if(event.event == FlipsoCustomEventErrorDetails) {
+        flipso_open_text(app, FlipsoTextMedia);
         return true;
     }
 
-    if(event.event != FlipsoErrorEventRetry) return false;
+    if(event.event != FlipsoCustomEventErrorRetry) return false;
 
     /* Back to the scan screen, which resets the card and the transport, then
      * ask it to start polling without waiting for a second press. */

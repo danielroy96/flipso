@@ -117,6 +117,26 @@ void flipso_format_product(
     const ItsoCard* card,
     const ItsoProduct* product);
 
+/**
+ * What Flipso is, which build this is, and what it has to work with.
+ *
+ * The lookup tables are optional and live on the SD card, and nothing else in
+ * the app says whether they are there: without the stop table a bus journey
+ * reads "Stop 28632832", which looks like a fault rather than a missing file.
+ * This is where that is said, along with what to do about it.
+ *
+ * @param version   the build's version, or NULL when it has none.
+ * @param stations  stations the station table names; 0 when it is missing.
+ * @param stops     stops the stop table names; 0 when it is missing.
+ * @param operators names read from the user's operators file.
+ */
+void flipso_format_about(
+    FuriString* out,
+    const char* version,
+    uint32_t stations,
+    uint32_t stops,
+    uint16_t operators);
+
 /* ------------------------------------------------------------------ */
 /* Pieces the scenes use directly                                      */
 /* ------------------------------------------------------------------ */

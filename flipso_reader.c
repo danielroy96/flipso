@@ -12,7 +12,7 @@
  * Not every ITSO card is a DESFire one, and the others do not answer DESFire
  * commands at all. This file therefore holds the DESFire transport plus the
  * poller plumbing shared with the ISO 7816 transport in flipso_cmd2.c; which one
- * runs is chosen by flipso_reader_next_transport().
+ * runs is chosen by the scan session (flipso_scan_session.h).
  *
  * A DESFire that carries no ITSO application is not necessarily a card we have
  * nothing to say about. The Oyster is the case worth naming - it is a transport
@@ -69,25 +69,6 @@ static const SimpleArrayConfig flipso_app_id_array_config = {
  * but TS 1000-10 clause 8.7.5.4 lets the shell issuer size it otherwise, so read
  * as many as the decoder is willing to keep. */
 #define FLIPSO_LOG_BUF           (ITSO_MAX_TAPS * 48)
-/* One product may chain across several sectors; cap the walk so a corrupt
- * chain cannot spin or blow the buffer. */
-#define FLIPSO_MAX_CHAIN_HOPS    6
-
-/** The command sets the reader knows, tried in this order. */
-typedef enum {
-    /**
-     * Not a command set: the firmware's scanner, which waits for a card and
-     * says which protocols it answers. A poller cannot do that job - with no
-     * card present it reports the same timeout a card that will not activate
-     * does - and a scan needs it done, or a MIFARE Classic on the reader is a
-     * scan that never ends.
-     */
-    FlipsoTransportDetect,
-    FlipsoTransportDesfire, /**< CMD7 and CMD12: native DESFire commands. */
-    FlipsoTransportIso7816, /**< CMD2: an ISO 7816-4 file system. */
-    FlipsoTransportType2, /**< CMD4: a page-based NFC Type 2 tag. */
-    FlipsoTransportCount,
-} FlipsoTransport;
 
 struct FlipsoReader {
     Nfc* nfc;
@@ -95,12 +76,9 @@ struct FlipsoReader {
     NfcScanner* scanner; /**< Running instead of a poller in the detect stage. */
     /** The scanner has reported its card; it repeats itself until stopped. */
     bool detected;
-    /** The detected card speaks ISO 14443-4: it is a DESFire or ISO 7816
-     *  candidate rather than a Type 2 tag. Set by the detect stage, read by
-     *  flipso_reader_next_transport() to choose which transports to try. */
-    bool detected_iso4;
     bool running;
-    FlipsoTransport transport;
+    /** Which transport runs next, and what the scan has learned so far. */
+    FlipsoScanSession session;
 
     /** Allocated the first time the ISO 7816 transport is used. */
     FlipsoCmd2* cmd2;
@@ -327,39 +305,21 @@ static bool flipso_read_shell(FlipsoReader* reader, MfDesfirePoller* poller) {
     return false;
 }
 
-/** Follow one product's sector chain, concatenating the sectors it occupies. */
+/* One DESFire file per logical sector, for itso_read_chain(). A card that has
+ * gone reads as nothing, so the walk stops there rather than carrying on with
+ * the front of a product as though it were the whole of it. */
+typedef struct {
+    FlipsoReader* reader;
+    MfDesfirePoller* poller;
+} FlipsoDesfireSource;
+
 static size_t
-    flipso_read_product_group(FlipsoReader* reader, MfDesfirePoller* poller, uint8_t start_sector) {
-    const ItsoCard* card = reader->card;
-    size_t total = 0;
-    uint8_t sector = start_sector;
-
-    for(uint8_t hop = 0; hop < FLIPSO_MAX_CHAIN_HOPS; hop++) {
-        if(sector == 0 || sector >= card->sector_count) break;
-        if(total + card->sector_size > ITSO_MAX_GROUP_LEN) break;
-
-        size_t read = flipso_reader_read_file(
-            reader,
-            poller,
-            flipso_sector_to_fid(reader, sector),
-            reader->group + total,
-            ITSO_MAX_GROUP_LEN - total);
-        /* Stop on a card that has gone as well as on a chain that has ended:
-         * the bytes gathered so far are the front of a product, and decoding
-         * them would report a half-read product as a whole one. */
-        if(read == 0 || reader->lost_card) break;
-        total += read;
-
-        uint8_t next = itso_sct_entry(card, reader->dir, reader->dir_len, sector);
-        /* Terminators: itself (unused), S-2 (blocked) or S-1 (in use). */
-        if(next == sector || next == 0 || next == card->sector_count - 2 ||
-           next == card->sector_count - 1) {
-            break;
-        }
-        sector = next;
-    }
-
-    return total;
+    flipso_desfire_read_sector(void* context, uint8_t sector, uint8_t* out, size_t capacity) {
+    FlipsoDesfireSource* source = context;
+    FlipsoReader* reader = source->reader;
+    size_t read = flipso_reader_read_file(
+        reader, source->poller, flipso_sector_to_fid(reader, sector), out, capacity);
+    return reader->lost_card ? 0 : read;
 }
 
 /* ------------------------------------------------------------------ */
@@ -663,15 +623,19 @@ FlipsoReaderStatus flipso_reader_read_groups(
 }
 
 /* The DESFire side of a FlipsoGroupSource. */
-typedef struct {
-    FlipsoReader* reader;
-    MfDesfirePoller* poller;
-} FlipsoDesfireSource;
-
 static size_t flipso_desfire_read_group(void* context, uint8_t sector, const uint8_t** data) {
     FlipsoDesfireSource* source = context;
-    *data = source->reader->group;
-    return flipso_read_product_group(source->reader, source->poller, sector);
+    FlipsoReader* reader = source->reader;
+    *data = reader->group;
+    return itso_read_chain(
+        reader->card,
+        reader->dir,
+        reader->dir_len,
+        sector,
+        flipso_desfire_read_sector,
+        source,
+        reader->group,
+        ITSO_MAX_GROUP_LEN);
 }
 
 static size_t flipso_desfire_read_log(void* context, const uint8_t** data) {
@@ -801,7 +765,7 @@ static void flipso_reader_scanner_callback(NfcScannerEvent event, void* context)
         if(protocol == NfcProtocolMfClassic) classic = true;
     }
 
-    reader->detected_iso4 = iso4;
+    reader->session.detected_iso4 = iso4;
     bool supported = iso4 || (type_a && !classic);
     FURI_LOG_I(
         TAG,
@@ -812,7 +776,7 @@ static void flipso_reader_scanner_callback(NfcScannerEvent event, void* context)
                     "unsupported");
 
     reader->status = supported ? FlipsoReaderStatusFound : FlipsoReaderStatusUnsupported;
-    reader->callback(reader->status, reader->context);
+    reader->callback(reader->context);
 }
 
 /**
@@ -831,7 +795,7 @@ static NfcCommand flipso_desfire_callback(NfcGenericEventEx event, void* context
     }
 
     reader->status = flipso_read_card(reader, event.poller);
-    reader->callback(reader->status, reader->context);
+    reader->callback(reader->context);
     return NfcCommandStop;
 }
 
@@ -849,7 +813,7 @@ static NfcCommand flipso_iso7816_callback(NfcGenericEvent event, void* context) 
     if(iso_event->type != Iso14443_4aPollerEventTypeReady) return NfcCommandContinue;
 
     reader->status = flipso_cmd2_read(reader->cmd2, event.instance, reader->card, reader->capture);
-    reader->callback(reader->status, reader->context);
+    reader->callback(reader->context);
     return NfcCommandStop;
 }
 
@@ -867,7 +831,7 @@ static NfcCommand flipso_type2_poller_callback(NfcGenericEvent event, void* cont
 
     reader->status =
         flipso_type2_read(reader->type2, event.instance, reader->card, reader->capture);
-    reader->callback(reader->status, reader->context);
+    reader->callback(reader->context);
     return NfcCommandStop;
 }
 
@@ -880,7 +844,7 @@ FlipsoReader* flipso_reader_alloc(void) {
     memset(reader, 0, sizeof(FlipsoReader));
     reader->nfc = nfc_alloc();
     reader->status = FlipsoReaderStatusIdle;
-    reader->transport = FlipsoTransportDetect;
+    flipso_scan_session_begin(&reader->session);
     return reader;
 }
 
@@ -893,31 +857,35 @@ void flipso_reader_free(FlipsoReader* reader) {
     free(reader);
 }
 
-bool flipso_reader_next_transport(FlipsoReader* reader) {
-    furi_assert(reader);
-    furi_assert(!reader->running);
+/** Start whichever transport the session is on. */
+static void flipso_reader_start_transport(FlipsoReader* reader) {
+    reader->status = FlipsoReaderStatusIdle;
+    reader->shell_fid = FLIPSO_SHELL_FID_DEFAULT;
+    reader->descending = true;
 
-    /* Not a straight walk down the list: the detect stage decides whether the
-     * card is an ISO 14443-4 one, and only then are the two -4 transports worth
-     * trying. A Type 2 tag skips them for the one transport that fits it - and
-     * being tried a -4 transport would hang it (see the scanner callback). */
-    switch(reader->transport) {
-    case FlipsoTransportDetect:
-        reader->transport = reader->detected_iso4 ? FlipsoTransportDesfire : FlipsoTransportType2;
-        return true;
-    case FlipsoTransportDesfire:
-        reader->transport = FlipsoTransportIso7816;
-        return true;
-    default: /* Iso7816 and Type2 are each the last of their path. */
-        reader->transport = FlipsoTransportDetect;
-        return false;
+    const FlipsoTransport transport = reader->session.transport;
+    if(transport == FlipsoTransportDetect) {
+        reader->detected = false;
+        reader->scanner = nfc_scanner_alloc(reader->nfc);
+        nfc_scanner_start(reader->scanner, flipso_reader_scanner_callback, reader);
+    } else if(transport == FlipsoTransportIso7816) {
+        /* Only cards that are not DESFire get this far, so the buffers it owns
+         * are worth allocating late rather than for every read. */
+        if(!reader->cmd2) reader->cmd2 = flipso_cmd2_alloc();
+        reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolIso14443_4a);
+        nfc_poller_start(reader->poller, flipso_iso7816_callback, reader);
+    } else if(transport == FlipsoTransportType2) {
+        /* Read the raw Type 2 tag over the base ISO 14443-3A poller: it activates
+         * with anticollision and select but no RATS, which is all a Type 2 tag
+         * answers. Allocated late, like the CMD2 buffers, for the same reason. */
+        if(!reader->type2) reader->type2 = flipso_type2_alloc();
+        reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolIso14443_3a);
+        nfc_poller_start(reader->poller, flipso_type2_poller_callback, reader);
+    } else {
+        reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolMfDesfire);
+        nfc_poller_start_ex(reader->poller, flipso_desfire_callback, reader);
     }
-}
-
-void flipso_reader_reset_transport(FlipsoReader* reader) {
-    furi_assert(reader);
-    furi_assert(!reader->running);
-    reader->transport = FlipsoTransportDetect;
+    reader->running = true;
 }
 
 void flipso_reader_start(
@@ -939,32 +907,27 @@ void flipso_reader_start(
     reader->media = media;
     reader->callback = callback;
     reader->context = context;
-    reader->status = FlipsoReaderStatusIdle;
-    reader->shell_fid = FLIPSO_SHELL_FID_DEFAULT;
-    reader->descending = true;
 
-    if(reader->transport == FlipsoTransportDetect) {
-        reader->detected = false;
-        reader->scanner = nfc_scanner_alloc(reader->nfc);
-        nfc_scanner_start(reader->scanner, flipso_reader_scanner_callback, reader);
-    } else if(reader->transport == FlipsoTransportIso7816) {
-        /* Only cards that are not DESFire get this far, so the buffers it owns
-         * are worth allocating late rather than for every read. */
-        if(!reader->cmd2) reader->cmd2 = flipso_cmd2_alloc();
-        reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolIso14443_4a);
-        nfc_poller_start(reader->poller, flipso_iso7816_callback, reader);
-    } else if(reader->transport == FlipsoTransportType2) {
-        /* Read the raw Type 2 tag over the base ISO 14443-3A poller: it activates
-         * with anticollision and select but no RATS, which is all a Type 2 tag
-         * answers. Allocated late, like the CMD2 buffers, for the same reason. */
-        if(!reader->type2) reader->type2 = flipso_type2_alloc();
-        reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolIso14443_3a);
-        nfc_poller_start(reader->poller, flipso_type2_poller_callback, reader);
-    } else {
-        reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolMfDesfire);
-        nfc_poller_start_ex(reader->poller, flipso_desfire_callback, reader);
+    /* Every scan starts at the detect stage, including one started again after
+     * Back stopped the last part way through: a -4 transport left over from
+     * that scan would hang on a Type 2 tag. */
+    flipso_scan_session_begin(&reader->session);
+    flipso_reader_start_transport(reader);
+}
+
+bool flipso_reader_advance(FlipsoReader* reader, FlipsoReaderStatus* status) {
+    furi_assert(reader);
+    furi_assert(status);
+
+    /* Stop polling from this thread: the poller cannot stop itself. */
+    flipso_reader_stop(reader);
+
+    *status = reader->status;
+    if(flipso_scan_session_step(&reader->session, status)) {
+        flipso_reader_start_transport(reader);
+        return true;
     }
-    reader->running = true;
+    return false;
 }
 
 void flipso_reader_stop(FlipsoReader* reader) {
