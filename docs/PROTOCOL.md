@@ -154,7 +154,7 @@ Not every ITSO card is a DESFire one. CMD2 puts the ITSO application in an
 ISO 7816-4 file system instead, and such a card ignores DESFire commands
 entirely. SPT's Glasgow Subway smartcard is one of these. This generic
 card media is normally implemented as a cost saving measure, as DESFire
-cards often cost up to 5x as a generic card.
+cards often cost up to 5x as much as a generic card.
 
 1. Select the ITSO application by AID (`A0 00 00 02 16` + `"ITSO-1"`).
 2. Take the **Shell Environment** and the **Parameter EF** from the File Control
