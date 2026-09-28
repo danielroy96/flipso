@@ -825,7 +825,11 @@ void flipso_format_product(
         if(product->remove_date == 255) {
             furi_string_cat(out, "Removable: By the owner only\n");
         } else {
-            furi_string_cat_printf(out, "Removable: %u days after expiry\n", product->remove_date);
+            furi_string_cat_printf(
+                out,
+                "Removable: %u day%s after expiry\n",
+                product->remove_date,
+                product->remove_date == 1 ? "" : "s");
         }
     }
     /* Owner-defined codes: meaningless without the scheme's own tables, but they

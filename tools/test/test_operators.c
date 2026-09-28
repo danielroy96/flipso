@@ -104,9 +104,9 @@ int main(void) {
      * a new entry needs a line, and the search finds it only while the table
      * stays sorted.
      */
-    static const uint16_t known[] = {78,  96,  109, 116,  125,  130,  143, 152, 162,
-                                     163, 165, 196, 226,  246,  247,  262, 285, 288,
-                                     289, 303, 313, 1136, 8000, 8288, 8323};
+    static const uint16_t known[] = {78,  96,  109, 116, 125,  130,  143,  152, 162,
+                                     163, 165, 196, 226, 246,  247,  262,  285, 287,
+                                     288, 289, 303, 313, 1136, 8000, 8288, 8323};
     unsigned unreachable = 0;
     for(size_t i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
         if(!itso_operator_name(known[i])) unreachable++;
@@ -141,6 +141,13 @@ int main(void) {
      * sells its card as. */
     same("a National Rail operator is named", itso_operator_name(262), "Chiltern Railways");
     same("and titles its card as it sells it", itso_operator_brand(262), "Chiltern Smartcard");
+    /* Read from the card itself, whose season tickets belong to OID 246 above:
+     * the shell names the operator, the products do not. */
+    same(
+        "a train operator seen as a shell owner",
+        itso_operator_name(287),
+        "Great Western Railway");
+    same("titles its card as printed", itso_operator_brand(287), "GWR Touch");
 
     FlipsoOperators* operators = flipso_operators_alloc();
     same(

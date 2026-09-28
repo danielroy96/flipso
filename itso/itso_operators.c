@@ -147,6 +147,11 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * says "Chiltern Railways Smartcard", shortened so the header fits. */
     {262, "Chiltern Railways", "Chiltern Smartcard"},
     {285, "CrossCountry", "CrossCountry Smartcard"},
+    /* Shell owner of a GWR Touch card, read 2026-09-28, which also owns the ITSO
+     * ID product on it. The season tickets on the same card belong to OID 246,
+     * the shared SEFT one, so this OID names the card and not its tickets. The
+     * brand is the one printed on it. */
+    {287, "Great Western Railway", "GWR Touch"},
     {288, "TransPennine Express", "TPE Smartcard"},
     /* Shell owner of a Southeastern "The Key" card, read 2026-09-18. The Key is
      * Go-Ahead's scheme rather than one operator's, so other Go-Ahead operators

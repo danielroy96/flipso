@@ -569,6 +569,20 @@ int main(int argc, char** argv) {
             "a named stop keeps the count of the others", shows(text, "High Street and 2 more\n"));
     }
 
+    /* A GWR season ticket keeps its product one day past expiry. */
+    {
+        ItsoProduct ticket = card.products[0];
+        ticket.has_remove_date = true;
+        ticket.remove_date = 1;
+        furi_string_reset(text);
+        flipso_format_product(text, &f, &card, &ticket);
+        check("one day is not days", shows(text, "Removable: 1 day after expiry\n"));
+        ticket.remove_date = 30;
+        furi_string_reset(text);
+        flipso_format_product(text, &f, &card, &ticket);
+        check("but thirty are", shows(text, "Removable: 30 days after expiry\n"));
+    }
+
     /* The card details screen for a DESFire Flipso cannot decode, which is
      * held to the same style as the ITSO screens. */
     static const uint8_t chip[FLIPSO_MEDIA_CHIP_LEN] = {
