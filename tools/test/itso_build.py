@@ -589,52 +589,66 @@ def tt_record(txn, when, amount, origin, dest, ipe_ptr, route=None,
 def tt_record_rev4(txn, when, amount, via, dest, ipe_ptr,
                    entry_when, entry_oid, candidates, origin=None, no_fare=False,
                    mop=1, valc=0, vat=2000, iin="633597", cipe_flags=0b10,
-                   entry_isam=b"\x01\x02\x03\x04", entry_seq=b"\x00\x00\x09"):
-    """A format revision 4 record: the shape a check-in/check-out closed system
-    writes on exit. It carries the entry it closes, the products the gate weighed
-    up, and a routing point (TS 1000-5 tables 64 and 66)."""
+                   entry_isam=b"\x01\x02\x03\x04", entry_seq=b"\x00\x00\x09",
+                   entry_iin_index=1, writer=None):
+    """A format revision 4 record (TS 1000-5 tables 64 and 66).
+
+    With every group given, it is the shape a check-in/check-out closed system
+    writes on exit: the entry it closes, the products the gate weighed up, and
+    a routing point. Any group passed as None is left out of the bitmap, which
+    is how a real card's records differ: the GWR Touch card read on 2026-09-28
+    had a check-out with no amount and no entry group, and a check-in carrying
+    only the entry operator (ENTRY_OID without ENTRY).
+    """
     groups = b""
     bitmap = 0
 
-    bitmap |= 1 << 0                                    # AMT
-    amt = Bits(5)
-    amt.put(0, 4, mop)
-    amt.put(4, 4, valc)
-    amt.put(8, 16, amount & 0xFFFF)
-    amt.put(27, 1, 1 if no_fare else 0)                 # NoFareCharged
-    amt.put(28, 12, vat)                                # VATSalesTax, 0.01% steps
-    groups += bytes(amt.buf)
+    if amount is not None:
+        bitmap |= 1 << 0                                # AMT
+        amt = Bits(5)
+        amt.put(0, 4, mop)
+        amt.put(4, 4, valc)
+        amt.put(8, 16, amount & 0xFFFF)
+        amt.put(27, 1, 1 if no_fare else 0)             # NoFareCharged
+        amt.put(28, 12, vat)                            # VATSalesTax, 0.01% steps
+        groups += bytes(amt.buf)
 
-    bitmap |= 1 << 1                                    # DEST
-    groups += dest
+    if dest is not None:
+        bitmap |= 1 << 1                                # DEST
+        groups += dest
     bitmap |= 1 << 2                                    # IPEID
     groups += bytes([ipe_ptr & 0x1F])
     if origin:
         bitmap |= 1 << 3                                # ORGN
         groups += origin
-    bitmap |= 1 << 5                                    # RC
-    groups += via
-    bitmap |= 1 << 7                                    # IIN
-    groups += bcd(iin)
+    if via is not None:
+        bitmap |= 1 << 5                                # RC
+        groups += via
+    if iin is not None:
+        bitmap |= 1 << 7                                # IIN
+        groups += bcd(iin)
 
-    bitmap |= 1 << 8                                    # CIPE
-    cipe = Bits(3)
-    for i, c in enumerate(candidates):
-        cipe.put(i * 5, 5, c)
-    cipe.put(20, 4, cipe_flags)
-    groups += bytes(cipe.buf)
+    if candidates is not None:
+        bitmap |= 1 << 8                                # CIPE
+        cipe = Bits(3)
+        for i, c in enumerate(candidates):
+            cipe.put(i * 5, 5, c)
+        cipe.put(20, 4, cipe_flags)
+        groups += bytes(cipe.buf)
 
-    bitmap |= 1 << 9                                    # ENTRY
-    entry = Bits(10)
-    entry.putb(0, entry_isam)
-    entry.putb(4, entry_seq)
-    entry.put(56, 24, entry_when)
-    groups += bytes(entry.buf)
+    if entry_when is not None:
+        bitmap |= 1 << 9                                # ENTRY
+        entry = Bits(10)
+        entry.putb(0, entry_isam)
+        entry.putb(4, entry_seq)
+        entry.put(56, 24, entry_when)
+        groups += bytes(entry.buf)
 
-    bitmap |= 1 << 10                                   # ENTRY OID
-    groups += entry_oid.to_bytes(2, "big") + b"\x01"
+    if entry_oid is not None:
+        bitmap |= 1 << 10                               # ENTRY OID
+        groups += entry_oid.to_bytes(2, "big") + bytes([entry_iin_index])
 
-    return _tt_pack(bitmap, txn, when, groups, 4)
+    return _tt_pack(bitmap, txn, when, groups, 4, writer)
 
 
 def _tt_pack(bitmap, txn, when, groups, format_rev, writer=None):

@@ -38,6 +38,12 @@ tools/test/replay.py dump.txt
 under ASan and UBSan, printing the shell, the directory, every product and the
 journey log. Iterate against that, not against the device.
 
+For a saved card, `tools/test/screens.py card.flipso` prints every screen as
+the device would draw it, with station and stop names from the real tables.
+It ends with every operator number on the card, flagging any that falls in a
+TS 1000-2 table B2 gap, which no real OID can. Check the screens there, not
+by scrolling the device.
+
 For full ground truth on a card whose geometry is in doubt, loop every DESFire
 file id 0..31 reading settings *and* data. That shows each file's true size,
 which the chained `GROUP` buffers alone do not.
@@ -58,14 +64,17 @@ The parts the decoder is written against: **part 1** data types, **part 2**
 shell / directory / IPE / value record, **part 5** per-IPE-type datasets,
 **part 10** customer media definitions.
 
-There is no `pdftotext` here, but the ufbt toolchain's Python has pip:
+Search them with `tools/spec/itso_spec.py`, which downloads a part the first
+time it is needed and caches its text in `~/.cache/flipso/itso-spec`:
 
 ```bash
-~/.ufbt/toolchain/arm64-darwin/bin/python3.11 -m pip install pypdf
+tools/spec/itso_spec.py grep 'ProductRetailer' --part 5    # every hit, page numbered
+tools/spec/itso_spec.py grep 'Table B2' --part 2 -C 25     # with context
+tools/spec/itso_spec.py page 5 51                          # one whole page
 ```
 
-then `PdfReader(path).pages[i].extract_text()`. The layout tables survive
-extraction well enough to read field offsets off them.
+Parts 1, 2, 4, 5 and 10 are searched when no `--part` is given. The layout
+tables survive text extraction well enough to read field offsets off them.
 
 **Offsets in the TS 1000-5 IPE and value-record tables are absolute from the
 start of the data group.** A value record's own byte N is table offset N+2,

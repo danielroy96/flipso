@@ -234,6 +234,56 @@ static bool load(FlipsoCapture* capture, const char* path) {
 /* 2060-01-01: past the expiry of every card and product the tests build. */
 #define FLIPSO_TEST_LATER 2840140800u
 
+/*
+ * The encodings Demo 7 carries from a real GWR Touch card, pinned by the lines
+ * only they produce: a gate check-in and check-out in the revision 4 shapes a
+ * rail gate writes, each naming the reader that wrote it; a revision 2 period
+ * ticket with and without CPICC, and no value record; an ID with an empty
+ * bitmap; and a Directory InstanceID with a 16-bit extended ISAM OID.
+ */
+static void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
+    FuriString* text = furi_string_alloc();
+
+    flipso_format_taps(text, f, card);
+    check(
+        "a check-in names the operator whose gate it was",
+        shows(text, "Tap in\n  When: 18/09/2026 17:52\n  Tapped in with: Unknown (24585)\n"));
+    /* The stub table knows no GWR stations, so the check is the shape, not the
+     * names: a dated tap out with a destination and no fare line. */
+    check(
+        "a check-out with no amount is still a journey",
+        shows(text, "Tap out (latest)\n  When: 18/09/2026 18:49\n  From: ") &&
+            shows(text, "  To: ") && !shows(text, "  Fare: "));
+    check("each record names the reader that wrote it", shows(text, "  Reader: FF00A3C7\n"));
+
+    furi_string_reset(text);
+    flipso_format_card(text, f, card, NULL, 0);
+    check(
+        "the directory's last writer is decoded from an extended ISAM",
+        shows(text, "Last updated by machine: 004E30F3\n  Operator: Unknown (24585)\n"));
+    check("160-byte sectors are the layout", shows(text, "Layout: 16 sectors of 160 bytes\n"));
+
+    furi_string_reset(text);
+    flipso_format_id(text, f, card);
+    check("an ID with nothing optional says so", shows(text, "Name: Not stored\n"));
+    check("and still has its language", shows(text, "Language: English\n"));
+
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        const ItsoProduct* p = &card->products[i];
+        if(p->typ != ItsoTypPeriodTicket) continue;
+        furi_string_reset(text);
+        flipso_format_product(text, f, card, p);
+        check("a revision 2 season ticket has its price", shows(text, "Price paid: \xC2\xA3"));
+        check("and its end time", shows(text, "Ends at: 04:30 the day after expiry\n"));
+        check("and its validity code", shows(text, "Validity code: 17\n"));
+        check(
+            "its CPICC shows only when the bitmap says it is there",
+            shows(text, "Issuer code: ") == ((p->bitmap & 0x10) != 0));
+        check("its expiry comes from the directory", shows(text, "Expires: "));
+    }
+    furi_string_free(text);
+}
+
 /* Wording pinned against the demo card that carries every product type. */
 static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     FuriString* text = furi_string_alloc();
@@ -655,6 +705,12 @@ int main(int argc, char** argv) {
             f.media = &demo_media;
             every_screen(entry->d_name, &f, &demo_card);
             if(strncmp(entry->d_name, "Demo 1", 6) == 0) demo_one(&f, &demo_card);
+            if(strncmp(entry->d_name, "Demo 7", 6) == 0) {
+                /* Judged on the day after it was read, when both tickets ran. */
+                FlipsoFormat read_day = f;
+                read_day.now = 1790035200u; /* 2026-09-22 */
+                demo_seven(&read_day, &demo_card);
+            }
             f.media = NULL;
             FlipsoFormat expired = f;
             expired.now = FLIPSO_TEST_LATER;
@@ -664,7 +720,7 @@ int main(int argc, char** argv) {
             cards++;
         }
         if(dir) closedir(dir);
-        check("all six demo cards were rendered", cards == 6);
+        check("all seven demo cards were rendered", cards == 7);
         check("and a saved chip block was among them", chips > 0);
     }
 

@@ -18,8 +18,10 @@ tools/flipper/flipctl arm --shot /tmp/.../armed.png
 ```
 
 **This, and nothing else, is what earns the right to ask for a tap.** Run it,
-check its exit status, and Read the screenshot. If it exits non-zero it has
-printed `NOT ARMED`; fix that or tell the user the device needs attention. Do
+check its exit status, and Read the screenshot. If it exits 1 it has printed
+`NOT ARMED`; fix that or tell the user the device needs attention. If it exits
+**3** it has printed `CARD READ`: a card was already lying on the reader and
+the app has read it, so the field is off again and a tap would do nothing. Do
 not ask for a tap on the strength of anything else - not `doctor`, not `ready`,
 not a heap figure, and not because a deploy just succeeded.
 
@@ -29,6 +31,14 @@ field is up and **nothing at all** while it is down, so seeing one is a
 measurement that the field is radiating - which is only true when the app is on
 screen, in the scan scene, and scanning. It exits 0 only when it has seen that
 line.
+
+The OK press goes down the log stream's own session, in the same write as
+`log debug`. Sent separately, it lands before the stream is listening, and a
+card already on the reader is read in the gap. For the same reason `arm` keeps
+watching for 1.5 s after the first timeout line: the poller logs one timeout
+before it finds a card that is already there. Both were measured on
+2026-09-28, when `arm` first retried over a successful read and then said
+ARMED a moment before the card was read.
 
 It restarts and retries on its own if the first attempt does not arm, which
 does happen - measured on 2026-09-21, attempt 1 pressed OK into an app that
@@ -40,6 +50,20 @@ gap between arming and the user actually picking up their card does not matter.
 What does matter is not disturbing it afterwards: **anything that restarts the
 app disarms the reader.** A `deploy`, a `ready`, a `close`, a `reboot` after
 arming all mean you must `arm` again before asking.
+
+### A card that is already on the reader
+
+```bash
+tools/flipper/flipctl scan --shot /tmp/.../scan.png; echo "SCAN=$?"
+```
+
+When the user leaves a card lying under the Flipper, nobody is going to tap,
+so `arm` is the wrong question. `scan` relaunches, presses Scan the same way,
+waits for a card to answer and follows the read until the log goes quiet. It
+prints what the app logged, then screenshots the result. It exits 0 when a
+card was read, 1 when the field never came up, 2 when the device is halted,
+and 3 when the field polled and nothing answered (the card is off-centre).
+See the **new-card** skill for what comes after.
 
 ### Why `ready` is not the check
 
@@ -277,6 +301,7 @@ should be tapping anything.
 | `ufbt launch` hangs at `Using flip_...`, or `Error 4`/`-15` | the app is still running and the loader will not replace it | `flipctl deploy` already handles it; otherwise `flipctl close` |
 | `Application "X" has to be closed manually` | the loader refuses to close it from the scene it is in | `flipctl reboot` |
 | The port exists but nothing answers | a crashed app halts the device, or an RPC session was left open | `flipctl crash`, then `flipctl reboot` |
+| `the CLI accepted ... and printed nothing back`, or `power reboot was sent but the Flipper never restarted` | the CLI answers a keystroke but runs no command (seen 2026-09-28, after a launch that never came up) | nothing sent over USB will act: ask the user for LEFT + BACK |
 | `the serial port is held by another process` | a log stream or `ufbt` from an earlier session | `flipctl` clears its own helpers; `--force` clears anything |
 | `[flipctl] serial dropped - reconnecting` | macOS dropped the CDC endpoint, usually just after an RPC call (a screenshot, `ufbt launch`) | nothing: the stream reopens and re-arms itself and keeps watching |
 | The screen shows the app browser and nothing responds | a Back press landed after the app exited and wedged the GUI | `flipctl reboot` |

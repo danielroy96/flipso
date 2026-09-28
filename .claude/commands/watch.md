@@ -17,6 +17,9 @@ tools/flipper/flipctl arm --shot /tmp/.../armed.png; echo "ARM=$?"
 - `ARM=0` and a screenshot reading "Hold a card or ticket against the back":
   go on. Read the PNG, and show it to the user — it is the evidence that their
   tap will do something.
+- `ARM=3`: a card was already on the reader and has just been read, so the
+  field is off. Nobody needs to tap: the read is in `arm`'s output and on
+  screen. Use `flipctl scan` for this case.
 - Anything else: **do not ask for a tap.** `arm` prints why and has already
   retried and rebooted on its own. Say what is wrong and what you are doing
   about it.

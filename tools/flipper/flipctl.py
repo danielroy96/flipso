@@ -157,6 +157,35 @@ def drain_to_prompt(s, settle: float = 0.2):
 
 # ---------------------------------------------------------------------------
 # CLI session
+class CliSilent(Exception):
+    """The CLI took a command and printed nothing back, not even an error."""
+
+
+def key_lines(name: str, kind: str = "short") -> list:
+    """The CLI lines for one key press. See Flipper.key for why there are three."""
+    if kind in ("press", "release"):
+        return [f"input send {name} {kind}"]
+    return [f"input send {name} press", f"input send {name} {kind}",
+            f"input send {name} release"]
+
+
+def split_keys(seq) -> tuple:
+    """Split a key sequence into (sent first, bundled with the stream).
+
+    Whatever the last key sets off happens while the stream is being opened,
+    and a card already on the reader is read in well under a second - so a
+    stream opened after the keys misses the whole scan. The last key therefore
+    goes down the stream's own session, in the same write as `log`. A trailing
+    '@N' wait means the caller wants the pause before streaming, so nothing is
+    bundled.
+    """
+    seq = list(seq or [])
+    if not seq or seq[-1].startswith("@"):
+        return seq, []
+    name, _, kind = seq[-1].partition(":")
+    return list(seq[:-1]), key_lines(name.lower(), kind or "short")
+
+
 # ---------------------------------------------------------------------------
 
 class Flipper:
@@ -277,12 +306,8 @@ class Flipper:
         all - it has to be bracketed by Press and Release, the way the hardware
         emits it.
         """
-        if kind in ("press", "release"):
-            self.cmd(f"input send {name} {kind}", limit=5.0)
-            return
-        self.cmd(f"input send {name} press", limit=5.0)
-        self.cmd(f"input send {name} {kind}", limit=5.0)
-        self.cmd(f"input send {name} release", limit=5.0)
+        for line in key_lines(name, kind):
+            self.cmd(line, limit=5.0)
 
     def press(self, seq, settle: float = 0.3):
         """Send a key sequence. '@1.5' sleeps, 'ok:long' sends a long press."""
@@ -295,7 +320,21 @@ class Flipper:
             time.sleep(settle)
 
     def app_running(self) -> str | None:
+        """The app the loader says is running, or None at the desktop.
+
+        An empty reply is not "the desktop": the loader always says something,
+        even if only "No application is running", so a CLI that returns nothing
+        has stopped running commands. On 2026-09-28 a device in that state was
+        reported as "none (desktop)", which sends the next step - a launch - at
+        a device that will not act on it. So silence raises, and main() reports
+        it.
+        """
         info = self.cmd("loader info", limit=8.0, retry=True)
+        if not info:
+            time.sleep(1.0)
+            info = self.cmd("loader info", limit=8.0, retry=True)
+        if not info:
+            raise CliSilent("loader info")
         m = re.search(r'Application "([^"]+)" is running', info)
         return m.group(1) if m else None
 
@@ -366,7 +405,13 @@ def cmd_doctor(args):
             return 2
         f = Flipper(ports[0])
         try:
-            running = f.app_running()
+            try:
+                running = f.app_running()
+            except CliSilent:
+                print("  running app          NO ANSWER - the CLI takes input but runs nothing")
+                print()
+                print(HALTED_ADVICE)
+                return 2
             print(f"  running app          {running or 'none (desktop)'}")
             if running:
                 # Worth saying plainly, because this line is exactly what an
@@ -385,7 +430,14 @@ def cmd_doctor(args):
                 ok = False
             stat = f.cmd(f"storage stat /ext/apps/NFC/{args.appid}.fap", limit=8.0,
                          retry=True)
-            print(f"  installed .fap       {stat or 'not installed'}")
+            # A missing file is an error message; only silence is no answer.
+            if not stat:
+                print("  installed .fap       no answer from the CLI")
+                ok = False
+            elif "not exist" in stat:
+                print("  installed .fap       not installed")
+            else:
+                print(f"  installed .fap       {stat}")
         finally:
             f.close()
 
@@ -439,37 +491,96 @@ def cmd_ready(args):
 # firmware's poller rather than from Flipso, so it says the field is really
 # radiating, not that the app thinks it started something.
 #
-# The second group covers the case where a card is already sitting on the
-# reader when the field comes up: the poller finds it immediately and never
-# logs an FWT timeout at all. That is a live reader too.
-NFC_IDLE_POLL = ("FWT Timeout",)
-NFC_CARD_PRESENT = ("Iso14443", "Desfire", "DESFire", "Iso7816", "Flipso")
+# The firmware's protocol pollers log under their own tags too, and any of
+# their lines also means the field is up. None of them means a card: only the
+# app says that, with "Card detected" the moment the poller hands it one, and
+# every line it logs while reading. So a card is a [Flipso] line and nothing
+# else, and an empty reader cannot be mistaken for one that has just read.
+NFC_IDLE_POLL = ("FWT Timeout", "Iso14443", "Desfire", "DESFire", "Iso7816")
+NFC_CARD_PRESENT = ("[Flipso]",)
+
+# Once a card has been seen, how long the log has to go quiet before the read
+# counts as finished. A DESFire read with a full journey log takes about a
+# second; a card that is lost and retried takes longer, and keeps logging.
+NFC_READ_QUIET_S = 2.0
+NFC_READ_LIMIT_S = 20.0
+
+# How long to keep watching after the first idle poll before calling the field
+# armed. The poller logs a timeout on its first pass even with a card lying on
+# it, and only finds the card a few hundred ms later: measured on 2026-09-28,
+# `arm` returned ARMED on that first line and the card was read a moment after,
+# leaving the app on the card menu with the field down.
+NFC_ARM_GRACE_S = 1.5
 
 
-def nfc_field_live(port: str, limit: float = 5.0) -> str | None:
-    """Watch the log for proof that the NFC field is up. Returns the line.
+class NfcWatch:
+    """What the log said once the scan key went down.
+
+    kind is None (nothing - the field never came up), "idle" (the field is
+    polling with no card in it) or "card" (a card answered, and lines holds
+    what the app logged while reading it).
+    """
+
+    def __init__(self):
+        self.kind = None
+        self.proof = None
+        self.lines = []
+
+
+def watch_nfc(port: str, limit: float = 5.0, press=None,
+              want_card: bool = False) -> NfcWatch:
+    """Watch the log for proof that the NFC field is up.
 
     This is the only observation that separates a device someone can usefully
     tap a card against from one that will ignore them. Everything else the host
     can ask - `loader info`, the free heap, the thread table - answers the same
     way whether Flipso owns the screen or the desktop does, and none of them
     knows whether the reader within Flipso has been started at all.
+
+    @p press is a key sequence sent down this same session just before the
+    stream starts (split_keys). It has to be: a card already on the reader is
+    detected and read within a second of the key, which is gone before a
+    stream opened afterwards is listening - measured on 2026-09-28, when a
+    card left on the reader was read, never seen, and `arm` restarted the app
+    over the result.
+
+    With @p want_card, the field polling is not enough: keep watching until a
+    card answers or @p limit runs out. Either way, once a card is seen the read
+    is followed until the log goes quiet, so the caller gets the whole of it.
     """
     import serial
 
+    watch = NfcWatch()
+    armed_at = None
+    first, prelude = split_keys(press or [])
+    if first:
+        f = Flipper(port)
+        try:
+            f.press(first)
+        finally:
+            f.close()
     try:
         s = open_serial(port)
     except (serial.SerialException, OSError):
-        return None
+        return watch
     try:
-        start_log_stream(s, "debug")
+        start_log_stream(s, "debug", prelude=prelude)
         deadline = time.time() + limit
+        last_card_line = None
         buf = b""
-        while time.time() < deadline:
+        while True:
+            now = time.time()
+            if last_card_line is not None:
+                if now - last_card_line > NFC_READ_QUIET_S or now > deadline + NFC_READ_LIMIT_S:
+                    break
+            elif armed_at is not None and now - armed_at > NFC_ARM_GRACE_S:
+                return watch  # polling, and no card turned up in the grace
+            elif now > deadline:
+                break
             try:
                 chunk = s.read(512)
             except (serial.SerialException, OSError):
-                return None
+                break
             if not chunk:
                 time.sleep(0.02)
                 continue
@@ -477,15 +588,75 @@ def nfc_field_live(port: str, limit: float = 5.0) -> str | None:
             while b"\n" in buf:
                 raw, buf = buf.split(b"\n", 1)
                 text = log_line(raw)
-                if any(m in text for m in NFC_IDLE_POLL + NFC_CARD_PRESENT):
-                    return text
+                if any(m in text for m in NFC_CARD_PRESENT):
+                    if watch.kind != "card":
+                        watch.kind, watch.proof = "card", text
+                    last_card_line = time.time()
+                    watch.lines.append(text)
+                elif any(m in text for m in NFC_IDLE_POLL):
+                    if watch.kind is None:
+                        watch.kind, watch.proof = "idle", text
+                        if not want_card:
+                            armed_at = time.time()
+                    elif watch.kind == "card" and ("[E]" in text or "[W]" in text):
+                        # A protocol error mid-read is part of the story. The
+                        # idle polls after a finished read are not, and must
+                        # not hold the read open.
+                        watch.lines.append(text)
+                        last_card_line = time.time()
     finally:
         try:
             s.write(b"\x03")
             s.close()
         except Exception:
             pass
-    return None
+    return watch
+
+
+def nfc_field_live(port: str, limit: float = 5.0, press=None) -> str | None:
+    """The log line that proves the field is up, or None. See watch_nfc."""
+    return watch_nfc(port, limit, press).proof
+
+
+def start_scan(args, want_card: bool) -> tuple:
+    """Relaunch, press Scan and watch, retrying a launch that never polls.
+
+    Returns (port, NfcWatch). Only a field that never came up is retried: a
+    card, or a field polling with no card in it, is a real answer.
+    """
+    port = find_port()
+    require_free_port(port, force=args.force)
+    if not cli_alive(port):
+        print("state: HALTED - the CLI is silent")
+        print()
+        print(HALTED_ADVICE)
+        raise SystemExit(2)
+
+    watch = NfcWatch()
+    for attempt in range(1, args.tries + 1):
+        port, message = ensure_usable(port, args, want_running=True)
+        if message == "ready":
+            watch = watch_nfc(port, limit=args.timeout, press=["ok"],
+                              want_card=want_card)
+            if watch.kind:
+                break
+        more = " - restarting the app and retrying" if attempt < args.tries else ""
+        print(f"[flipctl] attempt {attempt} of {args.tries}: no NFC activity "
+              f"within {args.timeout:g}s{more}", file=sys.stderr)
+    return port, watch
+
+
+NOT_ARMED = (
+    "The app was relaunched and sent OK, and the NFC field never started "
+    "polling.\nTry `tools/flipper/flipctl reboot` and run this again; if it "
+    "still fails,\nthe screen will say why - `tools/flipper/flipctl shot`."
+)
+
+
+def print_read(watch: NfcWatch):
+    """What the app logged while reading a card."""
+    for line in watch.lines or [watch.proof]:
+        print(f"  {line}")
 
 
 def cmd_arm(args):
@@ -503,46 +674,32 @@ def cmd_arm(args):
     This replaces the guesswork with the one fact that matters: the field is
     radiating, which is only true if the app is on screen, in the scan scene,
     and scanning.
+
+    Exit status: 0 armed, 1 not armed, 2 halted, 3 a card was already on the
+    reader and has been read - the reader is off again, so nobody should tap.
     """
-    port = find_port()
-    require_free_port(port, force=args.force)
-    if not cli_alive(port):
-        print("state: HALTED - the CLI is silent")
-        print()
-        print(HALTED_ADVICE)
-        return 2
+    port, watch = start_scan(args, want_card=False)
 
-    proof = None
-    for attempt in range(1, args.tries + 1):
-        port, message = ensure_usable(port, args, want_running=True)
-        if message == "ready":
-            f = Flipper(port)
-            try:
-                f.press(["ok"], settle=0.3)
-            finally:
-                f.close()
-            time.sleep(0.4)
-            proof = nfc_field_live(port, limit=args.timeout)
-            if proof:
-                break
-        more = " - restarting the app and retrying" if attempt < args.tries else ""
-        print(f"[flipctl] attempt {attempt} of {args.tries}: no NFC activity "
-              f"within {args.timeout:g}s{more}", file=sys.stderr)
-
-    if not proof:
+    if not watch.kind:
         # Deliberately loud and deliberately non-zero: the whole point of this
         # command is that nobody is sent to tap a card on a guess.
         print()
         print("NOT ARMED - do not ask anyone to tap a card.")
         print()
-        print("The app was relaunched and sent OK, and the NFC field never "
-              "started polling.\nTry `tools/flipper/flipctl reboot` and run this "
-              "again; if it still fails,\nthe screen will say why - "
-              "`tools/flipper/flipctl shot`.")
+        print(NOT_ARMED)
         return 1
 
     if args.shot:
         snapshot(port, args.shot)
+
+    if watch.kind == "card":
+        # Not a failure, but not armed either: the scan has finished, the app
+        # has moved on to the card, and the field is down. `scan` is the
+        # command for this.
+        print("CARD READ - a card was already on the reader, and the app has read it.")
+        print("The reader is off again: do not ask anyone to tap. The app logged:")
+        print_read(watch)
+        return 3
 
     f = Flipper(port)
     try:
@@ -550,13 +707,49 @@ def cmd_arm(args):
     finally:
         f.close()
     print("ARMED - the NFC field is polling, a card tapped now will be read")
-    print(f"  proof      {proof}")
+    print(f"  proof      {watch.proof}")
     if h:
         print(f"  free heap  {h.get('Free heap size', 0):,} of "
               f"{h.get('Total heap size', 0):,}")
     # Nothing in the app stops a scan on a timer, so this stays true until the
     # card arrives, someone presses Back, or something here restarts the app.
     print("  the scan does not time out - it stays armed until the card arrives")
+    return 0
+
+
+def cmd_scan(args):
+    """Read a card that is already lying on the reader, and say what happened.
+
+    `arm` is for a card someone is about to tap; this is for one that is
+    already there, which is how a card is usually left for an unattended
+    session. It relaunches the app, presses Scan, and follows the read in the
+    log from the key press on, then screenshots the result.
+
+    Exit status: 0 a card was read, 1 the field never came up, 2 halted, 3 the
+    field is polling but no card answered.
+    """
+    port, watch = start_scan(args, want_card=True)
+
+    if not watch.kind:
+        print()
+        print("NOT ARMED - the reader never came up, so nothing was read.")
+        print()
+        print(NOT_ARMED)
+        return 1
+
+    if args.shot:
+        snapshot(port, args.shot)
+
+    if watch.kind == "idle":
+        print(f"NO CARD - the field polled for {args.timeout:g}s and nothing answered.")
+        print("The reader is still on: a card placed on it now will be read.")
+        print("If one is already there, it is not over the antenna: ask for it "
+              "to be moved\nacross the back of the Flipper, then run this again.")
+        return 3
+
+    print("CARD READ - the app logged:")
+    print_read(watch)
+    print("The screen has the verdict; the card menu means it decoded.")
     return 0
 
 
@@ -746,12 +939,26 @@ def ensure_closed(f: Flipper, tries: int = 3) -> bool:
     return False
 
 
+# How long a rebooting Flipper takes to drop off USB. It goes within a second
+# or two; one still there after this never acted on the reboot.
+REBOOT_GONE_LIMIT_S = 15.0
+
+
 def wait_for_port(gone_first: bool = True, limit: float = 60.0) -> str:
     """Wait for the Flipper to disappear and come back after a reboot."""
     deadline = time.time() + limit
     if gone_first:
-        while glob.glob("/dev/cu.usbmodemflip_*") and time.time() < deadline:
+        gone_by = time.time() + REBOOT_GONE_LIMIT_S
+        while glob.glob("/dev/cu.usbmodemflip_*") and time.time() < gone_by:
             time.sleep(0.5)
+        if glob.glob("/dev/cu.usbmodemflip_*"):
+            # Not "did not come back": it never went. Measured 2026-09-28, on
+            # a device whose CLI answered a keystroke but ran no command, so
+            # the reboot was sent and never acted on.
+            die("`power reboot` was sent but the Flipper never restarted - its "
+                "USB port stayed up.\nThe CLI is taking input without running "
+                "it, so nothing sent from here will be acted on.\n\n"
+                + HALTED_ADVICE)
     while time.time() < deadline:
         ports = sorted(glob.glob("/dev/cu.usbmodemflip_*"))
         if ports:
@@ -955,7 +1162,7 @@ def close_running_app(port: str, args) -> str:
     return port
 
 
-def start_log_stream(handle, level: str, launch: str | None = None):
+def start_log_stream(handle, level: str, launch: str | None = None, prelude=()):
     """Put a freshly opened port into streaming state.
 
     With @p launch, `loader open` goes down the same session immediately before
@@ -963,15 +1170,20 @@ def start_log_stream(handle, level: str, launch: str | None = None):
     within milliseconds of the app thread starting - which is the only way to
     see an app's startup at all, because the port cannot be held by a stream
     and a separate `loader open` at once, and the firmware keeps no log history.
+
+    @p prelude does the same for any other CLI lines, which is how a key press
+    that starts a scan is sent: a card already on the reader is read before a
+    stream opened afterwards is listening.
     """
     drain_to_prompt(handle)
     # The level belongs to this session: sending `log debug` from a previous
     # connection and `log` here silently gives the system default instead.
     # That is also why a reconnect has to re-arm rather than just reopen.
     opener = f"loader open {launch}\r\n" if launch else ""
+    opener += "".join(f"{line}\r\n" for line in prelude)
     handle.write(f"{opener}log {level}\r\n".encode())
-    if launch:
-        # Swallowing the echo would swallow the app's first lines with it.
+    if opener:
+        # Swallowing the echo would swallow the first lines it caused with it.
         return
     time.sleep(0.5)
     handle.read(65536)
@@ -995,6 +1207,8 @@ def cmd_log(args):
         rc = cmd_arm(argparse.Namespace(
             force=args.force, appid=args.appid, no_reboot=False,
             shot=args.shot, timeout=5.0, tries=2))
+        # 3 is a card that was already on the reader: arm has printed the read,
+        # and there is nothing left to stream for.
         if rc != 0:
             return rc
         print("[flipctl] ---- armed; tap the card now ----", flush=True)
@@ -1003,17 +1217,19 @@ def cmd_log(args):
     require_free_port(port, force=args.force)
 
     # Only one process may hold the port, and the log stream owns the session
-    # until it stops - so keys cannot be sent while streaming. Send them first.
-    if args.keys:
+    # until it stops - so keys cannot be sent while streaming. All but the last
+    # are sent first; the last goes down the stream's own session (split_keys).
+    first, prelude = split_keys(args.keys)
+    if first:
         f = Flipper(port)
         try:
-            f.press(args.keys, settle=args.settle)
+            f.press(first, settle=args.settle)
         finally:
             f.close()
-        time.sleep(0.3)
+        time.sleep(args.settle)
 
-    def arm(handle, launch=None):
-        start_log_stream(handle, args.level, launch)
+    def arm(handle, launch=None, prelude=()):
+        start_log_stream(handle, args.level, launch, prelude)
 
     launch = None
     if getattr(args, "launch", False):
@@ -1027,7 +1243,10 @@ def cmd_log(args):
         launch = f"/ext/apps/NFC/{args.appid}.fap"
 
     s = open_serial(port)
-    arm(s, launch)
+    # Only the first session sends the keys: a reconnect re-arms the level but
+    # must not press anything twice.
+    arm(s, launch, prelude)
+    echoes = set(prelude)
     print(f"[flipctl] streaming log at level '{args.level}'"
           f"{'' if args.all else ' (filtered)'}"
           f"{f' for {args.seconds:g}s' if args.seconds else ''}", flush=True)
@@ -1071,7 +1290,7 @@ def cmd_log(args):
             while b"\n" in buf:
                 raw, buf = buf.split(b"\n", 1)
                 text = log_line(raw)
-                if not text:
+                if not text or text.lstrip("> :") in echoes:
                     continue
                 if pattern:
                     if pattern.search(text):
@@ -1438,14 +1657,19 @@ def cli_alive(port: str, wait: float = 1.2) -> bool:
     transient endpoint drop: answering "no" to the second one reports a fault
     that never happened. The retries cost nothing in the case that matters - a
     halted device still enumerates, so the open succeeds and the read is empty.
+
+    Alive means a prompt comes back, not just bytes. On 2026-09-28, after a
+    launch that never came up, the device answered this check while every
+    command sent to it returned nothing at all - it passed the old "any bytes"
+    test, and the empty output that followed was read as real answers.
     """
     try:
         s = open_serial(port, timeout=0.3, attempts=3)
         s.write(b"\x03\r\n")
         time.sleep(wait)
-        alive = bool(s.read(65536))
+        reply = ANSI.sub(b"", s.read(65536))
         s.close()
-        return alive
+        return b">:" in reply
     except Exception:
         return False
 
@@ -1618,6 +1842,18 @@ def build_parser():
                    help="fail rather than rebooting a device that will not let go")
     s.set_defaults(func=cmd_arm)
 
+    s = sub.add_parser("scan", help="read a card already lying on the reader, "
+                                    "following the read in the log")
+    s.add_argument("--shot", metavar="PATH",
+                   help="also capture the result screen as a PNG")
+    s.add_argument("--timeout", type=float, default=8.0,
+                   help="seconds to wait for a card to answer (default: 8)")
+    s.add_argument("--tries", type=int, default=2,
+                   help="relaunch-and-retry attempts (default: 2)")
+    s.add_argument("--no-reboot", action="store_true",
+                   help="fail rather than rebooting a device that will not let go")
+    s.set_defaults(func=cmd_scan)
+
     s = sub.add_parser("cmd", help="run Flipper CLI commands")
     s.add_argument("command", nargs="+")
     s.add_argument("--timeout", type=float, default=20.0)
@@ -1718,7 +1954,14 @@ def build_parser():
 
 def main():
     args = build_parser().parse_args()
-    raise SystemExit(args.func(args) or 0)
+    try:
+        rc = args.func(args)
+    except CliSilent as exc:
+        print(f"flipctl: the CLI accepted `{exc}` and printed nothing back - it "
+              "takes input without running it.\n", file=sys.stderr)
+        print(HALTED_ADVICE, file=sys.stderr)
+        rc = 2
+    raise SystemExit(rc or 0)
 
 
 if __name__ == "__main__":

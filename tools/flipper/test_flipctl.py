@@ -23,6 +23,8 @@ spec = importlib.util.spec_from_file_location("flipctl", HERE / "flipctl.py")
 flipctl = importlib.util.module_from_spec(spec)
 sys.modules["flipctl"] = flipctl
 spec.loader.exec_module(flipctl)
+# patch() replaces the liveness check, so keep the real one to test directly.
+real_cli_alive = flipctl.cli_alive
 
 # pyserial is imported lazily inside each function, so a stub carrying the
 # exception type the handlers catch is enough.
@@ -199,10 +201,121 @@ def main():
     check("a card already on the reader also counts as armed",
           flipctl.nfc_field_live("/dev/fake", limit=0.5) is not None)
 
+    # A protocol poller's own line means the field is up, not that a card is
+    # there: only the app reports a card.
+    flipctl.NFC_ARM_GRACE_S = 0.2
+    patch([[b"", b"9 [D][Iso14443_3aPoller] Collision\n", b""]])
+    watch = flipctl.watch_nfc("/dev/fake", limit=1.0)
+    check("a poller line on an empty reader is armed, not a card read",
+          watch.kind == "idle")
+
     # An unrelated app being chatty must not be read as an armed NFC field.
     patch([[b"", b"9 [I][Loader] Starting\n", b""]])
     check("an unrelated log line does not count as an armed reader",
           flipctl.nfc_field_live("/dev/fake", limit=0.5) is None)
+
+    # The key that starts a scan goes down the stream's own session, ahead of
+    # `log`, in one write. Sent separately it lands before the stream is open,
+    # and a card already on the reader is read in the gap - measured on
+    # 2026-09-28, when `arm` saw nothing and restarted the app over the read.
+    opened = patch([[b"9 [D][Nfc] FWT Timeout\n"]])
+    flipctl.watch_nfc("/dev/fake", limit=0.5, press=["ok"])
+    sent = b"".join(opened[0].written)
+    check("the scan key is sent in the stream's session",
+          b"input send ok release" in sent)
+    check("and before the stream starts",
+          sent.index(b"input send ok release") < sent.index(b"log debug"))
+
+    # A card on the reader is followed to the end of its read, so the caller
+    # sees what the app made of it, not just that something answered.
+    flipctl.NFC_READ_QUIET_S = 0.3
+    patch([[b"9 [I][Flipso] Card detected: 1 protocol(s), ISO 14443-4\n",
+            b"9 [D][Nfc] FWT Timeout\n",
+            b"9 [I][Flipso] Shell owner: OID 287 (unknown)\n"]])
+    watch = flipctl.watch_nfc("/dev/fake", limit=0.5, press=["ok"])
+    check("a card on the reader is reported as a card, not an armed field",
+          watch.kind == "card")
+    check("and the whole read is kept",
+          any("Shell owner" in line for line in watch.lines))
+    check("without the poller's chatter",
+          not any("FWT" in line for line in watch.lines))
+
+    # The poller's first pass times out even with a card lying on it, so the
+    # first idle line is not yet "armed": the card turns up a moment later.
+    flipctl.NFC_ARM_GRACE_S = 0.3
+    patch([[b"9 [D][Nfc] FWT Timeout\n",
+            b"9 [I][Flipso] Card detected: 1 protocol(s), ISO 14443-4\n"]])
+    watch = flipctl.watch_nfc("/dev/fake", limit=0.5, press=["ok"])
+    check("a card found just after the first idle poll is still a card",
+          watch.kind == "card")
+    patch([[b"9 [D][Nfc] FWT Timeout\n", b"", b""]])
+    watch = flipctl.watch_nfc("/dev/fake", limit=5.0, press=["ok"])
+    check("and an empty field is armed once the grace has passed",
+          watch.kind == "idle")
+
+    # `scan` wants a card: a polling field is not the end of the wait...
+    patch([[b"9 [D][Nfc] FWT Timeout\n",
+            b"9 [I][Flipso] Card detected: 1 protocol(s), ISO 14443-4\n"]])
+    watch = flipctl.watch_nfc("/dev/fake", limit=0.5, press=["ok"], want_card=True)
+    check("scan waits past an idle field for the card", watch.kind == "card")
+    # ...but a field that polls and never finds one is its own answer.
+    patch([[b"9 [D][Nfc] FWT Timeout\n", b""]])
+    watch = flipctl.watch_nfc("/dev/fake", limit=0.3, press=["ok"], want_card=True)
+    check("a field with no card in it is reported as such", watch.kind == "idle")
+
+    # `log --keys` bundles its last key the same way, and does not print the
+    # echo of it as though the device had logged it.
+    opened = patch([[b">: input send ok release\r\n", b"9 [I][Flipso] read\n"]])
+    with Captured() as out:
+        flipctl.cmd_log(log_args(keys=["ok"], seconds=0.3))
+    sent = b"".join(opened[0].written)
+    check("log --keys sends its last key in the stream's session",
+          sent.index(b"input send ok release") < sent.index(b"log debug"))
+    check("and the echo is not printed as a log line",
+          not any("input send" in line for line in out))
+
+    # Silence from `loader info` is not the desktop. Treating it as one sent a
+    # launch at a device that was not running commands.
+    f = flipctl.Flipper.__new__(flipctl.Flipper)
+    f.cmd = lambda *a, **k: ""
+    sleep = flipctl.time.sleep
+    flipctl.time.sleep = lambda s: None
+    raised = False
+    try:
+        f.app_running()
+    except flipctl.CliSilent:
+        raised = True
+    flipctl.time.sleep = sleep
+    check("an empty `loader info` is reported, not read as the desktop", raised)
+    f.cmd = lambda *a, **k: "No application is running"
+    check("the desktop is still the desktop", f.app_running() is None)
+
+    # Alive means a prompt, not any bytes: a CLI that echoes and runs nothing
+    # passed the old test.
+    patch([[b"^C\r\n"]])
+    check("an echo without a prompt is not a live CLI",
+          not real_cli_alive("/dev/fake", wait=0))
+    patch([[b"\x1b[0m>: ^C\r\n>: \r\n>: "]])
+    check("a prompt is", real_cli_alive("/dev/fake", wait=0))
+
+    # A reboot that never takes the port down was never acted on, and saying
+    # "did not come back" sends the reader looking in the wrong place.
+    glob_mod = flipctl.glob
+    flipctl.glob = types.SimpleNamespace(glob=lambda pattern: ["/dev/cu.usbmodemflip_x"])
+    limit_gone = flipctl.REBOOT_GONE_LIMIT_S
+    flipctl.REBOOT_GONE_LIMIT_S = 0.2
+    err = io.StringIO()
+    real_err, sys.stderr = sys.stderr, err
+    try:
+        flipctl.wait_for_port()
+        died = False
+    except SystemExit:
+        died = True
+    sys.stderr = real_err
+    flipctl.glob = glob_mod
+    flipctl.REBOOT_GONE_LIMIT_S = limit_gone
+    check("a reboot the device ignored is reported as ignored",
+          died and "never restarted" in err.getvalue())
 
     # `log --arm` exists so a stream under someone's eyes always means a reader
     # that will answer. If arming fails it must not stream anyway: an empty log

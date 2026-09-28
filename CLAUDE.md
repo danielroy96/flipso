@@ -20,12 +20,16 @@ loop, the hardware, and the things that have wasted time before.
 | Build, install and launch on the Flipper | `tools/flipper/flipctl deploy` |
 | Check the environment and the device | `tools/flipper/flipctl doctor` |
 | Prove a card can be tapped right now | `tools/flipper/flipctl arm` |
+| Read a card left lying on the reader | `tools/flipper/flipctl scan` |
+| Every screen of a saved card, on this machine | `tools/test/screens.py card.flipso` |
+| Search the ITSO spec | `tools/spec/itso_spec.py grep PATTERN` |
 | Refresh the IDE's index of the sources | `tools/ide/compdb.py` |
 
 Slash commands wrap the common ones: `/deploy`, `/drive`, `/watch`, `/mem`,
 `/test`, `/dump`, `/doctor`. Skills carry the detail: **flipper-hardware** for
 anything involving the device, **flipso-decoder** for card data and the ITSO
-spec, **flipper-memory** for heap work and crashes.
+spec, **flipper-memory** for heap work and crashes, **new-card** for taking a
+card Flipso has not seen from the reader to a committed operator entry.
 
 Prefer the host tests. The decoder (`itso/`) builds on macOS under ASan and
 UBSan, so a hypothesis about card bytes can be tested in about a second.
@@ -66,9 +70,12 @@ views/                custom views (the icon list, the text panel, the scan scre
                       and the hand-drawn £ and € the fonts lack
 tools/flipper/        flipctl: the device driver described above
 tools/ide/            compile_commands.json, so CLion and clangd index the tree
-tools/test/           host test suite, synthetic card builder, card replay
+tools/test/           host test suite, synthetic card builder, card replay,
+                      screens.py (every screen of a saved card)
+tools/spec/           itso_spec.py: fetch and search the TS 1000 parts
 tools/debug/          opt-in card-dump instrumentation
-tools/demo/           synthetic demo cards for the device, as saved-card files
+tools/demo/           synthetic demo cards for the device, as saved-card files;
+                      new_encodings.py says what a real card has that they lack
 tools/stations/       station table builder and its data provenance
 data/                 reference data shipped but not packaged; see its README
 tools/naptan/         stop table builder; data/naptan.dat is its output

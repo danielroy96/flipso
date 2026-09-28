@@ -53,7 +53,7 @@ def sct_bits(sector_count):
 
 
 def directory(entries, chain, sector_count, dir_entries, sct_len, sequence,
-              blocked=False):
+              blocked=False, instance=None):
     """A Directory Data Group: the entries, the Sector Chain Table, DIRS#.
 
     @p chain maps a sector to the sector that follows it. A chain ending at S-1
@@ -78,6 +78,11 @@ def directory(entries, chain, sector_count, dir_entries, sct_len, sequence,
             break
         d.put(bit, psi, chain.get(sector, 0))
     d.buf[base + sct_len] = sequence
+    # The Directory InstanceID follows DIRS# (TS 1000-2 table 8): the key and
+    # shell iteration, then the ISAM that last sealed the directory. The other
+    # cards leave it off, which a decoder has to cope with too.
+    if instance is not None:
+        return bytes(d.buf) + instance
     return bytes(d.buf)
 
 
@@ -896,8 +901,127 @@ def card_subway_return():
     ]
 
 
+# ====================================================================
+# Card 7 - a rail season ticket card: GWR Touch
+#
+# Built from the shape of a real GWR Touch card read on 2026-09-28, which
+# carried encodings none of the cards above had. The values are invented and so
+# are the stations - Oxford rather than the real card's - but every structure is
+# the real card's:
+#
+#   - DESFire sectors of 160 bytes, so each product is one sector with room to
+#     spare (the other cards use 64 and 80)
+#   - an ITSO ID at revision 1 with an empty bitmap: no name, no birth date,
+#     just the language, a concession class and an entitlement expiry of
+#     0x3FFF, "never" - and unused, its sector chained to itself
+#   - period tickets at revision 2 with no Value Record Data Group, so their
+#     expiry is the directory entry's alone - one with CPICC (bitmap 0x12) and
+#     one without (0x02), a ValidityCode, an ExpiryTime past midnight, and a
+#     ProductRetailer in a TS 1000-2 table B2 gap, which is what the real card's
+#     retailers held
+#   - revision 4 journey records in the two shapes a rail gate writes: a
+#     check-out with no amount and no entry group, and a check-in carrying the
+#     entry operator (ENTRY_OID) without the ENTRY group, each with the reader's
+#     InstanceID after it
+#   - a Directory InstanceID naming an ISAM whose OID uses the 16-bit extended
+#     encoding (0x6009, the operator that runs the gate)
+# ====================================================================
+def card_gwr_touch():
+    B, S, E, SCTL = 160, 16, 8, 7
+    ACTIVE = S - 1
+    OID = "0287"                                 # Great Western Railway, "GWR Touch"
+    SEFT = 246                                   # owns rail season tickets
+    RETAILER = 0x9000                            # 36864: in the B2 gap, as real ones were
+    EXP = date_stamp(2035, 3, 14)
+
+    shell = shell_dataset(IIN, OID, "0700007", fvc=7, ksc=4, kvc=1, expiry=EXP,
+                          b=B, s=S, e=E, sctl=SCTL)
+
+    # ---- E1: ITSO ID, revision 1, bitmap empty (TS 1000-5 table 22)
+    ident = Bits(32)
+    ident.put(0, 6, 8)                           # IPELength: 8 blocks
+    ident.put(6, 6, 0)                           # IPEBitMap: nothing optional
+    ident.put(12, 4, 1)
+    ident.buf[2] = 255
+    ident.buf[11] = 44                           # LanguageCode: English
+    ident.put(130, 14, 0x3FFF)                   # EntitlementExpiryDate: never
+    ident.buf[28] = 1                            # ConcessionaryClass: adult
+
+    # ---- E2, E3: period tickets, revision 2 (table 27a). The mandatory part
+    # is 28 bytes; CPICC (bit 4) comes next, then RouteCode and the locations.
+    def season(cpicc, issued, start, paid, isam_id, isam_seq):
+        t = Bits(48)
+        t.put(0, 6, 12)
+        t.put(6, 6, 0b010010 if cpicc is not None else 0b000010)
+        t.put(12, 4, 2)
+        t.buf[2] = 1                             # RemoveDate: a day after expiry
+        t.putb(3, RETAILER.to_bytes(2, "big"))   # ProductRetailer
+        t.put(40, 16, 0xFE00)                    # TYP22Flags: every part of every day
+        t.put(64, 14, issued)                    # IssueDate
+        t.put(78, 11, 1440 + 270)                # ExpiryTime: 04:30 the next day
+        t.put(96, 3, 2)                          # Class: standard
+        t.put(99, 5, 17)                         # ValidityCode
+        t.put(104, 24, start)                    # ValidityStartDTS
+        t.buf[17] = 0xFF                         # ValidOnDayCode: every day
+        t.buf[18] = 1                            # PartySizeAdult
+        t.putb(22, paid.to_bytes(4, "big"))      # AmountPaid, pence
+        t.put(26 * 8, 4, 3)                      # MOP: card
+        pos = 28
+        if cpicc is not None:
+            t.putb(pos, cpicc.to_bytes(2, "big"))
+            pos += 2
+        t.putb(pos, b"00000")                    # RouteCode: any permitted
+        t.putb(pos + 5, loc1(203, b"3115"))      # Oxford
+        t.putb(pos + 11, loc1(203, b"0035"))     # London Zone R1256
+        return group(t, B, instance=instance_and_seal(kid=0, inp=0, isam_id=isam_id,
+                                                      isam_seq=isam_seq))
+
+    # Weekly GBP 128.00: an annual is 40 weeks of it, a month 3.84.
+    annual = season(0, date_stamp(2025, 9, 30), dts(2025, 10, 1, 0, 0), 512000,
+                    0x07B0A611, 1841)
+    monthly = season(None, date_stamp(2026, 9, 4), dts(2026, 9, 5, 0, 0), 49152,
+                     0x07B18901, 203377)
+
+    entries = [
+        dir_entry(287, 16, 1, False, 0),                             # E1 ID
+        dir_entry(SEFT, 22, 19, False, date_stamp(2026, 9, 30)),     # E2 annual
+        dir_entry(SEFT, 22, 19, False, date_stamp(2026, 10, 4)),     # E3 monthly
+        b"\x00" * 5, b"\x00" * 5, b"\x00" * 5, b"\x00" * 5,
+        log_entry(ptr=3, eei=0, when=dts(2026, 9, 18, 18, 49), record_offset=2,
+                  passback=3),
+    ]
+    # The ID's sector points at itself, "never written" (TS 1000-2 5.1.5.2), as
+    # the real card's did: the scheme issues it and nothing ever uses it.
+    chain = {1: 1, 2: ACTIVE, 3: ACTIVE}
+
+    # Tapped in at a gate run by 0x6009 at Paddington, out at Oxford. Readers in
+    # 8160's range (FF00xxxx) wrote both, as on the real card.
+    paddington = loc2(208, bcd("0070") + b"3087")
+    oxford = loc2(208, bcd("0070") + b"3115")
+    log = b"".join([
+        tt_record_rev4(11, dts(2026, 9, 18, 17, 52), None, None, None, 3,
+                       None, 0x6009, [3, 0, 0, 0], origin=paddington, iin=None,
+                       cipe_flags=0, writer=0xFF00B51A),
+        tt_record_rev4(12, dts(2026, 9, 18, 18, 49), None, None, oxford, 3,
+                       None, None, [3, 0, 0, 0], origin=paddington, iin=None,
+                       cipe_flags=0, writer=0xFF00A3C7),
+        bytes(48), bytes(48),
+    ])
+
+    return "Demo 7 GWR Touch", unix(2026, 9, 21, 20, 5), [
+        ("Shell", bytes(shell.buf)),
+        ("Directory", directory(entries, chain, S, E, SCTL, 0x08,
+                                instance=bytes([0x00]) + (0x004E30F3).to_bytes(4, "big"))),
+        ("Product 1", group(ident, B, instance=instance_and_seal(
+            kid=0, inp=0, isam_id=0x08F80411, isam_seq=30112))),
+        ("Product 2", annual),
+        ("Product 3", monthly),
+        ("Log", log),
+    ]
+
+
 CARDS = [card_the_key, card_blocked, card_cmd2, card_history, card_subway_paper,
-         card_subway_return]
+         card_subway_return, card_gwr_touch]
 
 
 def main():

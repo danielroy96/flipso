@@ -100,6 +100,31 @@ ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   "$ROOT/itso/itso_operators.c" \
   -o test_format
 ./test_format "$DEMO"
+
+echo
+echo "Screens tool"
+# tools/test/screens.py is how a newly read card is checked, so it has to keep
+# building against the format code it renders: run it over one demo card.
+if python3 "$ROOT/tools/test/screens.py" "$DEMO/Demo 1 The Key.flipso" >screens.out 2>&1 &&
+  grep -q "Operators on this card" screens.out; then
+  echo "  [PASS] screens.py renders a demo card"
+else
+  cat screens.out
+  echo "  [FAIL] screens.py renders a demo card"
+  exit 1
+fi
+rm -f screens.out
+# And the check for what a new card adds, which renders through the same tool:
+# a demo card is by definition nothing new.
+if python3 "$ROOT/tools/demo/new_encodings.py" "$DEMO/Demo 7 GWR Touch.flipso" >encodings.out 2>&1 &&
+  grep -q "Nothing new" encodings.out; then
+  echo "  [PASS] new_encodings.py finds nothing new on a demo card"
+else
+  cat encodings.out
+  echo "  [FAIL] new_encodings.py finds nothing new on a demo card"
+  exit 1
+fi
+rm -f encodings.out
 rm -rf "$DEMO"
 
 echo
