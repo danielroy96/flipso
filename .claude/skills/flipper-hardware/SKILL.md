@@ -242,9 +242,12 @@ when changing a screen, and show the user before-and-after when a layout
 changes.
 
 - `--amber` draws black on the Flipper's own #FF8200, which is what the
-  README's screenshots in `docs/screenshots/` are. Take those with it, straight
-  to their final path, and capture them from the demo cards so no real card
-  number or name is in them. No recolouring step is needed.
+  README's screenshots in `docs/screenshots/` are. Take those with it and
+  `--scale 4`, straight to their final path, and capture them from the demo
+  cards so no real card number or name is in them. No recolouring step is
+  needed. They are also the Apps Catalog's screenshots, and its bundler
+  rejects anything but 4x or 8x, and turns every pixel lighter than
+  (15,15,15) transparent - so the grey default palette would publish blank.
 - Write screenshots to the scratchpad directory, not into the repo, unless
   they are the README's.
 - Straight after a `deploy`, the first capture can show the pre-launch frame.

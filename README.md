@@ -97,6 +97,9 @@ you around to tap them.
 
 ## Licensing
 
+Flipso is free software under the [GNU General Public License v3.0](LICENSE).
+The reference data it bundles comes under the terms below.
+
 ### NLC codes
 
 Railway NLC codes kindly provided by

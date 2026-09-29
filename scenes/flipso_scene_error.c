@@ -38,7 +38,7 @@ void flipso_scene_error_on_enter(void* context) {
 
     switch(app->status) {
     case FlipsoReaderStatusOyster:
-        icon = &I_oyster_14px;
+        icon = &I_contactless_14px;
         title = "TfL Oyster card";
         /* Lines are kept to what fits across 128px, as the other details are:
          * the scroll element wraps, but wrapping mid-sentence reads badly. */

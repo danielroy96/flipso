@@ -11,9 +11,9 @@ and unpacked to `/ext/apps_assets/flipso/` when the app is installed.
 - Historic codes and fare groups from railwaycodes.org.uk, compiled and
   maintained by Phil Deaves.
 
-**The second source carries no licence grant, so the table is not yet clear to
-redistribute.** Resolve that before publishing the repository — see the
-"Station names" section of the top-level README.
+Use of the railwaycodes.org.uk data, including redistributing it in the
+published app, was agreed with the site in exchange for a donation to Swindon
+Food Collective; see the "NLC codes" section of the top-level README.
 
 Only `assets/` is packaged, so this note stays in the repository rather than
 being copied onto every user's SD card. The attribution above travels with the
