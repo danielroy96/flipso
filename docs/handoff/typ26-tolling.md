@@ -70,9 +70,11 @@ record byte 10 and TYP26ValueFlags bit 0 (auto-renew) is record byte 11.
   the group to the exact-length truncation loop in `spec_review_fields()`.
 - `tools/test/test_format.c`: pin "Vehicle class" and the print flags in
   `spec_review()`, and check that no "Class: Standard" line appears.
-- `tools/demo/build_demo_cards.py`: no demo card has a TYP 26. Demo 01 is full
-  (twelve entries), and Demo 02 has one free entry (E7) and free sectors 8, 10,
-  12 and 13. Add a toll pass there, and describe it in `tools/demo/README.md`.
+- `tools/demo/build_demo_cards.py`: Demo 01's E11 is a toll pass (a
+  hypothetical Dartford Crossing one) with a directory entry and no product
+  block, so it reads "Details: Not decoded". Give it a dataset and a value
+  group - the card has free sectors from 22 up - and update its row in
+  `tools/demo/README.md`.
 
 ## Done when
 

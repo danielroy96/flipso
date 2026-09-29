@@ -105,14 +105,19 @@ def write_card(path, read_at, blocks):
 
 
 # ====================================================================
-# Card 1 - a rail smartcard carrying one of everything
+# Card 1 - a Kent commuter's Southeastern "The Key"
 #
-# Eleven products, which is more than any real card would hold, chosen so that
-# every IPE type the decoder has a case for is on one card: a purse with a
-# journey in progress, an ID, both the period and journey tickets, loyalty
-# points, a charge-to-account, a voucher, an entitlement, and three products in
-# the states the list flags - blocked, expired and never used. The shell
-# carries an MCRN, which is the one shell element the other three leave out.
+# Eleven products, which is more than a real card would hold, chosen so that
+# every full-shell IPE type is on one card: a purse with a journey in progress,
+# an ID, a season ticket and a book of journeys, loyalty points, a charge-to-
+# account, a voucher, a railcard, and three products in the states the list
+# flags - blocked, expired and never read. The paper-only types (TYP 27-29) are
+# on the paper tickets instead. The shell carries an MCRN, which the other
+# smartcards leave out.
+#
+# The holder lives in Tunbridge Wells and commutes to London Bridge via
+# Sevenoaks; the rest of what the card has done is short hops around Tonbridge
+# on pay as you go, and a book of Highspeed journeys from Ashford International.
 # ====================================================================
 def card_the_key():
     B, S, E, SCTL = 64, 32, 12, 20
@@ -121,7 +126,7 @@ def card_the_key():
     EXP = date_stamp(2031, 8, 31)
 
     shell = shell_dataset(IIN, OID, "0100001", fvc=7, ksc=4, kvc=1, expiry=EXP,
-                          b=B, s=S, e=E, sctl=SCTL, mcrn="1234567890123456")
+                          b=B, s=S, e=E, sctl=SCTL, mcrn="4920038815270264")
 
     # ---- E1: pay as you go, TS 1000-5 table 2
     purse = Bits(24)
@@ -144,7 +149,7 @@ def card_the_key():
     purse_values = value_group([
         value_record(4, 340, dts(2026, 8, 12, 18, 5), purse_tail(3120)),
         value_record(7, 341, dts(2026, 9, 18, 8, 12), purse_tail(2765)),
-        value_record(14, 342, dts(2026, 9, 21, 17, 46),
+        value_record(14, 342, dts(2026, 9, 19, 12, 31),
                      purse_tail(2415, legs=2, cumulative=350, flags=0b011)),
     ], format_rev=1)
 
@@ -167,7 +172,8 @@ def card_the_key():
     ident.buf[32 + len(fore)] = len(sur)
     ident.putb(33 + len(fore), sur)
 
-    # ---- E3: period ticket, revision 3 (TS 1000-5 clause 2.9.3)
+    # ---- E3: period ticket, revision 3 (TS 1000-5 clause 2.9.3): monthly
+    # passes between Tunbridge Wells and London Bridge, bought as a stock.
     period = Bits(48)
     period.put(0, 6, 12)
     period.put(6, 6, 0b000110)                   # identity document, route, locations
@@ -179,9 +185,14 @@ def card_the_key():
     # TYP22Flags: print a ticket, and keep expired passes at a top-up
     # (TreatmentOfExpiredSP, revision 3 only).
     period.put(40, 16, (1 << 5) | (1 << 7))
+    period.put(64, 14, date_stamp(2026, 8, 28))  # IssueDate
+    period.put(96, 3, 2)                         # Class: standard
     period.put(106, 14, date_stamp(2026, 9, 1))  # ValidityStartDate
-    period.putb(34, loc1(203, b"5148"))          # London Bridge
-    period.putb(40, loc1(203, b"5018"))          # Margate
+    period.buf[19] = 1                           # PartySizeAdult
+    period.putb(23, (56620).to_bytes(4, "big"))  # AmountPaid: GBP 566.20 a month
+    period.put(27 * 8, 4, 3)                     # by card
+    period.putb(34, loc1(203, b"5230"))          # Tunbridge Wells
+    period.putb(40, loc1(203, b"5148"))          # London Bridge
     # IdentityDocumentID after the locations: type 3, a pointer to directory
     # entry 2 - the holder must carry the ITSO ID the season is priced against.
     period.put(46 * 8, 3, 3)
@@ -194,16 +205,22 @@ def card_the_key():
                      period_tail(5, 0b01, date_stamp(2027, 1, 31), date_stamp(2026, 10, 20))),
     ], format_rev=3)
 
-    # ---- E4: journey ticket, revision 2 (TS 1000-5 table 31a)
+    # ---- E4: journey ticket, revision 2 (TS 1000-5 table 31a): a book of ten
+    # Highspeed journeys between Ashford International and St Pancras.
     journey = Bits(52)
     journey.put(0, 6, 13)
     journey.put(6, 6, 0b001010)                  # mode group, route and locations
     journey.put(12, 4, 2)
     journey.buf[2] = 30                          # RemoveDate: 30 days after expiry
-    journey.putb(3, (109).to_bytes(2, "big"))
+    journey.putb(3, (289).to_bytes(2, "big"))
+    journey.put(58, 14, date_stamp(2026, 9, 5))  # IssueDate
+    journey.put(93, 3, 2)                        # Class: standard
+    journey.buf[12] = 1                          # PartySizeAdult
+    journey.putb(16, (32850).to_bytes(4, "big")) # AmountPaid: GBP 328.50
+    journey.put(20 * 8, 4, 3)                    # by card
     journey.putb(35, b"00000")                   # RouteCode
-    journey.putb(40, loc1(203, b"5631"))         # Guildford
-    journey.putb(46, loc1(203, b"5685"))         # Woking
+    journey.putb(40, loc1(203, b"5004"))         # Ashford International
+    journey.putb(46, loc1(203, b"1555"))         # London St Pancras International
     journey_values = value_group([
         value_record(1, 5, dts(2026, 9, 5, 9, 12), journey_tail(10, 0, 0)),
         value_record(7, 6, dts(2026, 9, 20, 8, 3), journey_tail(8, 1, 0b10)),
@@ -215,7 +232,7 @@ def card_the_key():
     loyalty.put(6, 6, 0)
     loyalty.put(12, 4, 1)
     loyalty.buf[2] = 30
-    loyalty.putb(3, (96).to_bytes(2, "big"))
+    loyalty.putb(3, (289).to_bytes(2, "big"))
     loyalty_values = value_group([
         value_record(1, 44, dts(2026, 7, 2, 10, 15), loyalty_tail(4250)),
         value_record(9, 45, dts(2026, 9, 14, 19, 2), loyalty_tail(5100, user=321)),
@@ -227,7 +244,7 @@ def card_the_key():
     charge.put(6, 6, 0)
     charge.put(12, 4, 1)
     charge.buf[2] = 255
-    charge.putb(3, (8000).to_bytes(2, "big"))
+    charge.putb(3, (289).to_bytes(2, "big"))
     charge.buf[6] = 4                            # WeeksPerChargePeriod
     charge.buf[7] = 60                           # MaxTransactionsPerPeriod
     charge.putb(8, (25000).to_bytes(2, "big"))   # MaxValue5: GBP 250 a period
@@ -252,44 +269,39 @@ def card_the_key():
     voucher.put(6, 6, 0)
     voucher.put(12, 4, 1)
     voucher.buf[2] = 0                           # RemoveDate: removable at expiry
-    voucher.putb(3, (247).to_bytes(2, "big"))    # sold by c2c
+    voucher.putb(3, (289).to_bytes(2, "big"))
     voucher_values = value_group([
         value_record(1, 2, dts(2026, 6, 1, 11, 0), voucher_tail(4, auto_renew=True)),
         value_record(7, 3, dts(2026, 9, 11, 8, 44), voucher_tail(3, auto_renew=True)),
     ], format_rev=1)
 
-    # ---- E8: entitlement, TYP 14 revision 2, carrying a zonal validity
+    # ---- E8: entitlement, TYP 14 revision 2: a Disabled Persons Railcard -
+    # a third off, for the holder and a companion, with the discounted fare
+    # rounded down to 5p as railcard fares are.
     ent = Bits(32)
     ent.put(0, 6, 8)
-    ent.put(6, 6, 0b000100)                      # bit 2: ValidAtOrFrom present
+    ent.put(6, 6, 0)                             # nothing optional
     ent.put(12, 4, 2)
     ent.buf[2] = 255
-    ent.putb(3, (0x0165).to_bytes(2, "big"))     # CPICC: the pass issuer
-    ent.buf[5] = 0b00110101                      # IDFlags: photo, female, companion, print
+    ent.buf[5] = 0b00110011                      # IDFlags: photo, male, companion, print
     ent.put(48, 1, 1)                            # RoundingFlagsEnable
-    ent.put(50, 6, 60)                           # PassbackTime
-    ent.putb(7, (300417).to_bytes(4, "big"))     # HolderID
-    ent.put(88, 1, 1)                            # RoundingFlag: up, to the penny
+    ent.put(50, 6, 0)                            # PassbackTime: the reader's own
+    ent.putb(7, (8841372).to_bytes(4, "big"))    # HolderID: the railcard number
+    ent.put(89, 1, 1)                            # RoundingValueFlag: down, to 5p
     ent.put(90, 14, date_stamp(2026, 4, 1))      # EntitlementStartDate
     ent.put(104, 14, date_stamp(2027, 3, 31))    # EntitlementExpiryDate
-    ent.put(124, 4, 0)                           # DepositCurrencyCode: sterling
-    ent.put(128, 4, 1)                           # DepositMethodOfPayment: cash
-    ent.putb(18, (500).to_bytes(2, "big"))       # DepositAmount: GBP 5.00
-    ent.buf[20] = 14                             # EntitlementCode: free travel
+    ent.buf[20] = 3                              # EntitlementCode: proportional fare
     ent.buf[21] = 5                              # ConcessionaryClass: disabled
-    ent.putb(24, loc1(204, bytes([0b00000111, 0, 0])))  # zones 1, 2 and 3
 
-    # ---- E9 and E10: a blocked product and an expired one, each with a value
-    # group whose tail the decoder does not claim to understand.
-    carnet = Bits(16)
-    carnet.put(0, 6, 4)
-    carnet.put(12, 4, 1)
-    carnet.buf[2] = 255
-    carnet.putb(3, (289).to_bytes(2, "big"))
-    carnet_values = value_group([
-        value_record(1, 1, dts(2026, 2, 3, 9, 30), count_tail(10)),
-        value_record(2, 2, dts(2026, 5, 9, 9, 31), count_tail(6)),
-    ], format_rev=1)
+    # ---- E9: loyalty points with a partner outside transport - an owner in
+    # the extended OID range - which the partner has stopped; and E10, a seat
+    # reservation that has expired. Neither type has a dataset parser, so their
+    # directory entries and value records are what the screens show.
+    partner = Bits(16)
+    partner.put(0, 6, 4)
+    partner.put(12, 4, 1)
+    partner.buf[2] = 255
+    partner.putb(3, (289).to_bytes(2, "big"))
 
     reserved = Bits(16)
     reserved.put(0, 6, 4)
@@ -307,16 +319,21 @@ def card_the_key():
         dir_entry(289, 22, 2, True, date_stamp(2027, 3, 31)),        # E3 period
         # IINL set: the owner belongs to another network, which the product
         # screen's Technical section says under its operator number.
-        dir_entry(109, 23, 4, True, date_stamp(2026, 12, 31), foreign=True),
-        dir_entry(96, 3, 0, True, 0),                                # E5 loyalty, no expiry
-        dir_entry(8000, 5, 0, True, date_stamp(2028, 6, 30)),        # E6 charge to account
-        dir_entry(247, 25, 2, True, date_stamp(2026, 10, 31)),       # E7 voucher
-        dir_entry(165, 14, 0, False, date_stamp(2027, 3, 31)),       # E8 entitlement
+        dir_entry(289, 23, 4, True, date_stamp(2026, 12, 31), foreign=True),
+        dir_entry(289, 3, 0, True, 0),                               # E5 loyalty, no expiry
+        dir_entry(289, 5, 0, True, date_stamp(2028, 6, 30)),         # E6 charge to account
+        dir_entry(289, 25, 2, True, date_stamp(2026, 10, 31)),       # E7 voucher
+        dir_entry(246, 14, 0, False, date_stamp(2027, 3, 31)),       # E8 railcard
         # E9 uses the extended IPE-owner range: raw 5678 with the flag set is 13870.
-        dir_entry(5678, 28, 0, True, date_stamp(2027, 5, 31), extended=True),
+        dir_entry(5678, 17, 0, False, date_stamp(2027, 5, 31), extended=True),
         dir_entry(289, 24, 0, True, date_stamp(2026, 3, 31)),        # E10 expired
-        dir_entry(289, 29, 0, False, date_stamp(2029, 1, 31)),       # E11 never used
-        log_entry(ptr=1, eei=1, when=dts(2026, 9, 21, 17, 46), record_offset=0,
+        # E11: a toll pass for the Dartford Crossing, which a Kent driver might
+        # carry - hypothetical, as no toll is paid by ITSO card today - from an
+        # operator the table does not know. It has no block at all: an entry the
+        # card lists and Flipso could not read, which is what "Details: Not
+        # decoded" is for.
+        dir_entry(4410, 26, 0, False, date_stamp(2029, 1, 31)),
+        log_entry(ptr=3, eei=1, when=dts(2026, 9, 21, 17, 46), record_offset=0,
                   passback=20),
     ]
     chain = {1: 13, 13: ACTIVE, 2: ACTIVE, 3: 15, 15: ACTIVE, 4: 16, 16: ACTIVE,
@@ -329,21 +346,28 @@ def card_the_key():
     # close, the products the gate considered and a routing point in them, a
     # 48-byte slot has no room left for one.
     log = b"".join([
-        tt_record_rev4(12, dts(2026, 9, 18, 8, 12), 460,
-                       via=loc2(203, b"5571"),           # via Surbiton
-                       dest=loc2(203, b"5685"),          # Woking
-                       ipe_ptr=1, entry_when=dts(2026, 9, 18, 7, 41), entry_oid=109,
-                       candidates=[1, 4, 0, 0], mop=8, vat=0),
-        tt_record(12, dts(2026, 9, 19, 12, 31), 165,
-                  origin=loc2(206, naptan("cumfatda")),
-                  dest=loc2(206, naptan("manwpwjm")), ipe_ptr=1),
-        tt_record_rev4(12, dts(2026, 9, 20, 8, 3), 0,
-                       via=loc2(203, b"5004"),           # via Ashford International
-                       dest=loc2(203, b"5018"),          # Margate
-                       ipe_ptr=4, entry_when=dts(2026, 9, 20, 7, 2), entry_oid=289,
-                       candidates=[4, 1, 3, 0], no_fare=True, cipe_flags=0b11, vat=0),
+        # Pay as you go from Tonbridge to Paddock Wood, off the season's line:
+        # the gate weighed the season, flagged it as not valid there, and
+        # charged the purse instead.
+        tt_record_rev4(12, dts(2026, 9, 18, 8, 12), 355,
+                       via=None,
+                       dest=loc2(203, b"5224"),           # Paddock Wood
+                       ipe_ptr=1, entry_when=dts(2026, 9, 18, 8, 4), entry_oid=289,
+                       entry_iin_index=0, candidates=[1, 3, 0, 0], mop=8, vat=0,
+                       cipe_flags=0b01),
+        tt_record(12, dts(2026, 9, 19, 12, 31), 350,
+                  origin=loc2(203, b"5124"),              # Sevenoaks
+                  dest=loc2(203, b"5071"), ipe_ptr=1),    # Otford
+        # Monday's commute on the season, via Sevenoaks rather than Redhill,
+        # checked by a guard on the way.
+        tt_record_rev4(12, dts(2026, 9, 21, 8, 3), 0,
+                       via=loc2(203, b"5124"),            # via Sevenoaks
+                       dest=loc2(203, b"5148"),           # London Bridge
+                       ipe_ptr=3, entry_when=dts(2026, 9, 21, 7, 12), entry_oid=289,
+                       entry_iin_index=0, candidates=[3, 1, 4, 0], no_fare=True,
+                       cipe_flags=0b10, vat=0),
         tt_record(11, dts(2026, 9, 21, 17, 46), 0,
-                  origin=loc2(203, b"5148"), dest=None, ipe_ptr=1),
+                  origin=loc2(203, b"5148"), dest=None, ipe_ptr=3),
     ])
 
     return "Demo 01 The Key Kent", unix(2026, 9, 21, 19, 12), [
@@ -369,10 +393,8 @@ def card_the_key():
         ("Product 6", group(charge, B, charge_values)),
         ("Product 7", group(voucher, B, voucher_values)),
         ("Product 8", group(ent, B)),
-        ("Product 9", group(carnet, B, carnet_values)),
+        ("Product 9", group(partner, B)),
         ("Product 10", group(reserved, B, reserved_values)),
-        # E11 has no block at all: an entry the card lists and Flipso could not
-        # read, which is what "Detail not decoded" is for.
         ("Log", log),
     ]
 

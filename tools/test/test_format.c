@@ -525,7 +525,7 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     flipso_format_taps(text, f, card);
     check(
         "the products a gate checked are one line",
-        shows(text, "  Products checked: Journey ticket, Pay as you go, Period ticket\n"));
+        shows(text, "  Products checked: Period ticket, Pay as you go, Journey ticket\n"));
     check(
         "a reader names its machine, then its operator, under Technical",
         technical(text, "  Tap-in reader: 01020304\n    Operator: "));
@@ -580,7 +580,7 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         } else if(p->typ == ItsoTypJourneyTicket) {
             check(
                 "an owner on another network is a detail of its number",
-                technical(text, "Operator number: 109\n  Network: Not the card's own\n"));
+                technical(text, "Operator number: 289\n  Network: Not the card's own\n"));
         }
     }
 
