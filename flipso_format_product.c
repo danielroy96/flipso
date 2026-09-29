@@ -863,7 +863,6 @@ static void flipso_cat_product_details(
     if(product->value_group && !product->value_parsed) {
         furi_string_cat(out, "Transaction history: Could not be read\n");
     }
-    if(product->foreign_iin) flipso_cat_flag(out, "", "Issued outside ITSO", true);
 
     /* Last, because the terms are what the product is and the history is what
      * has happened to it: a card read more than once can carry several
@@ -889,6 +888,9 @@ static void flipso_cat_product_technical(
         furi_string_cat_printf(
             out, "  Extended range: Yes (%u)\n", (unsigned)(product->oid & 0x1FFF));
     }
+    /* IINL: the operator belongs to the network the product's own IIN names
+     * (Owner network, below) rather than the card's (TS 1000-2 clause 6.1.7). */
+    if(product->foreign_iin) furi_string_cat(out, "  Network: Not the card's own\n");
     /* Which may belong to something else by now: slots are reused. */
     furi_string_cat_printf(
         out, "Directory slot: %u%s\n", product->dir_index, product->on_card ? "" : " (then)");

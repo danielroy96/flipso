@@ -545,11 +545,11 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         "the ID screen has technical details for each product",
         shows(text, "Type code: 16.1\n") && shows(text, "Type code: 14.0\n"));
 
-    /* An identity document that is another product names it, and a loyalty
-     * scheme's own bytes are shown as they stand. */
+    /* An identity document that is another product names it, a loyalty
+     * scheme's own bytes are shown as they stand, and an owner numbered by
+     * another network says so beside its number. */
     for(uint8_t i = 0; i < card->product_count; i++) {
         const ItsoProduct* p = &card->products[i];
-        if(p->typ != ItsoTypPeriodTicket && p->typ != ItsoTypLoyalty1) continue;
         furi_string_reset(text);
         flipso_format_product(text, f, card, p);
         if(p->typ == ItsoTypPeriodTicket) {
@@ -558,8 +558,12 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             check(
                 "its passback is an instruction to the gate, under Technical",
                 technical(text, "Passback timeout: Set by the operator\n"));
-        } else {
+        } else if(p->typ == ItsoTypLoyalty1) {
             check("loyalty shows its owner's data", shows(text, "Owner data: 321\n"));
+        } else if(p->typ == ItsoTypJourneyTicket) {
+            check(
+                "an owner on another network is a detail of its number",
+                technical(text, "Operator number: 109\n  Network: Not the card's own\n"));
         }
     }
 

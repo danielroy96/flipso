@@ -306,7 +306,7 @@ def card_the_key():
         dir_entry(246, 16, 1, False, EXP),                           # E2 ITSO ID
         dir_entry(289, 22, 2, True, date_stamp(2027, 3, 31)),        # E3 period
         # IINL set: the owner belongs to another network, which the product
-        # screen says in as many words.
+        # screen's Technical section says under its operator number.
         dir_entry(109, 23, 4, True, date_stamp(2026, 12, 31), foreign=True),
         dir_entry(96, 3, 0, True, 0),                                # E5 loyalty, no expiry
         dir_entry(8000, 5, 0, True, date_stamp(2028, 6, 30)),        # E6 charge to account
