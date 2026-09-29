@@ -99,6 +99,13 @@ static bool shows(const FuriString* text, const char* needle) {
     return strstr(furi_string_get_cstr(text), needle) != NULL;
 }
 
+/** True when @p needle appears, and only under the screen's Technical heading. */
+static bool technical(const FuriString* text, const char* needle) {
+    const char* heading = strstr(furi_string_get_cstr(text), "\e#Technical\n");
+    const char* found = strstr(furi_string_get_cstr(text), needle);
+    return heading && found && found > heading;
+}
+
 /* Values that are names, and so keep the case they are given. */
 static bool flipso_test_is_name(const char* value) {
     return strncmp(value, "c2c", 3) == 0;
@@ -430,8 +437,10 @@ static void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
         false,
         entitlement_rev2_group,
         sizeof(entitlement_rev2_group));
-    check("an entitlement names its pass issuer", shows(text, "Pass issuer code: 1620\n"));
-    check("and its holder", shows(text, "Holder number: 11259375\n"));
+    check(
+        "an entitlement names its pass issuer, under Technical",
+        technical(text, "Pass issuer code: 1620\n"));
+    check("and its holder", technical(text, "Holder number: 11259375\n"));
     check("and how fares round", shows(text, "Fare rounding: Down to 5p\n"));
     check(
         "and its deposit",

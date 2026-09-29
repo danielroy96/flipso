@@ -386,25 +386,13 @@ static void flipso_cat_space_saving(
 }
 
 /**
- * The parts of an ITSO ID or entitlement beyond name and entitlement: issuer
- * and holder numbers, language, valid periods, fare rounding and deposits. An
- * entitlement (TYP 14) carries all of these but the language and the card
- * deposit.
+ * The parts of an ITSO ID or entitlement beyond name and entitlement: language,
+ * valid periods, fare rounding and deposits. An entitlement (TYP 14) carries
+ * all of these but the language and the card deposit. Its issuer and holder
+ * numbers are under Technical, with the other numbers nothing names.
  */
 static void flipso_cat_id_details(FuriString* out, const ItsoProduct* product) {
     if(!flipso_product_is_identity(product) || !product->body_parsed) return;
-
-    /* On an English, Scottish or Welsh concessionary pass this is the pass
-     * issuer - the council - by the schemes' own numbering, which is not
-     * published; elsewhere it is whatever the owner uses it for. */
-    if(product->has_cpicc) furi_string_cat_printf(out, "Pass issuer code: %u\n", product->cpicc);
-    if(product->has_holder_id) {
-        furi_string_cat_printf(out, "Holder number: %lu\n", (unsigned long)product->holder_id);
-    }
-    if(product->has_secondary_holder && product->secondary_holder_id) {
-        furi_string_cat_printf(
-            out, "Second holder number: %lu\n", (unsigned long)product->secondary_holder_id);
-    }
 
     char code[3];
     if(itso_language_code(product->language, code)) {
@@ -918,10 +906,23 @@ static void flipso_cat_product_technical(
         }
     }
     /* Owner-defined codes: meaningless without the scheme's own tables, but they
-     * are what tells two otherwise identical tickets apart. An ID's CPICC is its
-     * issuer and is shown with the holder details. */
-    if(product->has_cpicc && !flipso_product_is_identity(product)) {
-        furi_string_cat_printf(out, "Issuer code: %u\n", product->cpicc);
+     * are what tells two otherwise identical tickets apart. On an English,
+     * Scottish or Welsh concessionary pass an ID's CPICC is the pass issuer -
+     * the council - by the schemes' own numbering, which is not published;
+     * elsewhere it is whatever the owner uses it for. */
+    if(product->has_cpicc) {
+        furi_string_cat_printf(
+            out,
+            "%s: %u\n",
+            flipso_product_is_identity(product) ? "Pass issuer code" : "Issuer code",
+            product->cpicc);
+    }
+    if(product->has_holder_id) {
+        furi_string_cat_printf(out, "Holder number: %lu\n", (unsigned long)product->holder_id);
+    }
+    if(product->has_secondary_holder && product->secondary_holder_id) {
+        furi_string_cat_printf(
+            out, "Second holder number: %lu\n", (unsigned long)product->secondary_holder_id);
     }
     if(product->ticket.validity_code) {
         furi_string_cat_printf(out, "Validity code: %u\n", product->ticket.validity_code);
