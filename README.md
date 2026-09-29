@@ -25,9 +25,8 @@ ticketing. If you carry an ENCTS or Freedom Pass, a season ticket on a bus or
 rail smartcard, or a local authority travel card, it is almost certainly an
 ITSO card.
 
-Flipso reads that card over NFC and decodes what is on it — no account, no app,
-no operator to log in to. Everything it shows comes straight off the card in
-your hand.
+Flips reads ITSO cards over the Flipper's NFC reader, then decodes it and
+shows you everything that was on it.
 
 ## What it shows you
 
