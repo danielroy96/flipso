@@ -2084,7 +2084,7 @@ int main(void) {
     check("fare was paid in cash", rev4->has_mop && rev4->mop == 1);
     check("fare was collected", !rev4->no_fare_charged);
     check("VAT is 20%", rev4->has_vat && rev4->vat == 2000);
-    check("POST network IIN read", rev4->has_iin && rev4->iin == 0x633597);
+    check("POST network IIN read as the BCD it is", rev4->has_iin && rev4->iin == 633597);
     check(
         "candidate IPEs read",
         rev4->has_cipe && rev4->cipe[0] == 1 && rev4->cipe[1] == 4 && rev4->cipe[2] == 0);

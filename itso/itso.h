@@ -827,6 +827,13 @@ uint32_t itso_bits(const uint8_t* data, uint32_t bit_offset, uint8_t bit_len);
 /** Read @p digits BCD nibbles into @p out, which needs digits+1 bytes. */
 void itso_bcd(const uint8_t* data, uint32_t bit_offset, uint8_t digits, char* out);
 
+/**
+ * Read @p digits BCD digits (at most 9) as a number: an IIN, which TS 1000-1
+ * defines as six BCD digits in three bytes. A nibble above 9 is not a digit,
+ * and makes the whole value UINT32_MAX rather than a plausible wrong number.
+ */
+uint32_t itso_bcd_number(const uint8_t* data, uint32_t bit_offset, uint8_t digits);
+
 /** True if every byte in the range is zero. */
 bool itso_is_blank(const uint8_t* data, size_t len);
 

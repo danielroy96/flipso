@@ -32,6 +32,16 @@ void itso_bcd(const uint8_t* data, uint32_t bit_offset, uint8_t digits, char* ou
     out[digits] = '\0';
 }
 
+uint32_t itso_bcd_number(const uint8_t* data, uint32_t bit_offset, uint8_t digits) {
+    uint32_t value = 0;
+    for(uint8_t i = 0; i < digits && i < 9; i++) {
+        uint8_t nibble = itso_bits(data, bit_offset + i * 4, 4);
+        if(nibble > 9) return UINT32_MAX;
+        value = value * 10 + nibble;
+    }
+    return value;
+}
+
 bool itso_is_blank(const uint8_t* data, size_t len) {
     for(size_t i = 0; i < len; i++) {
         if(data[i] != 0) return false;

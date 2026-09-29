@@ -534,6 +534,9 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         !shows(
             text, "  Journey time: 1 hr 1 min\n  Tapped in with: Southeastern\n  Tapped in on: "));
     check("passback is called passback", shows(text, "Passback timeout: 20 min\n"));
+    /* The gates wrote ITSO's own IIN, in BCD as every IIN is: ITSO's network,
+     * not one outside it. */
+    check("a record from ITSO's own network does not say otherwise", !shows(text, "Outside ITSO"));
 
     /* The purse and the ID have menu rows of their own, so the product list
      * leaves them out - and their own screens carry the Technical section the

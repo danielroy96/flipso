@@ -1413,8 +1413,9 @@ static void itso_parse_ipe_common(
         product->has_retailer = product->retailer != 0;
     }
 
+    /* Six BCD digits (TS 1000-1 clause 4.2), like the shell's own. */
     if((bitmap & 0x01) && dataset_len >= 3) {
-        product->iin = itso_bits(data, (uint32_t)(dataset_len - 3) * 8, 24);
+        product->iin = itso_bcd_number(data, (uint32_t)(dataset_len - 3) * 8, 6);
         product->has_iin = true;
     }
 }
@@ -2145,7 +2146,8 @@ static bool itso_parse_tap(ItsoTap* tap, const uint8_t* data, size_t len) {
             itso_parse_location(group, group_len, ItsoLocStructLoc2, &tap->route);
             break;
         case 7:
-            tap->iin = itso_bits(group, 0, 24);
+            /* BCD, as every IIN is: ITSO's own reads 633597, not 0x633597. */
+            tap->iin = itso_bcd_number(group, 0, 6);
             tap->has_iin = true;
             break;
         case 8:
