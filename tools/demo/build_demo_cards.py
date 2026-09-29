@@ -1459,9 +1459,84 @@ def card_bee():
     ]
 
 
+# ====================================================================
+# Card 13 - a West Yorkshire MCard
+#
+# The West Yorkshire Combined Authority's card (OID 152), unpersonalised as
+# most are, holding a book of ten bus journeys between Guiseley and Leeds. The
+# ticket names its two ends by AtcoCode (LocDefType 211), the one location
+# code no other card uses: it is up to twelve characters, too long for the
+# six bytes a journey record has for a place, so only a product can carry it.
+# The journeys in the log are on First Leeds' route 34 (Leeds - Kirkstall -
+# Horsforth - Yeadon - Guiseley - Otley), and every stop is on it
+# (bustimes.org, 2026-09-29).
+# ====================================================================
+def card_mcard():
+    B, S, E, SCTL = 64, 16, 8, 7
+    ACTIVE = S - 1
+    OID = "0152"                                 # WYCA, brand "MCard"
+    EXP = date_stamp(2031, 3, 31)
+
+    shell = shell_dataset(IIN, OID, "1300013", fvc=7, ksc=4, kvc=1, expiry=EXP,
+                          b=B, s=S, e=E, sctl=SCTL)
+
+    # ---- E1: journey ticket, revision 2: ten bus journeys, one a leg.
+    # Sixteen blocks: each AtcoCode location is eleven bytes with its tag and
+    # length.
+    book = Bits(64)
+    book.put(0, 6, 16)
+    book.put(6, 6, 0b001010)                     # mode group, route and locations
+    book.put(12, 4, 2)
+    book.buf[2] = 30
+    book.putb(3, (152).to_bytes(2, "big"))
+    book.put(58, 14, date_stamp(2026, 9, 14))    # IssueDate
+    book.put(93, 3, 2)                           # Class: standard
+    book.buf[12] = 1                             # PartySizeAdult
+    book.putb(16, (2000).to_bytes(4, "big"))     # AmountPaid: GBP 20.00
+    book.put(20 * 8, 4, 3)                       # by card
+    book.put(29 * 8 + 4, 4, 0)                   # TYP23Mode: a ride a leg
+    book.putb(35, b"00000")
+    book.putb(40, loc1(211, b"450016879"))       # Guiseley Towngate (E bound)
+    book.putb(51, loc1(211, b"450030236"))       # Leeds City Bus Station (stand 17)
+    book_values = value_group([
+        value_record(7, 5, dts(2026, 9, 21, 7, 48), journey_tail(8, 0, 0)),
+        value_record(7, 6, dts(2026, 9, 21, 17, 22), journey_tail(7, 0, 0)),
+    ], format_rev=2)
+
+    entries = [
+        dir_entry(152, 23, 2, True, date_stamp(2027, 3, 13)),       # E1 ten journeys
+        bytes(5), bytes(5), bytes(5), bytes(5), bytes(5), bytes(5),  # E2-E7 unused
+        log_entry(ptr=1, eei=0, when=dts(2026, 9, 21, 18, 5), record_offset=2,
+                  passback=0),
+    ]
+    chain = {1: 2, 2: 3, 3: ACTIVE}
+
+    # Monday on route 34: into Leeds in the morning, and home to Guiseley in
+    # the evening from the stop the 34 leaves town from, by NaptanCode.
+    log = b"".join([
+        tt_record(12, dts(2026, 9, 21, 8, 31), 0,
+                  origin=loc2(206, naptan("45016879")),    # Guiseley Towngate (E bound)
+                  dest=loc2(206, naptan("45024000")),      # City Square F
+                  ipe_ptr=1),
+        tt_record(12, dts(2026, 9, 21, 18, 5), 0,
+                  origin=loc2(206, naptan("45032368")),    # Wellington Q (opp)
+                  dest=loc2(206, naptan("45016878")),      # Guiseley Towngate
+                  ipe_ptr=1),
+        bytes(48), bytes(48),
+    ])
+
+    return "Demo 13 MCard", unix(2026, 9, 21, 20, 50), [
+        ("Shell", bytes(shell.buf)),
+        ("Directory", directory(entries, chain, S, E, SCTL, 0x0E)),
+        ("Product 1", group(book, B, book_values)),
+        ("Log", log),
+    ]
+
+
 CARDS = [card_the_key, card_blocked, card_cmd2, card_history, card_subway_paper,
          card_subway_return, card_gwr_touch, card_ntag, card_ultralight_ev1,
-         card_zonal_coupons, card_key_sussex, card_bee]
+         card_zonal_coupons, card_key_sussex, card_bee,
+         card_mcard]
 
 
 def main():
