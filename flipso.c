@@ -225,6 +225,7 @@ static void flipso_free(Flipso* app) {
 
     flipso_reader_free(app->reader);
     flipso_capture_free(app->capture);
+    itso_card_free(&app->card);
     furi_string_free(app->loaded_path);
     furi_string_free(app->save_path);
     flipso_operators_free(app->operators);

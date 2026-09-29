@@ -5,7 +5,8 @@
  * The property that matters is that saving and loading changes nothing. A card
  * decoded straight from the blocks a read produced and the same card decoded
  * after a trip through the file must be identical, field for field - which is
- * checkable here because ItsoCard is a flat struct zeroed before every parse.
+ * checkable here with itso_card_equal(), which compares every field and the
+ * products themselves.
  */
 #include "flipso_capture.h"
 #include "itso.h"
@@ -99,7 +100,7 @@ static void free_lines(char** lines, size_t count) {
 }
 
 static void round_trip(void) {
-    ItsoCard reference;
+    static ItsoCard reference;
     reference_decode(&reference);
     check("reference card has five products", reference.product_count == 5);
     check("reference card has taps", reference.tap_count > 0);
@@ -114,9 +115,9 @@ static void round_trip(void) {
     check("the capture knows its card number", flipso_capture_card_number(capture, isrn));
     check("and it is the one the decoder reads", strcmp(isrn, reference.isrn) == 0);
 
-    ItsoCard direct;
+    static ItsoCard direct;
     check("capture decodes", flipso_capture_decode(capture, &direct));
-    check("capture decodes to the same card", memcmp(&direct, &reference, sizeof(ItsoCard)) == 0);
+    check("capture decodes to the same card", itso_card_equal(&direct, &reference));
 
     /* Write it out, read it back into a fresh capture, decode that. This is the
      * whole save/load path bar the file handle. */
@@ -133,22 +134,18 @@ static void round_trip(void) {
     check("the loaded capture is valid", flipso_capture_valid(loaded));
     check("the read time survives", flipso_capture_time(loaded) == 1758400000u);
 
-    ItsoCard reloaded;
+    static ItsoCard reloaded;
     check("loaded capture decodes", flipso_capture_decode(loaded, &reloaded));
-    check(
-        "saving and loading changes nothing",
-        memcmp(&reloaded, &reference, sizeof(ItsoCard)) == 0);
+    check("saving and loading changes nothing", itso_card_equal(&reloaded, &reference));
 
     /* Lines may arrive in any order: nothing in the format is positional. */
     FlipsoCapture* shuffled = flipso_capture_alloc();
     for(size_t i = count; i > 0; i--) {
         flipso_capture_parse_line(shuffled, lines[i - 1]);
     }
-    ItsoCard backwards;
+    static ItsoCard backwards;
     flipso_capture_decode(shuffled, &backwards);
-    check(
-        "a file read backwards decodes the same",
-        memcmp(&backwards, &reference, sizeof(ItsoCard)) == 0);
+    check("a file read backwards decodes the same", itso_card_equal(&backwards, &reference));
 
     free_lines(lines, count);
     flipso_capture_free(shuffled);
@@ -164,7 +161,7 @@ static void chip_block(void) {
         chip[i] = (uint8_t)(0xA0 + i);
 
     FlipsoCapture* capture = flipso_capture_alloc();
-    ItsoCard reference;
+    static ItsoCard reference;
     reference_decode(&reference);
     fill(capture, &reference);
     size_t len = 0;
@@ -189,11 +186,9 @@ static void chip_block(void) {
         "and reads back byte for byte",
         back && len == sizeof(chip) && memcmp(back, chip, len) == 0);
 
-    ItsoCard decoded;
+    static ItsoCard decoded;
     flipso_capture_decode(loaded, &decoded);
-    check(
-        "without changing the card it decodes to",
-        memcmp(&decoded, &reference, sizeof(ItsoCard)) == 0);
+    check("without changing the card it decodes to", itso_card_equal(&decoded, &reference));
 
     flipso_capture_merge_history(capture, loaded, NULL);
     back = flipso_capture_chip(capture, &len);
@@ -226,7 +221,7 @@ static void type2_card(void) {
             "8189"
             "04A2B3C4D5E6F7") == 0);
 
-    ItsoCard direct;
+    static ItsoCard direct;
     check("a Type 2 capture decodes", flipso_capture_decode(capture, &direct));
     check("it decodes to the SPT compact card", direct.shell_compact && direct.product_count == 1);
 
@@ -242,9 +237,9 @@ static void type2_card(void) {
     FlipsoCapture* loaded = flipso_capture_alloc();
     for(size_t i = 0; i < count; i++)
         flipso_capture_parse_line(loaded, lines[i]);
-    ItsoCard reloaded;
+    static ItsoCard reloaded;
     check("the loaded Type 2 capture decodes", flipso_capture_decode(loaded, &reloaded));
-    check("to the same card, byte for byte", memcmp(&direct, &reloaded, sizeof(ItsoCard)) == 0);
+    check("to the same card, byte for byte", itso_card_equal(&direct, &reloaded));
 
     free_lines(lines, count);
     flipso_capture_free(loaded);
@@ -269,14 +264,14 @@ static void spare_entry(void) {
 }
 
 static void partial(void) {
-    ItsoCard reference;
+    static ItsoCard reference;
     reference_decode(&reference);
 
     /* A card whose log never read: the taps go, nothing else does. */
     FlipsoCapture* capture = flipso_capture_alloc();
     flipso_capture_add(capture, FlipsoBlockShell, 0, card_shell, sizeof(card_shell));
     flipso_capture_add(capture, FlipsoBlockDirectory, 0, card_dir, sizeof(card_dir));
-    ItsoCard card;
+    static ItsoCard card;
     check("a capture with no products still decodes", flipso_capture_decode(capture, &card));
     check("the card number survives", strcmp(card.isrn, reference.isrn) == 0);
     check("the directory still lists the products", card.product_count == 5);
@@ -328,7 +323,7 @@ static void limits(void) {
 
     /* Every one of those is the longest a block can be, so this is also the
      * arena's ceiling being reached without overrunning it. */
-    ItsoCard card;
+    static ItsoCard card;
     check("a capture of junk does not decode", !flipso_capture_decode(capture, &card));
 
     flipso_capture_reset(capture);
@@ -501,7 +496,7 @@ static void fill_now(
  * written then is the only place those records still exist.
  */
 static void merge_history(void) {
-    ItsoCard reference;
+    static ItsoCard reference;
     reference_decode(&reference);
 
     /* Taps decode newest first, so the last is the one the card will overwrite
@@ -537,7 +532,7 @@ static void merge_history(void) {
         sizeof(log_now));
 
     /* What the card alone can say, before the file is consulted. */
-    ItsoCard live;
+    static ItsoCard live;
     flipso_capture_decode(now, &live);
     check("the card itself holds four journeys", live.tap_count == 4);
     check("and two value records on the purse", live.products[0].value_history_count == 2);
@@ -558,7 +553,7 @@ static void merge_history(void) {
     check("the journey that rolled off is kept", diff.kept_taps == 1);
     check("so is the value record that rolled off", diff.kept_values == 1);
 
-    ItsoCard merged;
+    static ItsoCard merged;
     check("the merged capture decodes", flipso_capture_decode(now, &merged));
     check("the card now holds five journeys", merged.tap_count == 5);
     check("including the one only the file remembered", holds_tap(&merged, oldest_dts));
@@ -620,11 +615,9 @@ static void merge_history(void) {
      * already here, and a second copy would read as a second journey. */
     FlipsoCaptureDiff again;
     flipso_capture_merge_history(now, previous, &again);
-    ItsoCard twice;
+    static ItsoCard twice;
     flipso_capture_decode(now, &twice);
-    check(
-        "merging the same record twice changes nothing",
-        memcmp(&twice, &merged, sizeof(ItsoCard)) == 0);
+    check("merging the same record twice changes nothing", itso_card_equal(&twice, &merged));
     /* The save screen merges before it asks, so backing out and asking again
      * does exactly this - and has to report what it did the first time. */
     check("and reports the same counts", memcmp(&again, &diff, sizeof(diff)) == 0);
@@ -646,9 +639,9 @@ static void merge_history(void) {
     for(size_t i = 0; i < count; i++) {
         flipso_capture_parse_line(loaded, lines[i]);
     }
-    ItsoCard reloaded;
+    static ItsoCard reloaded;
     check("a merged file loads", flipso_capture_decode(loaded, &reloaded));
-    check("and decodes to the same card", memcmp(&reloaded, &merged, sizeof(ItsoCard)) == 0);
+    check("and decodes to the same card", itso_card_equal(&reloaded, &merged));
 
     free_lines(lines, count);
     flipso_capture_free(loaded);
@@ -664,7 +657,7 @@ static void merge_history(void) {
  * one's. The entry bytes - owner, type, subtype, expiry - are what say so.
  */
 static void merge_replaced_product(void) {
-    ItsoCard reference;
+    static ItsoCard reference;
     reference_decode(&reference);
 
     /* E1 as a product that has only just been created: two records of its own,
@@ -694,7 +687,7 @@ static void merge_replaced_product(void) {
 
     FlipsoCaptureDiff diff;
     flipso_capture_merge_history(now, previous, &diff);
-    ItsoCard merged;
+    static ItsoCard merged;
     flipso_capture_decode(now, &merged);
     check("a replaced product keeps no history", diff.kept_values == 0);
     check("the product in its slot counts as new", diff.new_products == 1);
@@ -707,7 +700,7 @@ static void merge_replaced_product(void) {
         FlipsoCaptureDiff again;
         flipso_capture_merge_history(now, previous, &again);
         check("a second merge still reports the kept product", again.kept_products == 1);
-        ItsoCard twice;
+        static ItsoCard twice;
         flipso_capture_decode(now, &twice);
         check("and still decodes to six products", twice.product_count == 6);
     }
@@ -740,7 +733,7 @@ static void merge_replaced_product(void) {
         sizeof(card_log));
     FlipsoCaptureDiff unchanged;
     flipso_capture_merge_history(same, previous, &unchanged);
-    ItsoCard kept;
+    static ItsoCard kept;
     flipso_capture_decode(same, &kept);
     check("an unchanged entry keeps its history", unchanged.kept_values == 2);
     check("and shows all four records", kept.products[0].value_history_count == 4);
@@ -757,7 +750,7 @@ static void merge_replaced_product(void) {
  * room to show is what bounds what the file bothers to keep.
  */
 static void merge_cap(void) {
-    ItsoCard reference;
+    static ItsoCard reference;
     reference_decode(&reference);
     uint32_t oldest_dts = reference.taps[reference.tap_count - 1].dts;
 
@@ -796,7 +789,7 @@ static void merge_cap(void) {
     flipso_capture_merge_history(now, previous, &diff);
     check("the kept history stops at the cap", diff.kept_taps == FLIPSO_CAPTURE_MAX_LOG_HISTORY);
 
-    ItsoCard merged;
+    static ItsoCard merged;
     flipso_capture_decode(now, &merged);
     printf(
         "      %u journeys decoded, of %u the card holds plus %u kept\n",
@@ -833,7 +826,7 @@ static void merge_cap(void) {
  * only place it still exists.
  */
 static void merge_gone_product(void) {
-    ItsoCard reference;
+    static ItsoCard reference;
     reference_decode(&reference);
 
     FlipsoCapture* previous = flipso_capture_alloc();
@@ -859,7 +852,7 @@ static void merge_gone_product(void) {
     flipso_capture_add(now, FlipsoBlockLog, 0, card_log, sizeof(card_log));
     flipso_capture_set_time(now, 1758500000u);
 
-    ItsoCard live;
+    static ItsoCard live;
     flipso_capture_decode(now, &live);
     check("the card itself no longer lists the product", live.product_count == 4);
 
@@ -867,7 +860,7 @@ static void merge_gone_product(void) {
     flipso_capture_merge_history(now, previous, &diff);
     check("so it is carried out of the record", diff.kept_products == 1);
 
-    ItsoCard merged;
+    static ItsoCard merged;
     check("the merged capture decodes", flipso_capture_decode(now, &merged));
     check("and shows it again", merged.product_count == 5);
 
@@ -902,19 +895,17 @@ static void merge_gone_product(void) {
     for(size_t i = 0; i < count; i++) {
         flipso_capture_parse_line(loaded, lines[i]);
     }
-    ItsoCard reloaded;
+    static ItsoCard reloaded;
     check("a file holding one loads", flipso_capture_decode(loaded, &reloaded));
-    check("and decodes to the same card", memcmp(&reloaded, &merged, sizeof(ItsoCard)) == 0);
+    check("and decodes to the same card", itso_card_equal(&reloaded, &merged));
     free_lines(lines, count);
 
     /* Saving the same read again must not stack copies of it up. */
     FlipsoCaptureDiff again;
     flipso_capture_merge_history(now, previous, &again);
-    ItsoCard twice;
+    static ItsoCard twice;
     flipso_capture_decode(now, &twice);
-    check(
-        "merging the same record twice changes nothing",
-        memcmp(&twice, &merged, sizeof(ItsoCard)) == 0);
+    check("merging the same record twice changes nothing", itso_card_equal(&twice, &merged));
 
     flipso_capture_free(loaded);
     flipso_capture_free(now);
@@ -926,7 +917,7 @@ static void merge_gone_product(void) {
  * wiped clean has more past than the screen does.
  */
 static void gone_product_cap(void) {
-    ItsoCard reference;
+    static ItsoCard reference;
     reference_decode(&reference);
 
     FlipsoCapture* previous = flipso_capture_alloc();
@@ -947,7 +938,7 @@ static void gone_product_cap(void) {
     flipso_capture_merge_history(now, previous, &diff);
     check("five products gone, four kept", diff.kept_products == ITSO_MAX_HISTORIC_PRODUCTS);
 
-    ItsoCard merged;
+    static ItsoCard merged;
     flipso_capture_decode(now, &merged);
     check("and the card shows exactly those", merged.product_count == ITSO_MAX_HISTORIC_PRODUCTS);
     bool any_on_card = false;
@@ -972,7 +963,7 @@ static void gone_product_cap(void) {
  * card unchanged.
  */
 static void merge_new_product(void) {
-    ItsoCard reference;
+    static ItsoCard reference;
     reference_decode(&reference);
 
     static uint8_t dir_then[sizeof(card_dir)];
@@ -1092,7 +1083,7 @@ static void full_type2_card(void) {
         flipso_capture_parse_line(loaded, lines[i]);
     }
     check("the saved CMD9 decodes", flipso_capture_decode(loaded, &loaded_card));
-    check("exactly as the read did", memcmp(&direct, &loaded_card, sizeof(ItsoCard)) == 0);
+    check("exactly as the read did", itso_card_equal(&direct, &loaded_card));
 
     free_lines(lines, count);
     flipso_capture_free(loaded);
@@ -1200,7 +1191,7 @@ static void merge_full_type2(void) {
 }
 
 static void gone_needs_a_directory(void) {
-    ItsoCard reference;
+    static ItsoCard reference;
     reference_decode(&reference);
 
     FlipsoCapture* previous = flipso_capture_alloc();

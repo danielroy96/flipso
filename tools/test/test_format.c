@@ -303,9 +303,10 @@ static void demo_type2_full(const FlipsoFormat* f, const ItsoCard* card, bool nt
             "its Abacus counts down its uses", shows(text, "Uses left: 10\n  Abacus: 5 of 16\n"));
         check("64-byte sectors are the layout", shows(text, "Layout: 9 sectors of 64 bytes\n"));
 
-        /* The same card with its Abacus run out (TS 1000-10 table 107). */
-        static ItsoCard retired;
-        retired = *card;
+        /* The same card with its Abacus run out (TS 1000-10 table 107). A copy
+         * borrows the card's product and journey arrays, so it lives only as
+         * long as this block and is never reset. */
+        ItsoCard retired = *card;
         retired.chip_abacus = 16;
         furi_string_reset(text);
         flipso_format_card(text, f, &retired, NULL, 0);

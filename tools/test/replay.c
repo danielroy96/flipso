@@ -154,7 +154,7 @@ static void show_shell(const ItsoCard* card) {
 }
 
 int main(void) {
-    ItsoCard card;
+    static ItsoCard card;
     itso_card_reset(&card);
 
     /* A Type 2 tag is one flat block of pages, not a shell/directory/product

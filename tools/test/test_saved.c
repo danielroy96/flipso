@@ -305,7 +305,7 @@ static void clean(void) {
 }
 
 static void names(void) {
-    ItsoCard card;
+    static ItsoCard card;
     itso_card_reset(&card);
     itso_parse_shell(&card, card_shell, sizeof(card_shell));
 
@@ -326,7 +326,7 @@ static void names(void) {
     check("a brand of nothing usable is just the digits", strcmp(name, "3458") == 0);
 
     /* A card whose shell never read has no number to append. */
-    ItsoCard blank;
+    static ItsoCard blank;
     itso_card_reset(&blank);
     flipso_saved_suggest_name(name, sizeof(name), blank.isrn, NULL);
     check("a card with no number is named anyway", strcmp(name, "ITSO Card") == 0);
@@ -379,10 +379,10 @@ static void round_trip(void) {
     check("it reads back", flipso_saved_read(loaded, furi_string_get_cstr(path)));
     check("with its read time", flipso_capture_time(loaded) == 1758400000u);
 
-    ItsoCard from_file, from_memory;
+    static ItsoCard from_file, from_memory;
     check("and decodes", flipso_capture_decode(loaded, &from_file));
     flipso_capture_decode(capture, &from_memory);
-    check("to the card that was saved", memcmp(&from_file, &from_memory, sizeof(ItsoCard)) == 0);
+    check("to the card that was saved", itso_card_equal(&from_file, &from_memory));
 
     check("deleting it works", flipso_saved_delete(furi_string_get_cstr(path)));
     check("and it is gone", !flipso_saved_any());

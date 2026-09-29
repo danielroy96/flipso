@@ -33,8 +33,9 @@ extern "C" {
  * was written while it did - and four of them is as much of that as a screen
  * the user scrolls is worth. */
 #define ITSO_MAX_HISTORIC_PRODUCTS 4
-/* What ItsoCard::products holds: every entry the directory can carry, plus the
- * ones a saved file remembers from before. */
+/* The most ItsoCard::products can hold: every entry the directory can carry,
+ * plus the ones a saved file remembers from before. A cap, not a size - the
+ * array holds only as many as the card has. */
 #define ITSO_MAX_CARD_PRODUCTS     (ITSO_MAX_PRODUCTS + ITSO_MAX_HISTORIC_PRODUCTS)
 /* Four 48-byte records fit the DESFire cyclic log, and a saved card adds the
  * records earlier reads of it saw: the log on the card is a rolling window, so
@@ -737,15 +738,23 @@ typedef struct {
 
     /* The directory's products first, in entry order, then any the card has
      * dropped since a file was written - so a screen that walks the array in
-     * order shows the card before it shows the card's past. */
-    ItsoProduct products[ITSO_MAX_CARD_PRODUCTS];
+     * order shows the card before it shows the card's past.
+     *
+     * Allocated to fit: 620 bytes a product, and the cap is 20 while a real card
+     * carries five or six, so a fixed array spent most of the card's memory on
+     * slots nothing filled. The card owns it - see itso_card_init(). */
+    ItsoProduct* products;
     uint8_t product_count;
+    uint8_t product_capacity; /**< Slots allocated behind @c products. */
 
     /** The Space Saving IPE's own elements, when products[0].space_saving. */
     ItsoSpaceSaving space;
 
-    ItsoTap taps[ITSO_MAX_TAPS];
+    /* Newest first. Allocated to fit, like @c products: twelve slots of 204
+     * bytes is the cap, and a card straight off the reader has four at most. */
+    ItsoTap* taps;
     uint8_t tap_count;
+    uint8_t tap_capacity; /**< Slots allocated behind @c taps. */
 } ItsoCard;
 
 /* ------------------------------------------------------------------ */
@@ -792,7 +801,32 @@ bool itso_date_open(uint16_t date);
 /* Parsing                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Make @p card an empty card that owns nothing, for storage that is not zeroed
+ * already. A card in zeroed storage - static, calloc'd, or `= {0}` - starts that
+ * way without this.
+ *
+ * The products and taps arrays are the things an ItsoCard owns, which is what
+ * makes the distinction matter: every other entry point may free them.
+ */
+void itso_card_init(ItsoCard* card);
+
+/**
+ * Empty @p card for the next decode, releasing its products and taps.
+ *
+ * @p card must be initialised - see itso_card_init(). A card copied by struct
+ * assignment shares both arrays with the original, so reset only one of them.
+ */
 void itso_card_reset(ItsoCard* card);
+
+/** Release what @p card owns when it is finished with; the same as a reset. */
+void itso_card_free(ItsoCard* card);
+
+/**
+ * True when two cards decoded to the same thing: every field, and the products
+ * and taps themselves rather than where they happen to be allocated.
+ */
+bool itso_card_equal(const ItsoCard* a, const ItsoCard* b);
 
 /** Parse the 24/32-byte ITSO Shell Environment Data Group. */
 bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len);
@@ -802,8 +836,8 @@ bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len);
  *
  * The card number is the only unique identity a card has, so this is how one
  * card is told from another without decoding either: a saved card is matched
- * to the card in the reader by comparing these, and an ItsoCard is several
- * kilobytes to build for the sake of eighteen digits.
+ * to the card in the reader by comparing these, and decoding a whole card
+ * allocates every product and journey for the sake of eighteen digits.
  *
  * @param out at least ITSO_ISRN_DIGITS + 1 bytes.
  * @return false for bytes this decoder would not accept as a shell, in which
@@ -1140,6 +1174,9 @@ void itso_parse_value_history(ItsoProduct* product, const uint8_t* data, size_t 
  * has since been freed or taken by something else. The entry is decoded exactly
  * as itso_parse_directory() decodes a live one - it is the same five bytes - so
  * what follows can parse the group into it in the usual way.
+ *
+ * The array grows to take it, so the pointer returned - and any other pointer
+ * into @c products - is good only until the next product is added.
  *
  * @param entry ITSO_DIR_ENTRY_LEN bytes of IPE Directory Entry.
  * @param index the 1-based directory position it occupied, for display.

@@ -108,14 +108,17 @@ The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
 about 72 KB of the 223 KB file as of 2026-09-28, because the 79 KB station
 table lives in `.fapassets`, which the firmware unpacks to the SD card and never
-maps. Anything added as a `const` array *does* reach RAM. Flipso costs about
-88 KB of heap at the idle scan screen (measured 2026-09-28 with `flipctl mem
---cost`: 85.7 KB before CMD9/CMD10 support, 88.0 KB after, all of it code),
-more once a card is on screen - about 15 KB of `ItsoCard` alone, twenty
-products and twelve taps. That leaves roughly 25 KB free with the app up, and
-each RPC session (a screenshot, an upload, a push) holds more of it. Measure it
-as the difference between `flipctl mem` with the app up and with the desktop
-showing, which is the only honest way to read it.
+maps. Anything added as a `const` array *does* reach RAM. With the app at its
+idle scan screen about 40 KB of the heap is free (measured 2026-09-29). A card
+on screen costs what it holds: `ItsoCard` allocates its products (620 bytes
+each) and journeys (204 bytes each) to fit rather than keeping room for twenty
+and twelve, which held 15 KB whatever the card and left only 25 KB free.
+Demo 4, seven products and twelve journeys, costs 8.9 KB over idle. The
+firmware's file browser takes 7.4 KB while the saved-card list is open, and a
+screenshot or push borrows about 12 KB for its RPC session. Read the free heap
+with the app up and compare within one boot: the desktop's own idle figure
+moves by 15 KB between boots and gives it back when an app opens, so a
+difference against it is not the app's cost.
 
 So: no large static tables, no growing a scene's buffers without checking, and
 `tools/flipper/flipctl mem` before and after anything structural.

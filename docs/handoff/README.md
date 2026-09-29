@@ -14,7 +14,8 @@ Every brief assumes the working rules in `CLAUDE.md` — in particular:
 - Every decoder change needs a case in `tools/test/`, usually a synthetic
   product in `tools/test/build_card.py`. Run `tools/test/run.sh` (ASan + UBSan).
 - Memory is the constraint: no large static tables, and `flipctl mem` before and
-  after anything structural. `ItsoCard` is already ~15 KB.
+  after anything structural. A decoded card allocates 620 bytes a product and
+  204 a journey, and the app leaves about 40 KB free at its scan screen.
 - Verify on the device with the demo cards (`tools/demo/build_demo_cards.py`)
   and `flipctl shot`; only ask for a card tap after a green `flipctl arm`.
 - Remove the brief from this folder, and its row below, once the feature ships.

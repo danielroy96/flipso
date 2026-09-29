@@ -32,7 +32,7 @@ static void dump_location(const char* label, const ItsoLocation* loc) {
  * out-of-bounds read or overflow here aborts the run. */
 static void robustness(void) {
     static uint8_t junk[256];
-    ItsoCard c;
+    static ItsoCard c;
 
     /* All zeros must be rejected everywhere. */
     memset(junk, 0, sizeof(junk));
@@ -155,7 +155,7 @@ static void robustness(void) {
  * product array exactly.
  */
 static void cmd2_card(void) {
-    ItsoCard card;
+    static ItsoCard card;
     itso_card_reset(&card);
 
     check("CMD2 shell parsed", itso_parse_shell(&card, cmd2_shell, sizeof(cmd2_shell)));
@@ -213,7 +213,7 @@ static void cmd2_card(void) {
  * a full shell in both directions.
  */
 static void compact_shell(void) {
-    ItsoCard card;
+    static ItsoCard card;
     itso_card_reset(&card);
 
     check(
@@ -317,7 +317,7 @@ static void compact_shell(void) {
     /* The compact shell's OID is the generic 8189, so the ticket's issuer - the
      * operator that titles it - is its product's owner. A full shell's is its own. */
     check("a compact ticket is issued by its product owner", itso_card_issuer_oid(&card) == 8323);
-    ItsoCard full;
+    static ItsoCard full;
     itso_card_reset(&full);
     itso_parse_shell(&full, card_shell, sizeof(card_shell));
     check("a full shell is issued by its shell owner", itso_card_issuer_oid(&full) == full.oid);
@@ -381,7 +381,7 @@ static void parse_type2_exact(ItsoCard* card, const uint8_t* pages, size_t len) 
  * spec alone.
  */
 static void space_saving_types(void) {
-    ItsoCard card;
+    static ItsoCard card;
 
     /* TYP 29 revision 1: a carnet of two rides with one left. */
     parse_type2_exact(&card, cmd4_return, sizeof(cmd4_return));
@@ -689,7 +689,7 @@ static void shell_checksum(void) {
     check("CRC_B Annex A example 2", itso_crc_b(v2, sizeof(v2)) == 0xD1FC);
     check("CRC_B Annex A example 3", itso_crc_b(v3, sizeof(v3)) == 0xF62C);
 
-    ItsoCard card;
+    static ItsoCard card;
     itso_card_reset(&card);
     itso_parse_shell(&card, card_shell, sizeof(card_shell));
     check("shell length is 6 blocks", card.shell_len == 6);
@@ -730,7 +730,7 @@ static void shell_checksum(void) {
  * of these, and a read that is retried on the second is a hang on the first.
  */
 static void shell_reject_reasons(void) {
-    ItsoCard card;
+    static ItsoCard card;
 
     itso_card_reset(&card);
     check(
@@ -873,7 +873,7 @@ done:
 }
 
 static void full_shell_type2(void) {
-    ItsoCard card;
+    static ItsoCard card;
 
     /* --- CMD9 on an NTAG215 --- */
     uint8_t shell[ITSO_TYPE2_FULL_SHELL_LEN];
@@ -986,7 +986,7 @@ static void full_shell_type2(void) {
     free(other);
 
     /* A shell stating a geometry the CMD does not have: no sector map. */
-    ItsoCard odd;
+    static ItsoCard odd;
     itso_card_reset(&odd);
     itso_type2_full_shell(cmd9_pages, sizeof(cmd9_pages), shell);
     itso_parse_shell(&odd, shell, sizeof(shell));
@@ -1078,7 +1078,7 @@ static void chain_set(uint8_t* dir, const ItsoCard* card, uint8_t sector, uint8_
 }
 
 static void sector_chains(void) {
-    ItsoCard card;
+    static ItsoCard card;
     itso_card_reset(&card);
     card.sector_count = 16;
     card.sector_size = 32;
@@ -1133,7 +1133,7 @@ static void sector_chains(void) {
  * where a 48-byte stride looks for the second record at 48 and a third at 96.
  */
 static void log_sectors(void) {
-    ItsoCard card;
+    static ItsoCard card;
     itso_card_reset(&card);
     itso_parse_shell(&card, cmd2_shell, sizeof(cmd2_shell));
     itso_parse_directory(&card, cmd2_dir, sizeof(cmd2_dir));
@@ -1166,8 +1166,72 @@ static void log_sectors(void) {
             0);
 }
 
+/*
+ * A card allocates only what it holds: its products and journeys used to be
+ * fixed arrays of 20 and 12, 15 KB whatever the card, and a real card fills
+ * five or six products. Sized to fit, released on reset, and compared by what
+ * they hold rather than where they are.
+ */
+static void card_arrays(void) {
+    static ItsoCard card;
+    itso_card_reset(&card);
+    check("an empty card owns nothing", card.products == NULL && card.taps == NULL);
+
+    itso_parse_shell(&card, card_shell, sizeof(card_shell));
+    itso_parse_directory(&card, card_dir, sizeof(card_dir));
+    check(
+        "the directory's five products get exactly five slots",
+        card.product_count == 5 && card.product_capacity == 5);
+
+    itso_parse_log(&card, card_log, sizeof(card_log));
+    check(
+        "the log's journeys get exactly as many slots",
+        card.tap_count > 0 && card.tap_capacity == card.tap_count);
+
+    static const uint8_t entry[ITSO_DIR_ENTRY_LEN] = {0x04, 0xD2, 0x10, 0x00, 0x01};
+    check(
+        "a product added later grows the array by one",
+        itso_card_add_product(&card, entry, 3) != NULL);
+    check("to six", card.product_count == 6 && card.product_capacity == 6);
+    for(uint8_t i = 0; i < ITSO_MAX_CARD_PRODUCTS; i++) {
+        itso_card_add_product(&card, entry, 3);
+    }
+    check(
+        "and stops at the cap",
+        card.product_count == ITSO_MAX_CARD_PRODUCTS &&
+            card.product_capacity == ITSO_MAX_CARD_PRODUCTS &&
+            itso_card_add_product(&card, entry, 3) == NULL);
+
+    /* Two decodes of the same bytes are the same card, wherever each put its
+     * arrays and however much room it left behind them. */
+    static ItsoCard again;
+    itso_card_reset(&again);
+    itso_parse_shell(&again, card_shell, sizeof(card_shell));
+    itso_parse_directory(&again, card_dir, sizeof(card_dir));
+    itso_parse_log(&again, card_log, sizeof(card_log));
+    itso_card_reset(&card);
+    itso_parse_shell(&card, card_shell, sizeof(card_shell));
+    itso_parse_directory(&card, card_dir, sizeof(card_dir));
+    itso_parse_log(&card, card_log, sizeof(card_log));
+    check(
+        "the same bytes decode equal",
+        itso_card_equal(&card, &again) && card.products != again.products);
+    again.products[0].typ ^= 1;
+    check("and a product that differs does not", !itso_card_equal(&card, &again));
+    again.products[0].typ ^= 1;
+    again.taps[0].dts ^= 1;
+    check("nor does a journey", !itso_card_equal(&card, &again));
+
+    itso_card_free(&card);
+    itso_card_free(&again);
+    check(
+        "a freed card owns nothing and holds nothing",
+        card.products == NULL && card.taps == NULL && card.product_count == 0 &&
+            card.tap_count == 0 && card.product_capacity == 0 && card.tap_capacity == 0);
+}
+
 static void oversized_directory(void) {
-    ItsoCard card;
+    static ItsoCard card;
     itso_card_reset(&card);
     if(!itso_parse_shell(&card, cmd2_shell, sizeof(cmd2_shell))) {
         check("oversized directory needs a shell", 0);
@@ -1186,7 +1250,7 @@ static void oversized_directory(void) {
 }
 
 int main(void) {
-    ItsoCard card;
+    static ItsoCard card;
     itso_card_reset(&card);
 
     printf("== Shell ==\n");
@@ -1237,7 +1301,7 @@ int main(void) {
      * neighbouring bit would either condemn a live card or lose the log entry.
      * TS 1000-2 clause 5.1.2. */
     check("this shell is not blocked", !card.shell_blocked);
-    ItsoCard blocked;
+    static ItsoCard blocked;
     itso_card_reset(&blocked);
     itso_parse_shell(&blocked, card_shell, sizeof(card_shell));
     check(
@@ -1845,6 +1909,7 @@ int main(void) {
     sector_chains();
     log_sectors();
     oversized_directory();
+    card_arrays();
     robustness();
 
     /* ------------------------------------------------------------------
