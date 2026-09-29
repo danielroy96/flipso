@@ -346,7 +346,7 @@ def card_the_key():
                   origin=loc2(203, b"5148"), dest=None, ipe_ptr=1),
     ])
 
-    return "Demo 1 The Key", unix(2026, 9, 21, 19, 12), [
+    return "Demo 01 The Key Kent", unix(2026, 9, 21, 19, 12), [
         ("Shell", bytes(shell.buf)),
         # What the chip said about itself, so the Card screen's Chip section
         # has something to show for a saved card too.
@@ -516,7 +516,7 @@ def card_blocked():
     chain = {1: ACTIVE, 2: ACTIVE, 3: 9, 9: ACTIVE, 4: ACTIVE, 5: 11, 11: BLOCKED,
              6: 7, 7: ACTIVE}
 
-    return "Demo 2 blocked pass", unix(2026, 9, 21, 19, 20), [
+    return "Demo 02 Freedom Pass", unix(2026, 9, 21, 19, 20), [
         ("Shell", bytes(shell.buf)),
         ("Directory", directory(entries, chain, S, E, SCTL, 0x11, blocked=True)),
         ("Product 1", group(ident, B)),
@@ -625,7 +625,7 @@ def card_cmd2():
                   dest=loc2(207, (2).to_bytes(4, "big")), ipe_ptr=3),
     ])
 
-    return "Demo 3 Subway CMD2", unix(2026, 9, 21, 19, 26), [
+    return "Demo 03 Subway card", unix(2026, 9, 21, 19, 26), [
         ("Shell", bytes(shell.buf)),
         ("Directory", directory(entries, chain, S, E, SCTL, 0x07)),
         ("Product 1", group(purse, B, purse_values)),
@@ -824,7 +824,7 @@ def card_history():
     gone_ent.buf[20] = 15                        # EntitlementCode: half fare
     gone_ent.buf[21] = 3                         # ConcessionaryClass: student
 
-    return "Demo 4 past reads", unix(2026, 9, 21, 19, 33), [
+    return "Demo 04 SWR Touch", unix(2026, 9, 21, 19, 33), [
         ("Shell", bytes(shell.buf)),
         ("Directory", directory(entries, chain, S, E, SCTL, 0x7E)),
         ("Product 1", group(purse, B, purse_values)),
@@ -883,7 +883,7 @@ def card_subway_paper():
             flags=0b1000,  # ExpiryTimeFlag: the operator's own end-of-service time
             event2=12, last_use=dts(2026, 9, 21, 17, 47)))
 
-    return "Demo 5 Subway paper", unix(2026, 9, 21, 19, 40), [
+    return "Demo 05 Subway day", unix(2026, 9, 21, 19, 40), [
         ("Type 2", pages),
     ]
 
@@ -910,7 +910,7 @@ def card_subway_return():
             flags=0b1000,  # ExpiryTimeFlag: the operator's own end-of-service time
             usage_code=0b101,  # UsageRec is an alighting point, LocDefType 202
             usage=bytes.fromhex("5F280004")))
-    return "Demo 6 Subway return", unix(2026, 9, 21, 19, 45), [
+    return "Demo 06 Subway return", unix(2026, 9, 21, 19, 45), [
         ("Type 2", pages),
     ]
 
@@ -936,7 +936,7 @@ def card_zonal_coupons():
             issue_date=day, rides_left=38, amount=2000, mop=3, coupons=True,
             scaling=4, area_type=4,                   # LocDefType 204, zone map
             area_slots=bytes([0b00000111, 0, 0, 0])))  # zones 1, 2 and 3
-    return "Demo 10 zonal coupons", unix(2026, 9, 21, 19, 50), [
+    return "Demo 10 SPT coupons", unix(2026, 9, 21, 19, 50), [
         ("Type 2", pages),
     ]
 
@@ -1048,7 +1048,7 @@ def card_gwr_touch():
         bytes(48), bytes(48),
     ])
 
-    return "Demo 7 GWR Touch", unix(2026, 9, 21, 20, 5), [
+    return "Demo 07 GWR Touch", unix(2026, 9, 21, 20, 5), [
         ("Shell", bytes(shell.buf)),
         ("Directory", directory(entries, chain, S, E, SCTL, 0x08,
                                 instance=bytes([0x00]) + (0x004E30F3).to_bytes(4, "big"))),
@@ -1139,7 +1139,7 @@ def card_ntag():
                   dest=loc2(209, bus_stage(163, "17", 2)), ipe_ptr=1, mop=8),
     ])
 
-    return "Demo 8 Reading NTAG", unix(2026, 9, 21, 20, 15), [
+    return "Demo 08 Reading Buses", unix(2026, 9, 21, 20, 15), [
         ("Shell", bytes(shell.buf)),
         # The Abacus has counted the four value records, plus the one it
         # starts at: state 5, of the 16 that retire the card.
@@ -1206,7 +1206,7 @@ def card_ultralight_ev1():
                   dest=loc2(209, bus_stage(162, "22", 5)), ipe_ptr=1, mop=8),
     ])
 
-    return "Demo 9 Dundee EV1", unix(2026, 9, 21, 20, 25), [
+    return "Demo 09 MyXplore", unix(2026, 9, 21, 20, 25), [
         ("Shell", bytes(shell.buf)),
         # Locked as TS 1000-10 clause 10.23.1 recommends. CMD10 keeps its
         # transaction count in a one-way counter, not page 3.

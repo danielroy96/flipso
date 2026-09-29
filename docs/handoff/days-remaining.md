@@ -47,4 +47,4 @@ the current pass — rather than the whole product's expiry.
 
 - Days left shows under product, card and current-pass expiries.
 - The Summary shows the current pass for period tickets.
-- House-style checks pass; screenshot of Demo 1's Summary and Period ticket.
+- House-style checks pass; screenshot of Demo 01's Summary and Period ticket.

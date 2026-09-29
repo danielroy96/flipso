@@ -89,9 +89,9 @@ TYP25ValueFlags bit 0 (auto-renew) is record byte 11. Nothing to change there.
   allocation, so ASan sees an over-read.
 - `tools/test/test_format.c`: pin the new lines in `spec_review()` with
   `product_screen()`.
-- `tools/demo/build_demo_cards.py`: Demo 1's E7 voucher has a 16-byte dataset,
+- `tools/demo/build_demo_cards.py`: Demo 01's E7 voucher has a 16-byte dataset,
   too short for table 36 (23 bytes mandatory). Rebuild it as a real one, then
-  update the Demo 1 row in `tools/demo/README.md`.
+  update the Demo 01 row in `tools/demo/README.md`.
 
 ## Done when
 

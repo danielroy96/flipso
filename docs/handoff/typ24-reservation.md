@@ -194,7 +194,7 @@ wheelchair; UD), TogetherFlag 1 bit, RFU 7 bits.
   maximums (3, 3, 3, 3, 7, 7, 7, 7). The 256-byte cap must hold, and a count
   that would run past the dataset must stop cleanly.
 - `tools/test/test_format.c`: pin the reservation lines in `spec_review()`.
-- `tools/demo/build_demo_cards.py`: Demo 1's E10 "reserved journey" has a
+- `tools/demo/build_demo_cards.py`: Demo 01's E10 "reserved journey" has a
   16-byte dataset at revision 1, which the spec does not define. Replace it
   with a real revision 2 TYP 24 carrying a reservation or two. It needs more
   sectors than E10 has (64-byte sectors on that card), so chain it across

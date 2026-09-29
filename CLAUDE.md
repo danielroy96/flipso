@@ -113,7 +113,7 @@ idle scan screen about 40 KB of the heap is free (measured 2026-09-29). A card
 on screen costs what it holds: `ItsoCard` allocates its products (652 bytes
 each on the device since 2026-09-29, 620 before) and journeys (204 bytes each)
 to fit rather than keeping room for twenty and twelve, which held 15 KB whatever
-the card and left only 25 KB free. Demo 4, seven products and twelve journeys,
+the card and left only 25 KB free. Demo 04, seven products and twelve journeys,
 cost 8.9 KB over idle at 620 bytes a product. The
 firmware's file browser takes 7.4 KB while the saved-card list is open, and a
 screenshot or push borrows about 12 KB for its RPC session. Read the free heap

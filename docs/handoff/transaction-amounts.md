@@ -66,4 +66,4 @@ Fare paid
 
 - Every consecutive pair shows its amount; gaps and the oldest record show none.
 - House-style checks pass for every demo card.
-- Screenshot of Demo 1's Pay as you go screen on the device.
+- Screenshot of Demo 01's Pay as you go screen on the device.

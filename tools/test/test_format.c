@@ -242,7 +242,7 @@ static bool load(FlipsoCapture* capture, const char* path) {
 #define FLIPSO_TEST_LATER 2840140800u
 
 /*
- * The encodings Demo 7 carries from a real GWR Touch card, pinned by the lines
+ * The encodings Demo 07 carries from a real GWR Touch card, pinned by the lines
  * only they produce: a gate check-in and check-out in the revision 4 shapes a
  * rail gate writes, each naming the reader that wrote it; a revision 2 period
  * ticket with and without CPICC, and no value record; an ID with an empty
@@ -1045,10 +1045,10 @@ int main(int argc, char** argv) {
             }
             f.media = &demo_media;
             every_screen(entry->d_name, &f, &demo_card);
-            if(strncmp(entry->d_name, "Demo 1 ", 7) == 0) demo_one(&f, &demo_card);
-            if(strncmp(entry->d_name, "Demo 8", 6) == 0) demo_type2_full(&f, &demo_card, true);
-            if(strncmp(entry->d_name, "Demo 9", 6) == 0) demo_type2_full(&f, &demo_card, false);
-            if(strncmp(entry->d_name, "Demo 7", 6) == 0) {
+            if(strncmp(entry->d_name, "Demo 01", 7) == 0) demo_one(&f, &demo_card);
+            if(strncmp(entry->d_name, "Demo 08", 7) == 0) demo_type2_full(&f, &demo_card, true);
+            if(strncmp(entry->d_name, "Demo 09", 7) == 0) demo_type2_full(&f, &demo_card, false);
+            if(strncmp(entry->d_name, "Demo 07", 7) == 0) {
                 /* Judged on the day after it was read, when both tickets ran. */
                 FlipsoFormat read_day = f;
                 read_day.now = 1790035200u; /* 2026-09-22 */
