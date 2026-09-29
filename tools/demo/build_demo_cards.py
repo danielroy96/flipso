@@ -497,13 +497,18 @@ def card_blocked():
 
 
 # ====================================================================
-# Card 3 - the other customer media
+# Card 3 - a Glasgow Subway smartcard, the other customer media
 #
-# CMD2 is ITSO on ISO 7816 rather than DESFire, and what shows on screen is the
+# CMD2 is ITSO on ISO 7816 rather than DESFire, and the Subway's reusable
+# smartcard is the one scheme still issuing it. What shows on screen is the
 # geometry: 80-byte sectors, 64 of them and 16 directory entries, against the
 # 64/16/8 the DESFire cards here use. The purse has no expiry date and a value
 # record that has never been written, which are both things the decoder has to
 # handle rather than display.
+#
+# The Subway is one flat fare around a single loop, so its season has no
+# locations - it is good anywhere the Subway goes - and its journeys are
+# between stations, which NaPTAN codes as stops like any other.
 # ====================================================================
 def card_cmd2():
     B, S, E, SCTL = 80, 64, 16, 46
@@ -552,18 +557,22 @@ def card_cmd2():
     ident.buf[32 + len(fore)] = len(sur)
     ident.putb(33 + len(fore), sur)
 
-    # Period ticket, revision 2 - the middle layout, where CPICC and the pass
-    # duration shift the locations rather than the bitmap gating them.
-    period = Bits(48)
-    period.put(0, 6, 12)
-    period.put(6, 6, 0b000010)                   # RouteCode and both locations
-    # No CPICC (bit 4), so RouteCode follows the 29 fixed bytes directly and the
-    # locations start at 29 + 5 = 34 (TS 1000-5 table 3.27).
+    # Period ticket, revision 2: four-week Subway passes, bought as a stock and
+    # renewed automatically. No locations - the whole Subway - and so no
+    # RouteCode either.
+    period = Bits(32)
+    period.put(0, 6, 8)
+    period.put(6, 6, 0)
     period.put(12, 4, 2)
     period.buf[2] = 255
     period.putb(3, (196).to_bytes(2, "big"))
-    period.putb(33, loc1(207, (1).to_bytes(4, "big")))    # Zone 1
-    period.putb(39, loc1(207, (2).to_bytes(4, "big")))    # Zone 2
+    period.put(40, 16, 0xFE00)                   # TYP22Flags: every part of every day
+    period.put(64, 14, date_stamp(2026, 9, 1))   # IssueDate
+    period.put(96, 3, 2)                         # Class: standard
+    period.buf[17] = 0xFF                        # ValidOnDayCode: every day
+    period.buf[18] = 1                           # PartySizeAdult
+    period.putb(22, (2600).to_bytes(4, "big"))   # AmountPaid: GBP 26.00
+    period.put(26 * 8, 4, 3)                     # by card
     period_values = value_group([
         value_record(1, 30, dts(2026, 9, 1, 8, 0),
                      period_tail(1, 0b01, date_stamp(2027, 2, 28), date_stamp(2026, 9, 30))),
@@ -576,21 +585,23 @@ def card_cmd2():
         dir_entry(196, 16, 0, False, EXP),                          # E2 ITSO ID
         dir_entry(196, 22, 2, True, date_stamp(2027, 2, 28)),       # E3 period
     ] + [bytes(5)] * (E - 4) + [
-        log_entry(ptr=1, eei=0, when=dts(2026, 9, 19, 18, 12), record_offset=2,
+        log_entry(ptr=3, eei=0, when=dts(2026, 9, 19, 18, 12), record_offset=2,
                   passback=8),
     ]
     chain = {1: 18, 18: ACTIVE, 2: ACTIVE, 3: 20, 20: ACTIVE}
 
-    # Two records, and two location renderings a rail card never produces: a
-    # list of NaptanCodes, and a bus fare stage keyed by service number.
+    # Two journeys between Subway stations, by their NaptanCodes: a pay as
+    # you go single from Kelvinbridge into town, and home to Hillhead on the
+    # season. The first names its origin as a list of NaptanCodes (212), the
+    # form a rail card never writes.
     log = b"".join([
         tt_record(12, dts(2026, 9, 17, 8, 2), 170,
-                  origin=loc2(212, naptan("buchanan")),
-                  dest=loc2(209, bus_stage(196, "SPT1", 4)),
+                  origin=loc2(212, naptan("gladama")),     # Kelvinbridge
+                  dest=loc2(206, naptan("gladatd")),       # St Enoch
                   ipe_ptr=1, mop=8),
         tt_record(12, dts(2026, 9, 19, 18, 12), 0,
-                  origin=loc2(207, (1).to_bytes(4, "big")),
-                  dest=loc2(207, (2).to_bytes(4, "big")), ipe_ptr=3),
+                  origin=loc2(206, naptan("gladadm")),     # Buchanan Street
+                  dest=loc2(206, naptan("gladajd")), ipe_ptr=3),  # Hillhead
     ])
 
     return "Demo 03 Subway card", unix(2026, 9, 21, 19, 26), [
