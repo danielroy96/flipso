@@ -68,6 +68,22 @@ jobs:
           python-version: '3.11'
       - name: tools/catalog/validate.sh
         run: tools/catalog/validate.sh
+      # Not on a pull request: that run's commit is GitHub's merge of the PR,
+      # which exists only under refs/pull/, so the catalog could not clone it.
+      - name: Manifest to submit
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "## Apps Catalog manifest"
+            echo
+            echo "Valid for ${GITHUB_SHA::7}. To publish this commit, submit it to"
+            echo "[flipper-application-catalog](https://github.com/flipperdevices/flipper-application-catalog)"
+            echo "as \`applications/NFC/flipso/manifest.yml\`."
+            echo
+            echo '```yaml'
+            cat dist/catalog-manifest.yml
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       # The bundle holds the icon and screenshots exactly as the catalog will
       # show them.
       - uses: actions/upload-artifact@v4

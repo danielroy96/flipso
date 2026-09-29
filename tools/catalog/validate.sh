@@ -2,7 +2,8 @@
 # Run the Flipper Apps Catalog's own validator, tools/bundle.py, over HEAD - the
 # check its CI makes on a manifest PR. It clones this repository at HEAD, builds
 # the .fap, checks the icon and screenshots, holds the description and changelog
-# to its markdown subset, and writes the bundle to dist/catalog-bundle.zip.
+# to its markdown subset, and writes the bundle to dist/catalog-bundle.zip and
+# the manifest to submit, filled in for HEAD, to dist/catalog-manifest.yml.
 #
 # Lint is left to `ufbt lint`, which CI runs as a job of its own. Extra
 # arguments go to bundle.py, e.g. --nobuild.
@@ -51,7 +52,8 @@ sed -e "s|^\\( *origin:\\).*|\\1 $ROOT|" -e "s|^\\( *commit_sha:\\).*|\\1 $SHA|"
 mkdir -p "$ROOT/dist"
 python3 "$CATALOG/tools/bundle.py" --nolint "$@" "$MANIFEST" "$ROOT/dist/catalog-bundle.zip"
 
+sed "s|^\\( *commit_sha:\\).*|\\1 $SHA|" "$HERE/manifest.yml" > "$ROOT/dist/catalog-manifest.yml"
 echo
-echo "Valid. The manifest to submit for this commit:"
+echo "Valid. The manifest to submit for this commit, also in dist/catalog-manifest.yml:"
 echo
-sed "s|^\\( *commit_sha:\\).*|\\1 $SHA|" "$HERE/manifest.yml"
+cat "$ROOT/dist/catalog-manifest.yml"
