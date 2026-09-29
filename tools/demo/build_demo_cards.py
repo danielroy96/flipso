@@ -615,7 +615,7 @@ def card_cmd2():
 
 
 # ====================================================================
-# Card 4 - what only a saved card knows
+# Card 4 - what only a saved card knows: a Surrey commuter's SWR Touch
 #
 # Everything a card says about its own past is a rolling window: four slots in
 # the log, two value records per product, and a directory entry that is freed
@@ -660,25 +660,25 @@ def card_history():
         value_record(7, 209, dts(2026, 9, 1, 8, 1), purse_tail(1385)),
     ])
 
-    # A journey ticket whose destination is a bus stop reached by a named
-    # service: LocDefType 216 carries both, and only an IPE can hold one - the
-    # six-byte body a log record uses is too short for it.
-    # Fifteen blocks rather than thirteen: a 216 location is eleven bytes with
-    # its tag and length, and a dataset that ends before it does would run the
-    # location into the InstanceID behind it.
-    journey = Bits(60)
-    journey.put(0, 6, 15)
+    # A book of six journeys between Woking and London Waterloo, one of them
+    # used since.
+    journey = Bits(52)
+    journey.put(0, 6, 13)
     journey.put(6, 6, 0b001010)
     journey.put(12, 4, 2)
     journey.buf[2] = 255
     journey.putb(3, (109).to_bytes(2, "big"))
+    journey.put(58, 14, date_stamp(2026, 9, 7))  # IssueDate
+    journey.put(93, 3, 2)                        # Class: standard
+    journey.buf[12] = 1                          # PartySizeAdult
+    journey.putb(16, (9720).to_bytes(4, "big"))  # AmountPaid: GBP 97.20
+    journey.put(20 * 8, 4, 3)                    # by card
     journey.putb(35, b"00000")
     journey.putb(40, loc1(203, b"5685"))         # Woking
-    journey.putb(46, loc1(216, (109).to_bytes(2, "big") + sncode2("X15") +
-                          naptan("wokgrand")))
+    journey.putb(46, loc1(203, b"5598"))         # London Waterloo
     journey_values = value_group([
-        value_record(1, 14, dts(2026, 9, 7, 10, 0), journey_tail(6, 0, 0b01)),
-        value_record(7, 15, dts(2026, 9, 20, 18, 31), journey_tail(5, 2, 0b01)),
+        value_record(1, 14, dts(2026, 9, 7, 10, 0), journey_tail(6, 0, 0)),
+        value_record(7, 15, dts(2026, 9, 18, 7, 44), journey_tail(5, 0, 0)),
     ], format_rev=2)
 
     fore, sur = b"PRIYA", b"RAMANATHAN"
@@ -715,7 +715,7 @@ def card_history():
                   origin=loc2(203, b"5578"),               # Wimbledon
                   dest=loc2(203, b"5685"), ipe_ptr=1, mop=8),
         tt_record(11, dts(2026, 9, 18, 7, 44), 0,
-                  origin=loc2(203, b"5685"), dest=None, ipe_ptr=1),
+                  origin=loc2(203, b"5685"), dest=None, ipe_ptr=2),
         tt_record(12, dts(2026, 9, 18, 17, 51), 610,
                   origin=loc2(203, b"5685"), dest=loc2(203, b"5578"),
                   ipe_ptr=1, mop=8),
@@ -739,10 +739,10 @@ def card_history():
         older.append(tt_record(12, dts(2026, 9, day, 8, 12), fare,
                                origin=loc2(203, origin), dest=loc2(203, dest),
                                ipe_ptr=1, mop=8))
-    # And one taken on a bus, on the ticket that has since left the card.
-    older.append(tt_record(12, dts(2026, 8, 28, 16, 20), 210,
-                           origin=loc2(206, naptan("wokgrand")),
-                           dest=loc2(206, naptan("guilbdst")), ipe_ptr=4, mop=8))
+    # And one on the season that has since left the card.
+    older.append(tt_record(12, dts(2026, 3, 10, 8, 5), 0,
+                           origin=loc2(203, b"5685"),
+                           dest=loc2(203, b"5598"), ipe_ptr=4, mop=8))
 
     # ---- The products the card has dropped since this file was first written.
     # Each is the IPE group as that read assembled it, behind the read time and
@@ -755,7 +755,7 @@ def card_history():
     gone_period.putb(3, (109).to_bytes(2, "big"))
     gone_period.put(106, 14, date_stamp(2025, 9, 1))
     gone_period.putb(34, loc1(203, b"5685"))     # Woking
-    gone_period.putb(40, loc1(203, b"1575"))     # Waterloo International
+    gone_period.putb(40, loc1(203, b"5598"))     # London Waterloo
     gone_period_values = value_group([
         value_record(1, 60, dts(2026, 1, 5, 7, 30),
                      period_tail(3, 0b01, date_stamp(2026, 3, 31), date_stamp(2026, 2, 4))),
@@ -773,7 +773,7 @@ def card_history():
     gone_voucher.put(0, 6, 4)
     gone_voucher.put(12, 4, 1)
     gone_voucher.buf[2] = 0
-    gone_voucher.putb(3, (8000).to_bytes(2, "big"))
+    gone_voucher.putb(3, (109).to_bytes(2, "big"))
     gone_voucher_values = value_group([
         value_record(1, 4, dts(2025, 12, 20, 14, 2), voucher_tail(2)),
         value_record(7, 5, dts(2025, 12, 24, 9, 18), voucher_tail(1)),
@@ -784,7 +784,7 @@ def card_history():
     gone_purse.put(6, 6, 0)
     gone_purse.put(12, 4, 1)
     gone_purse.buf[2] = 255
-    gone_purse.putb(3, (246).to_bytes(2, "big"))
+    gone_purse.putb(3, (8000).to_bytes(2, "big"))
     gone_purse.putb(10, (9000).to_bytes(2, "big"))
     gone_purse_values = value_group([
         value_record(7, 90, dts(2025, 7, 14, 8, 9), purse_tail(430)),
@@ -800,7 +800,7 @@ def card_history():
     gone_ent.put(50, 6, 30)
     gone_ent.put(90, 14, date_stamp(2024, 9, 1))
     gone_ent.put(104, 14, date_stamp(2025, 6, 30))
-    gone_ent.buf[20] = 15                        # EntitlementCode: half fare
+    gone_ent.buf[20] = 3                         # EntitlementCode: proportional fare
     gone_ent.buf[21] = 3                         # ConcessionaryClass: student
 
     return "Demo 04 SWR Touch", unix(2026, 9, 21, 19, 33), [
@@ -821,15 +821,15 @@ def card_history():
         ("Value history 100", gone_period_history),
         ("Product history 101", history_block(
             unix(2025, 12, 24, 10, 6), 5,
-            dir_entry(8000, 25, 0, True, date_stamp(2025, 12, 31)),
+            dir_entry(109, 25, 0, True, date_stamp(2025, 12, 31)),
             group(gone_voucher, B, gone_voucher_values))),
         ("Product history 102", history_block(
             unix(2025, 8, 1, 9, 30), 2,
-            dir_entry(246, 2, 0, True, date_stamp(2025, 8, 31)),
+            dir_entry(8000, 2, 0, True, date_stamp(2025, 8, 31)),
             group(gone_purse, B, gone_purse_values))),
         ("Product history 103", history_block(
             unix(2025, 6, 30, 18, 45), 6,
-            dir_entry(165, 14, 0, False, date_stamp(2025, 6, 30)),
+            dir_entry(246, 14, 0, False, date_stamp(2025, 6, 30)),
             group(gone_ent, B))),
     ]
 
