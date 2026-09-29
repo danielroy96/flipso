@@ -970,9 +970,18 @@ bool itso_parse_type2(ItsoCard* card, const uint8_t* pages, size_t len) {
 /* IPE Data Groups (TS 1000-2 clause 6, TS 1000-5 clause 2)           */
 /* ------------------------------------------------------------------ */
 
-/** Read a signed 16-bit big-endian value. */
+/** Read a signed 16-bit big-endian value: a VALS, which only a balance is. */
 static int32_t itso_int16(const uint8_t* data) {
     return (int16_t)((data[0] << 8) | data[1]);
+}
+
+/**
+ * Read an unsigned 16-bit big-endian value: a VALI, which every limit, deposit
+ * and price is (TS 1000-1 table 5). Read as signed, anything past GBP 327.67
+ * came out negative.
+ */
+static int32_t itso_uint16(const uint8_t* data) {
+    return (int32_t)((data[0] << 8) | data[1]);
 }
 
 /** Copy a fixed-length ASCII name field, trimming trailing spaces. */
@@ -1107,9 +1116,11 @@ static void itso_decode_value_record(ItsoValueRecord* out, const uint8_t* record
     out->dts = itso_bits(record, 16, 24);
 
     switch(typ) {
-    case ItsoTypStoredTravelRights: /* TS 1000-5 table 4. */
-    case ItsoTypChargeToAccount1: /* Table 12: the same bytes, counting up. */
+    case ItsoTypStoredTravelRights: /* TS 1000-5 table 4: a balance, a VALS. */
         itso_decode_money(itso_int16(record + 10), (record[12] >> 4) & 0x0F, &out->amount);
+        break;
+    case ItsoTypChargeToAccount1: /* Table 12: the same bytes, counting up - a VALI. */
+        itso_decode_money(itso_uint16(record + 10), (record[12] >> 4) & 0x0F, &out->amount);
         break;
 
     case ItsoTypLoyalty1:
@@ -1469,13 +1480,13 @@ static void itso_parse_purse_ipe(ItsoProduct* product, const uint8_t* data, size
     switch(product->typ) {
     case ItsoTypStoredTravelRights:
         if(len < 22) return;
-        itso_decode_money(itso_int16(data + 6), currency, &product->top_up_threshold);
-        itso_decode_money(itso_int16(data + 8), currency, &product->top_up_amount);
+        itso_decode_money(itso_uint16(data + 6), currency, &product->top_up_threshold);
+        itso_decode_money(itso_uint16(data + 8), currency, &product->top_up_amount);
         product->has_top_up = product->top_up_amount.value != 0;
-        itso_decode_money(itso_int16(data + 10), currency, &product->max_value);
-        itso_decode_money(itso_int16(data + 12), currency, &product->max_negative);
+        itso_decode_money(itso_uint16(data + 10), currency, &product->max_value);
+        itso_decode_money(itso_uint16(data + 12), currency, &product->max_negative);
         product->has_limits = true;
-        itso_decode_money(itso_int16(data + 14), (data[20] >> 4) & 0x0F, &product->deposit);
+        itso_decode_money(itso_uint16(data + 14), (data[20] >> 4) & 0x0F, &product->deposit);
         product->deposit_mop = data[19] & 0x0F;
         product->deposit_vat = (uint16_t)itso_bits(data, 164, 12);
         product->has_deposit = product->deposit.value != 0;
@@ -1486,9 +1497,9 @@ static void itso_parse_purse_ipe(ItsoProduct* product, const uint8_t* data, size
 
     case ItsoTypChargeToAccount1:
         if(len < 16) return;
-        itso_decode_money(itso_int16(data + 6), currency, &product->max_value);
+        itso_decode_money(itso_uint16(data + 6), currency, &product->max_value);
         product->has_limits = true;
-        itso_decode_money(itso_int16(data + 8), (data[14] >> 4) & 0x0F, &product->deposit);
+        itso_decode_money(itso_uint16(data + 8), (data[14] >> 4) & 0x0F, &product->deposit);
         product->deposit_mop = data[13] & 0x0F;
         product->deposit_vat = (uint16_t)itso_bits(data, 116, 12); /* At byte 14.5. */
         product->has_deposit = product->deposit.value != 0;
@@ -1503,9 +1514,9 @@ static void itso_parse_purse_ipe(ItsoProduct* product, const uint8_t* data, size
         product->weeks_per_period = data[6];
         product->max_transactions = data[7];
         product->has_charge_period = true;
-        itso_decode_money(itso_int16(data + 8), currency, &product->max_value);
+        itso_decode_money(itso_uint16(data + 8), currency, &product->max_value);
         product->has_limits = true;
-        itso_decode_money(itso_int16(data + 10), (data[16] >> 4) & 0x0F, &product->deposit);
+        itso_decode_money(itso_uint16(data + 10), (data[16] >> 4) & 0x0F, &product->deposit);
         product->deposit_mop = data[15] & 0x0F;
         product->deposit_vat = (uint16_t)itso_bits(data, 132, 12); /* At byte 16.5. */
         product->has_deposit = product->deposit.value != 0;
@@ -1694,7 +1705,7 @@ static void itso_parse_id_ipe(
         const size_t d = format_rev >= 2 ? 15 : 13; /* DepositCurrencyCode, low nibble. */
         product->deposit_mop = data[d + 1] >> 4;
         product->deposit_vat = (uint16_t)itso_bits(data, (uint32_t)(d + 1) * 8 + 4, 12);
-        itso_decode_money(itso_int16(data + d + 3), data[d] & 0x0F, &product->deposit);
+        itso_decode_money(itso_uint16(data + d + 3), data[d] & 0x0F, &product->deposit);
         product->has_deposit = product->deposit.value != 0;
     } else {
         /* Tables 22 and 22a agree up to HolderID; revision 2 then inserts the
@@ -1707,8 +1718,8 @@ static void itso_parse_id_ipe(
         product->deposit_vat = (uint16_t)itso_bits(data, (uint32_t)d * 8 + 4, 12);
         product->shell_deposit_mop = data[d + 2] >> 4;
         product->shell_deposit_vat = (uint16_t)itso_bits(data, (uint32_t)(d + 2) * 8 + 4, 12);
-        itso_decode_money(itso_int16(data + d + 5), valcs >> 4, &product->deposit);
-        itso_decode_money(itso_int16(data + d + 7), valcs & 0x0F, &product->shell_deposit);
+        itso_decode_money(itso_uint16(data + d + 5), valcs >> 4, &product->deposit);
+        itso_decode_money(itso_uint16(data + d + 7), valcs & 0x0F, &product->shell_deposit);
         product->has_deposit = product->deposit.value != 0;
         product->has_shell_deposit = product->shell_deposit.value != 0;
     }
@@ -1803,7 +1814,7 @@ static void itso_parse_period_ipe(
     int32_t paid;
     size_t mop_byte;
     if(format_rev == 1) {
-        paid = itso_int16(data + 22);
+        paid = itso_uint16(data + 22);
         mop_byte = 24;
     } else {
         paid = (int32_t)itso_bits(data, (uint32_t)(b + 6) * 8, 32);
@@ -1920,7 +1931,7 @@ static void itso_parse_journey_terms(
     int32_t paid;
     size_t mop_byte;
     if(format_rev == 1) {
-        paid = itso_int16(data + 16);
+        paid = itso_uint16(data + 16);
         mop_byte = 18;
     } else {
         paid = (int32_t)itso_bits(data, (uint32_t)(b + 4) * 8, 32);
@@ -1945,7 +1956,7 @@ static void itso_parse_journey_terms(
         t->max_transfers = data[fixed + 1];
         t->time_limit = data[fixed + 2];
         int32_t ride = format_rev >= 3 ? (int32_t)itso_bits(data, (uint32_t)(fixed + 3) * 8, 32) :
-                                         itso_int16(data + fixed + 3);
+                                         itso_uint16(data + fixed + 3);
         if(ride) itso_decode_money(ride, data[fixed + group - 1] & 0x0F, &t->ride_value);
         t->has_mode_group = true;
     }

@@ -534,6 +534,23 @@ static void parse_group(ItsoProduct* p, uint8_t typ, bool vgp, const uint8_t* sr
 static void spec_review_fields(void) {
     ItsoProduct p;
 
+    /* Limits, deposits and prices are VALI - unsigned (TS 1000-1 table 5) - so
+     * GBP 400 is 40000 pence, not a negative number. A purse's balance is the
+     * one amount that is signed. */
+    {
+        uint8_t purse[24] = {0x18, 0x01, 0xFF}; /* six blocks, revision 1 */
+        purse[10] = 0x9C, purse[11] = 0x40; /* MaxValue2: 40000 */
+        purse[14] = 0x9C, purse[15] = 0x40; /* DepositAmount: 40000 */
+        parse_group(&p, ItsoTypStoredTravelRights, false, purse, sizeof(purse));
+        check(
+            "a purse limit over GBP 327.67 is not negative",
+            p.max_value.valid && p.max_value.value == 40000 && p.deposit.value == 40000);
+        uint8_t account[20] = {0x14, 0x01, 0xFF}; /* five blocks, revision 1 */
+        account[6] = 0x9C, account[7] = 0x40; /* MaxValue4: 40000 */
+        parse_group(&p, ItsoTypChargeToAccount1, false, account, sizeof(account));
+        check("nor is a charge-to-account's", p.max_value.value == 40000);
+    }
+
     /* A ValueCurrencyCode's scaling applies to the limits it prices, not only
      * to the balance (TS 1000-5 table 2, annex A.21.2). */
     parse_group(
