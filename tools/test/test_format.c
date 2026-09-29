@@ -939,6 +939,19 @@ int main(int argc, char** argv) {
     check("a heading's icon byte is never a newline", heading[2] != '\n');
     check("and the heading is one line", strchr(heading, '\n') == heading + strlen(heading) - 1);
 
+    /* A ticket good within a set of zones has an area, not a journey. */
+    {
+        static const uint8_t zones[] = {204, 3, 0x07, 0x00, 0x00};
+        ItsoProduct ticket = card.products[0];
+        itso_parse_location(zones, sizeof(zones), ItsoLocStructLoc1, &ticket.from);
+        ticket.to.valid = false;
+        furi_string_reset(text);
+        flipso_format_product(text, &f, &card, &ticket);
+        check(
+            "a ticket's zone map is where it is valid",
+            shows(text, "Valid in: Zones 1,2,3\n") && !shows(text, "From: Zones"));
+    }
+
     /* A location listing several stops, the first of which the stop table
      * names: the name replaces the code, and the others are still counted. */
     {

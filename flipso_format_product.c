@@ -808,10 +808,14 @@ static void flipso_cat_product_details(
     /* A Space Saving IPE has an area element instead, and keeps the place it
      * was last used in @c from - not the start of a journey, so
      * flipso_cat_space_saving() labels it with the other facts of its use. */
+    /* A ticket's zone map (LocDefType 204, "valid within zone", TS 1000-1
+     * table 6) is an area too, when it stands alone: "From: Zones 1,2,3" reads
+     * as the start of a journey that has no end. */
+    const bool zones = product->from.valid && !product->to.valid && product->from.def_type == 204;
     if(product->space_saving) {
         flipso_cat_space_area(out, f, card);
     } else {
-        flipso_cat_location(out, f, "", identity ? "Valid in" : "From", &product->from);
+        flipso_cat_location(out, f, "", identity || zones ? "Valid in" : "From", &product->from);
         flipso_cat_location(out, f, "", identity ? "Also valid in" : "To", &product->to);
     }
     /* A period ticket may leave both locations out, and then it is good wherever
