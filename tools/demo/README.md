@@ -1,6 +1,6 @@
 # Demo cards
 
-Eleven synthetic ITSO cards, written as saved-card files and copied to the
+Twelve synthetic ITSO cards, written as saved-card files and copied to the
 Flipper, so that Flipso can be seen without owning the cards that carry the
 features. Nobody has a wallet with a loyalty IPE, a charge-to-account product,
 a blocked shell and a revision 1 period ticket in it; between them these
@@ -34,6 +34,7 @@ a card that was tapped, and nor would anyone reading the screen.
 | **Demo 09 MyXplore** | The same layout on an Ultralight EV1 (CMD10): 128-byte sectors, a shell carrying an MCRN (so the rotated first byte is 0x20), a period ticket with value records in both copies, and a log whose Record Offset makes the first slot the newer: two journeys on Xplore Dundee's route 22, between stops named by their NaptanCodes. |
 | **Demo 10 SPT coupons** | A paper book of coupons (TYP 29 in coupon form) whose area is a location - a LOC3 zone map - rather than a fare code, and whose backup counts four coupons a bit, so it can only say "up to". Hypothetical: no real ticket of this shape has been seen. |
 | **Demo 11 The Key Sussex** | A Brighton commuter's Southern Key, issued under Southern's own OID. A revision 1 season Brighton - London Victoria that Southern has blocked, a revision 3 Gatwick Express return in the return mode that revision adds, across two sectors, a purse spent past zero, and a business travel account by value (TYP 4), which no other card carries. |
+| **Demo 12 Bee Card** | A Manchester commuter's card from the Bee Network. A Metrolink season valid in zones 1 to 3 (a zone map, LocDefType 204), and a bus return from Piccadilly Gardens whose far end is a route and a stop together (216): route 36 at Swinton Civic Centre. Metrolink stops and bus stops by NaptanCode in the log, and an older tram journey recorded only by fare zone (207). |
 
 ## Adding one
 

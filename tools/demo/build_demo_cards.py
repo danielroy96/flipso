@@ -1331,9 +1331,137 @@ def card_key_sussex():
     ]
 
 
+# ====================================================================
+# Card 12 - a Manchester commuter's Bee Card
+#
+# Transport for Greater Manchester's card, issued under the Bee Network's OID
+# (125), for a holder who takes the tram from Sale into town and the bus out
+# to Swinton. Three location encodings no other card uses as they are meant:
+# a Metrolink season valid in fare zones 1 to 3 (a zonal bitmap, LocDefType
+# 204); a bus return whose far end is a route and a stop together (216),
+# route 36 at Swinton Civic Centre - a Bee Network route, so the operator in
+# the location is the Bee Network's own; and an old journey recorded only by
+# its zones (207). The rest are Metrolink stops and bus stops by NaptanCode.
+# Sale is in Metrolink zone 3.
+# ====================================================================
+def card_bee():
+    B, S, E, SCTL = 64, 16, 8, 7
+    ACTIVE = S - 1
+    OID = "0125"                                 # Bee Network, brand "Bee Card"
+    EXP = date_stamp(2030, 6, 30)
+
+    shell = shell_dataset(IIN, OID, "1200012", fvc=7, ksc=4, kvc=1, expiry=EXP,
+                          b=B, s=S, e=E, sctl=SCTL)
+
+    # ---- E1: ITSO ID, revision 2: an adult, named.
+    fore, sur = b"SAM", b"HOLLINGWORTH"
+    ident = Bits(52)
+    ident.put(0, 6, 13)
+    ident.put(6, 6, 0b000100)                    # forename and surname
+    ident.put(12, 4, 2)
+    ident.buf[2] = 255
+    ident.buf[5] = 0b00000011                    # IDFlags: photo, male
+    ident.put(50, 6, 10)
+    ident.putb(7, bcd("19880611"))
+    ident.put(130, 14, date_stamp(2025, 6, 30))
+    ident.put(144, 14, EXP)
+    ident.buf[29] = 0                            # EntitlementCode: none
+    ident.buf[30] = 1                            # ConcessionaryClass: adult
+    ident.buf[31] = len(fore)
+    ident.putb(32, fore)
+    ident.buf[32 + len(fore)] = len(sur)
+    ident.putb(33 + len(fore), sur)
+
+    # ---- E2: period ticket, revision 3: Metrolink 28-day passes, zones 1-3.
+    # No CPICC and no identity document, so RouteCode follows the 29 fixed
+    # bytes and the zone map is at 34 (TS 1000-5 table 3.27).
+    period = Bits(40)
+    period.put(0, 6, 10)
+    period.put(6, 6, 0b000010)                   # RouteCode and locations
+    period.put(12, 4, 3)
+    period.buf[2] = 7
+    period.putb(3, (125).to_bytes(2, "big"))
+    period.put(40, 16, 0xFE00)                   # TYP22Flags: every part of every day
+    period.put(64, 14, date_stamp(2026, 9, 14))  # IssueDate
+    period.put(96, 3, 2)                         # Class: standard
+    period.put(106, 14, date_stamp(2026, 9, 15)) # ValidityStartDate
+    period.buf[18] = 0xFF                        # ValidOnDayCode: every day
+    period.buf[19] = 1                           # PartySizeAdult
+    period.putb(23, (10450).to_bytes(4, "big"))  # AmountPaid: GBP 104.50
+    period.put(27 * 8, 4, 3)                     # by card
+    period.putb(29, b"00000")                    # RouteCode: any permitted
+    period.putb(34, loc1(204, bytes([0b00000111, 0, 0])))  # zones 1, 2 and 3
+    period_values = value_group([
+        value_record(1, 5, dts(2026, 9, 14, 17, 55),
+                     period_tail(1, 0b00, date_stamp(2026, 12, 31), date_stamp(2026, 9, 14))),
+        value_record(13, 6, dts(2026, 9, 15, 8, 5),
+                     period_tail(0, 0b00, date_stamp(2026, 12, 31), date_stamp(2026, 10, 12))),
+    ], format_rev=3)
+
+    # ---- E3: journey ticket, revision 2: a bus return from Piccadilly
+    # Gardens to Swinton, the far end a stop on route 36 (LocDefType 216).
+    # Sixteen blocks: a 216 location is eleven bytes with its tag and length.
+    ret = Bits(64)
+    ret.put(0, 6, 16)
+    ret.put(6, 6, 0b001010)                      # mode group, route and locations
+    ret.put(12, 4, 2)
+    ret.buf[2] = 1
+    ret.putb(3, (125).to_bytes(2, "big"))
+    ret.put(58, 14, date_stamp(2026, 9, 21))     # IssueDate
+    ret.put(93, 3, 2)                            # Class: standard
+    ret.buf[12] = 1                              # PartySizeAdult
+    ret.putb(16, (400).to_bytes(4, "big"))       # AmountPaid: GBP 4.00
+    ret.put(20 * 8, 4, 3)                        # by card
+    ret.put(29 * 8 + 4, 4, 0)                    # TYP23Mode: a ride each way
+    ret.putb(35, b"00000")
+    ret.putb(40, loc1(206, naptan("MANGWPDT")))  # Piccadilly Gardens (Stop P)
+    ret.putb(46, loc1(216, (125).to_bytes(2, "big") + sncode2("36") +
+                      naptan("MANPJPDW")))       # 36 at Swinton Civic Centre (Stop J)
+    ret_values = value_group([
+        value_record(1, 1, dts(2026, 9, 21, 17, 38), journey_tail(2, 0, 0)),
+        value_record(7, 2, dts(2026, 9, 21, 17, 40), journey_tail(1, 0, 0)),
+    ], format_rev=2)
+
+    entries = [
+        dir_entry(125, 16, 0, False, EXP),                          # E1 ITSO ID
+        dir_entry(125, 22, 4, True, date_stamp(2026, 12, 31)),      # E2 Metrolink
+        dir_entry(125, 23, 2, True, date_stamp(2026, 9, 22)),       # E3 bus return
+        bytes(5), bytes(5), bytes(5), bytes(5),                     # E4-E7 unused
+        log_entry(ptr=3, eei=0, when=dts(2026, 9, 21, 18, 16), record_offset=0,
+                  passback=5),
+    ]
+    chain = {1: ACTIVE, 2: 9, 9: ACTIVE, 3: 4, 4: 10, 10: ACTIVE}
+
+    # Record Offset 0: slot 3 is the newest. The tram in from Sale in the
+    # morning, the bus out to Swinton in the evening, and an older tram journey
+    # its validator recorded only by fare zone.
+    log = b"".join([
+        tt_record(12, dts(2026, 9, 14, 18, 2), 0,
+                  origin=loc2(207, (1).to_bytes(4, "big")),        # zone 1
+                  dest=loc2(207, (3).to_bytes(4, "big")), ipe_ptr=2),  # zone 3
+        tt_record(11, dts(2026, 9, 21, 8, 5), 0,
+                  origin=loc2(206, naptan("mantmwdm")), dest=None, ipe_ptr=2),  # Sale
+        tt_record(12, dts(2026, 9, 21, 8, 31), 0,
+                  origin=loc2(206, naptan("mantmwdm")),           # Sale
+                  dest=loc2(206, naptan("mantmwdt")), ipe_ptr=2),  # St Peter's Square
+        tt_record(12, dts(2026, 9, 21, 18, 16), 0,
+                  origin=loc2(206, naptan("MANGWPDT")),           # Piccadilly Gardens
+                  dest=loc2(206, naptan("MANPJPDW")), ipe_ptr=3),  # Swinton Civic Centre
+    ])
+
+    return "Demo 12 Bee Card", unix(2026, 9, 21, 20, 40), [
+        ("Shell", bytes(shell.buf)),
+        ("Directory", directory(entries, chain, S, E, SCTL, 0x31)),
+        ("Product 1", group(ident, B)),
+        ("Product 2", group(period, B, period_values)),
+        ("Product 3", group(ret, B, ret_values)),
+        ("Log", log),
+    ]
+
+
 CARDS = [card_the_key, card_blocked, card_cmd2, card_history, card_subway_paper,
          card_subway_return, card_gwr_touch, card_ntag, card_ultralight_ev1,
-         card_zonal_coupons, card_key_sussex]
+         card_zonal_coupons, card_key_sussex, card_bee]
 
 
 def main():
