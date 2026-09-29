@@ -54,3 +54,24 @@ jobs:
           name: flipso-${{ steps.build.outputs.suffix }}
           path: ${{ steps.build.outputs.fap-artifacts }}
           if-no-files-found: error
+
+  # The Apps Catalog's own bundler over this commit: the build, icon,
+  # screenshots and markdown checks a catalog submission has to pass.
+  catalog:
+    name: Apps Catalog validator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The catalog's requirements pin Pillow 10.4, and its CI runs on 3.11.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: tools/catalog/validate.sh
+        run: tools/catalog/validate.sh
+      # The bundle holds the icon and screenshots exactly as the catalog will
+      # show them.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catalog-bundle
+          path: dist/catalog-bundle.zip
+          if-no-files-found: error

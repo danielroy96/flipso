@@ -23,6 +23,7 @@ loop, the hardware, and the things that have wasted time before.
 | Read a card left lying on the reader | `tools/flipper/flipctl scan` |
 | Every screen of a saved card, on this machine | `tools/test/screens.py card.flipso` |
 | Search the ITSO spec | `tools/spec/itso_spec.py grep PATTERN` |
+| Check HEAD against the Apps Catalog | `tools/catalog/validate.sh` |
 | Refresh the IDE's index of the sources | `tools/ide/compdb.py` |
 
 Slash commands wrap the common ones: `/deploy`, `/drive`, `/watch`, `/mem`,
@@ -75,6 +76,8 @@ tools/test/           host test suite, synthetic card builder, card replay,
                       screens.py (every screen of a saved card)
 tools/spec/           itso_spec.py: fetch and search the TS 1000 parts
 tools/debug/          opt-in card-dump instrumentation
+tools/catalog/        the Apps Catalog manifest, and validate.sh to run the
+                      catalog's own bundler over HEAD
 tools/demo/           synthetic demo cards for the device, as saved-card files;
                       new_encodings.py says what a real card has that they lack
 tools/stations/       station table builder and its data provenance

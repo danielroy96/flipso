@@ -17,6 +17,7 @@ dump.txt
 # Written by tools/ide/compdb.py; holds absolute paths into ~/.ufbt.
 /compile_commands.json
 
-# Created on first use by tools/flipper/flipctl.
+# Created on first use by tools/flipper/flipctl and tools/catalog/validate.sh.
 tools/flipper/.venv/
+tools/catalog/.venv/
 __pycache__/

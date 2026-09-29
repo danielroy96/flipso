@@ -1,0 +1,25 @@
+# Flipso's entry in the Flipper Apps Catalog. A submission copies this file to
+# applications/NFC/flipso/manifest.yml in flipperdevices/flipper-application-catalog,
+# with commit_sha set to the commit being published - validate.sh prints it
+# filled in for HEAD. Name, id, version, author, icon, category and the short
+# description all come from application.fam, so they are not repeated here.
+sourcecode:
+  type: git
+  location:
+    origin: https://github.com/danielroy96/flipso.git
+    commit_sha: 0000000000000000000000000000000000000000
+# Not README.md: the catalog allows only a subset of markdown (no HTML, images,
+# code or headers below level 2), and the GitHub landing page needs all of those.
+description: "@docs/catalog.md"
+changelog: "@changelog.md"
+# The first is the catalog's preview. The bundler only accepts 4x or 8x
+# captures of the 128x64 screen, and treats any pixel lighter than (15,15,15)
+# as background - see the flipper-hardware skill for taking them.
+screenshots:
+  - docs/screenshots/menu.png
+  - docs/screenshots/products.png
+  - docs/screenshots/product-detail.png
+  - docs/screenshots/payg.png
+  - docs/screenshots/journeys.png
+  - docs/screenshots/card.png
+  - docs/screenshots/id.png
