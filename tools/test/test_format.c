@@ -272,6 +272,14 @@ static void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
         technical(text, "Last updated by machine: 004E30F3\n  Operator: Unknown (24585)\n"));
     check("160-byte sectors are the layout", shows(text, "Layout: 16 sectors of 160 bytes\n"));
 
+    /* Its ID never expires and nor does the entitlement on it, in the other
+     * of the two encodings of "never": one line says so, not two. */
+    furi_string_reset(text);
+    flipso_format_id(text, f, card);
+    check(
+        "an entitlement that never ends is not a second No expiry",
+        shows(text, "Expires: No expiry\n") && !shows(text, "Entitlement until: "));
+
     furi_string_reset(text);
     flipso_format_id(text, f, card);
     check("an ID with nothing optional says so", shows(text, "Name: Not stored\n"));

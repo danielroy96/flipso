@@ -10,6 +10,15 @@ static bool flipso_product_is_identity(const ItsoProduct* product) {
     return product->typ == ItsoTypId || product->typ == ItsoTypEntitlement;
 }
 
+/**
+ * True when two dates say the same thing on screen: the same day, or both one
+ * of the two encodings of "no expiry" (itso_date_open()). A second date is only
+ * worth its line when it differs from the expiry.
+ */
+static bool flipso_same_date(uint16_t a, uint16_t b) {
+    return a == b || (itso_date_open(a) && itso_date_open(b));
+}
+
 /** A deposit, how it was paid, and whether it comes back. */
 static void flipso_cat_deposit(
     FuriString* out,
@@ -770,10 +779,10 @@ static void flipso_cat_product_details(
         /* Revisions 1 and 2 of a period ticket hold a DTS here, not a DATE. */
         flipso_cat_datetime_line(out, "", "Valid from", product->ticket.valid_from_dts);
     }
-    if(product->has_end_date && product->end_date != product->expiry) {
+    if(product->has_end_date && !flipso_same_date(product->end_date, product->expiry)) {
         flipso_cat_expiry(out, "", "Valid to", "Ended", product->end_date, now);
     }
-    if(product->has_sub_expiry && product->sub_expiry != product->expiry) {
+    if(product->has_sub_expiry && !flipso_same_date(product->sub_expiry, product->expiry)) {
         flipso_cat_expiry(
             out, "", "Entitlement until", "Entitlement ended", product->sub_expiry, now);
     }
@@ -783,7 +792,7 @@ static void flipso_cat_product_details(
         flipso_cat_expiry(
             out, "", "Current pass until", "Current pass ended", product->current_expiry, now);
     }
-    if(product->has_stored_expiry && product->stored_expiry != product->expiry) {
+    if(product->has_stored_expiry && !flipso_same_date(product->stored_expiry, product->expiry)) {
         const bool rides = product->typ == ItsoTypJourneyTicket;
         flipso_cat_expiry(
             out,
