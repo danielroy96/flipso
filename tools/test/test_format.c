@@ -284,6 +284,60 @@ static void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
     furi_string_free(text);
 }
 
+/*
+ * The two full-shell Type 2 cards: the chip named from the media definition,
+ * the lock bytes judged against what TS 1000-10 clause 10.23.1 recommends, a
+ * CMD9's Abacus, and a history that takes both copies of the value records.
+ */
+static void demo_type2_full(const FlipsoFormat* f, const ItsoCard* card, bool ntag) {
+    FuriString* text = furi_string_alloc();
+
+    flipso_format_card(text, f, card, NULL, 0);
+    check("a full-shell tag has a card number of its own", shows(text, "Card number\n633597 "));
+    check("its shell pages are locked", shows(text, "Locked pages: 4-11\n  Shell locked: Yes\n"));
+    if(ntag) {
+        check("CMD9 names its chip", shows(text, "Chip: NTAG215\n"));
+        check("and its memory", shows(text, "Memory: 540 bytes\n"));
+        check("and its media", shows(text, "Card type: NTAG (CMD9)\n"));
+        check(
+            "its Abacus counts down its uses", shows(text, "Uses left: 10\n  Abacus: 5 of 16\n"));
+        check("64-byte sectors are the layout", shows(text, "Layout: 9 sectors of 64 bytes\n"));
+
+        /* The same card with its Abacus run out (TS 1000-10 table 107). */
+        static ItsoCard retired;
+        retired = *card;
+        retired.chip_abacus = 16;
+        furi_string_reset(text);
+        flipso_format_card(text, f, &retired, NULL, 0);
+        house_style("a retired CMD9's card screen", text);
+        check("a retired CMD9 says so", shows(text, "Status: Retired\n"));
+        check(
+            "and has no uses left", shows(text, "Uses left: None, retired\n  Abacus: 16 of 16\n"));
+        furi_string_reset(text);
+        flipso_format_summary(text, f, &retired);
+        check("its summary leads with it", shows(text, "Card: Retired\n"));
+        furi_string_reset(text);
+        flipso_format_card(text, f, card, NULL, 0);
+    } else {
+        check("CMD10 names its chip", shows(text, "Chip: Ultralight EV1\n"));
+        check("and its media", shows(text, "Card type: Ultralight EV1 (CMD10)\n"));
+        check("and has no Abacus", !shows(text, "Abacus"));
+        check("its rotated shell keeps its MCRN", shows(text, "Card reference: 4917250331\n"));
+    }
+
+    furi_string_reset(text);
+    flipso_format_product(text, f, card, &card->products[0]);
+    check(
+        ntag ? "CMD9 history reaches into the other copy" :
+               "CMD10 history reaches into the other copy",
+        shows(text, ntag ? "Rides left: 7\n" : "Passes left: 1\n"));
+
+    furi_string_reset(text);
+    flipso_format_taps(text, f, card);
+    check("both log records are journeys", shows(text, "(latest)\n") && card->tap_count == 2);
+    furi_string_free(text);
+}
+
 /* Wording pinned against the demo card that carries every product type. */
 static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     FuriString* text = furi_string_alloc();
@@ -705,6 +759,8 @@ int main(int argc, char** argv) {
             f.media = &demo_media;
             every_screen(entry->d_name, &f, &demo_card);
             if(strncmp(entry->d_name, "Demo 1", 6) == 0) demo_one(&f, &demo_card);
+            if(strncmp(entry->d_name, "Demo 8", 6) == 0) demo_type2_full(&f, &demo_card, true);
+            if(strncmp(entry->d_name, "Demo 9", 6) == 0) demo_type2_full(&f, &demo_card, false);
             if(strncmp(entry->d_name, "Demo 7", 6) == 0) {
                 /* Judged on the day after it was read, when both tickets ran. */
                 FlipsoFormat read_day = f;
@@ -720,7 +776,7 @@ int main(int argc, char** argv) {
             cards++;
         }
         if(dir) closedir(dir);
-        check("all seven demo cards were rendered", cards == 7);
+        check("all nine demo cards were rendered", cards == 9);
         check("and a saved chip block was among them", chips > 0);
     }
 

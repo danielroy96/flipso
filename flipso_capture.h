@@ -31,11 +31,12 @@ extern "C" {
 #endif
 
 /**
- * A shell, a directory, a cyclic log and its history, the chip's description,
- * one group per directory entry, one value history per entry, and the same pair
- * again for each product the card has dropped since a file was written.
+ * A shell, a directory, a cyclic log and its history, the chip's description
+ * and a Type 2 tag's chip pages, one group per directory entry, one value
+ * history per entry, and the same pair again for each product the card has
+ * dropped since a file was written.
  */
-#define FLIPSO_CAPTURE_MAX_BLOCKS (ITSO_MAX_PRODUCTS * 2 + ITSO_MAX_HISTORIC_PRODUCTS * 2 + 5)
+#define FLIPSO_CAPTURE_MAX_BLOCKS (ITSO_MAX_PRODUCTS * 2 + ITSO_MAX_HISTORIC_PRODUCTS * 2 + 6)
 
 /**
  * Block index the products that have left the card are keyed from.
@@ -86,7 +87,9 @@ _Static_assert(
  * grows towards this rather than starting at it: a CMD7 card fills about a
  * tenth of it, and the Flipper has 190 KB of heap for everything.
  */
-#define FLIPSO_CAPTURE_MAX_BYTES (FLIPSO_CAPTURE_MAX_BLOCKS * ITSO_MAX_GROUP_LEN)
+#define FLIPSO_CAPTURE_MAX_BYTES                      \
+    (FLIPSO_CAPTURE_MAX_BLOCKS * ITSO_MAX_GROUP_LEN + \
+     ITSO_MAX_HISTORIC_PRODUCTS * FLIPSO_PRODUCT_HISTORY_HEADER)
 
 /** Longest key the file uses, terminator included: "Product history 103". */
 #define FLIPSO_CAPTURE_KEY_MAX 24
@@ -97,7 +100,8 @@ _Static_assert(
  * A key, then three characters per byte. Too large for the app's 4 KB stack:
  * the caller allocates this buffer on the heap.
  */
-#define FLIPSO_CAPTURE_LINE_MAX (FLIPSO_CAPTURE_KEY_MAX + ITSO_MAX_GROUP_LEN * 3)
+#define FLIPSO_CAPTURE_LINE_MAX \
+    (FLIPSO_CAPTURE_KEY_MAX + (ITSO_MAX_GROUP_LEN + FLIPSO_PRODUCT_HISTORY_HEADER) * 3)
 
 /** Which data group a block of captured bytes came from. */
 typedef enum {
@@ -131,6 +135,13 @@ typedef enum {
      * A card holds this instead of the Shell/Directory/Product blocks, not as
      * well: it is the raw dump the whole card decodes from. */
     FlipsoBlockType2,
+
+    /* Pages 0-3 of a full-shell Type 2 tag (CMD9, CMD10): the chip serial, the
+     * lock bytes and the one-time-programmable page, which on a CMD9 holds the
+     * Abacus. Such a card is otherwise saved as the Shell/Directory/Product/Log
+     * blocks a smartcard is, and these pages are the part of it that lies
+     * outside the ITSO sectors; itso_parse_type2_tag() reads them. */
+    FlipsoBlockTag,
 } FlipsoBlockKind;
 
 /**
@@ -195,6 +206,28 @@ bool flipso_capture_add(
     FlipsoBlockKind kind,
     uint8_t index,
     const uint8_t* data,
+    size_t len);
+
+/**
+ * Keep a CMD9 or CMD10 card as the blocks a smartcard is kept as.
+ *
+ * Its page memory is walked the way a POST walks it: the shell put back in
+ * order, the chip pages 0-3 as a Tag block, the live one of the two directory
+ * copies, each product's sector chain, and the log's two records. Saved that
+ * way rather than as the page memory, the card goes through the same decoder
+ * and the same history merge as a smartcard - and the live read decodes the
+ * card from these blocks too, so a saved one cannot differ from it.
+ *
+ * @param card    working space: the shell and directory are decoded into it to
+ *                find the sectors. Decode the capture afterwards for the card.
+ * @param pages   the page memory from page 0, at least itso_type2_full_len().
+ * @return false, having kept nothing, unless @p pages hold a whole CMD9 or
+ *         CMD10 card with the geometry its media fix.
+ */
+bool flipso_capture_add_type2_full(
+    FlipsoCapture* capture,
+    ItsoCard* card,
+    const uint8_t* pages,
     size_t len);
 
 /**

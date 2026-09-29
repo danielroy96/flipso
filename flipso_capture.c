@@ -100,7 +100,14 @@ static uint8_t* flipso_capture_reserve(
     FlipsoBlockKind kind,
     uint8_t index,
     size_t len) {
-    if(!capture || len == 0 || len > ITSO_MAX_GROUP_LEN) return NULL;
+    /* A block is at most one sector chain, and a dropped product's is that
+     * behind its header: a chain can fill ITSO_MAX_GROUP_LEN exactly - an
+     * Ultralight EV1's IPE over two 128-byte sectors and both copies of its
+     * value records - and still has to be kept when the card lets it go. */
+    size_t max = kind == FlipsoBlockProductHistory ?
+                     ITSO_MAX_GROUP_LEN + FLIPSO_PRODUCT_HISTORY_HEADER :
+                     ITSO_MAX_GROUP_LEN;
+    if(!capture || len == 0 || len > max) return NULL;
     if(capture->count >= FLIPSO_CAPTURE_MAX_BLOCKS) return NULL;
     /* A repeat means a malformed file, or a reader reading the same sector
      * twice; either way the first answer is the one to keep. */
@@ -139,6 +146,98 @@ bool flipso_capture_add(
     uint8_t* out = flipso_capture_reserve(capture, kind, index, len);
     if(!out) return false;
     memcpy(out, data, len);
+    return true;
+}
+
+/**
+ * Read a sector chain straight into a new block of the arena, which is then
+ * trimmed to what the chain held - so no chain-sized scratch buffer is needed
+ * beside the one the capture already has.
+ */
+static void flipso_capture_add_chain(
+    FlipsoCapture* capture,
+    FlipsoBlockKind kind,
+    uint8_t index,
+    size_t (*gather)(ItsoType2Pages* source, const uint8_t* dir, uint8_t start, uint8_t* out),
+    ItsoType2Pages* source,
+    const uint8_t* dir,
+    uint8_t start) {
+    uint8_t* out = flipso_capture_reserve(capture, kind, index, ITSO_MAX_GROUP_LEN);
+    if(!out) return;
+    size_t got = gather(source, dir, start, out);
+    FlipsoCaptureBlock* block = &capture->blocks[capture->count - 1];
+    capture->len -= block->len - got;
+    block->len = (uint16_t)got;
+    if(got == 0) capture->count--; /* The last block, so nothing moves. */
+}
+
+static size_t flipso_capture_gather_group(
+    ItsoType2Pages* source,
+    const uint8_t* dir,
+    uint8_t start,
+    uint8_t* out) {
+    return itso_read_chain(
+        source->card,
+        dir,
+        ITSO_TYPE2_DIR_LEN,
+        start,
+        itso_type2_read_sector,
+        source,
+        out,
+        ITSO_MAX_GROUP_LEN);
+}
+
+static size_t flipso_capture_gather_log(
+    ItsoType2Pages* source,
+    const uint8_t* dir,
+    uint8_t start,
+    uint8_t* out) {
+    (void)start;
+    return itso_read_log_sectors(
+        source->card,
+        dir,
+        ITSO_TYPE2_DIR_LEN,
+        itso_type2_read_sector,
+        source,
+        out,
+        ITSO_MAX_GROUP_LEN);
+}
+
+bool flipso_capture_add_type2_full(
+    FlipsoCapture* capture,
+    ItsoCard* card,
+    const uint8_t* pages,
+    size_t len) {
+    if(!capture || !card || itso_type2_kind(pages, len) != ItsoType2FullShell) return false;
+
+    uint8_t shell[ITSO_TYPE2_FULL_SHELL_LEN];
+    itso_card_reset(card);
+    itso_type2_full_shell(pages, len, shell);
+    if(!itso_parse_shell(card, shell, sizeof(shell))) return false;
+    size_t needed = itso_type2_full_len(card);
+    if(needed == 0 || needed > len) return false;
+
+    flipso_capture_add(capture, FlipsoBlockShell, 0, shell, sizeof(shell));
+    flipso_capture_add(capture, FlipsoBlockTag, 0, pages, ITSO_TYPE2_TAG_LEN);
+
+    /* As on the other media, a directory that will not parse still leaves the
+     * shell worth keeping: the card number and expiry are in it. */
+    const uint8_t* dir = itso_type2_directory(card, pages, len);
+    if(!dir || !itso_parse_directory(card, dir, ITSO_TYPE2_DIR_LEN)) return true;
+    flipso_capture_add(capture, FlipsoBlockDirectory, 0, dir, ITSO_TYPE2_DIR_LEN);
+
+    ItsoType2Pages source = {card, pages, len};
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        uint8_t entry = card->products[i].dir_index;
+        flipso_capture_add_chain(
+            capture, FlipsoBlockProduct, entry, flipso_capture_gather_group, &source, dir, entry);
+    }
+    /* Two records, one per sector, linked from the log entry's own sector
+     * (TS 1000-10 figure 4.1: Log File A in sector 2, B in sector 3). */
+    if(card->log_dir_index) {
+        flipso_capture_add_chain(
+            capture, FlipsoBlockLog, 0, flipso_capture_gather_log, &source, dir, 0);
+    }
     return true;
 }
 
@@ -222,6 +321,12 @@ bool flipso_capture_decode(const FlipsoCapture* capture, ItsoCard* card) {
     const FlipsoCaptureBlock* shell = flipso_capture_find(capture, FlipsoBlockShell, 0);
     if(!shell) return false;
     if(!itso_parse_shell(card, capture->bytes + shell->offset, shell->len)) return false;
+
+    /* A CMD9 or CMD10 card's chip pages, which say which chip it is and, on a
+     * CMD9, how far its Abacus has counted. After the shell, which names the
+     * chip; before the rest, as a live read takes them. */
+    const FlipsoCaptureBlock* tag = flipso_capture_find(capture, FlipsoBlockTag, 0);
+    if(tag) itso_parse_type2_tag(card, capture->bytes + tag->offset, tag->len);
 
     /* From here the sequence mirrors flipso_read_card(), including what it does
      * when a group is missing: a directory that will not parse still leaves the
@@ -308,10 +413,15 @@ bool flipso_capture_decode(const FlipsoCapture* capture, ItsoCard* card) {
  *
  * The two histories differ in the length of a record and in how one is dated,
  * and in nothing else, so the walk below is written once against this.
+ *
+ * A run may continue in another: a product on a software anti-tear card keeps
+ * its value records in two copies of the group, a sector or more apart, and
+ * the history is only whole with both.
  */
-typedef struct {
+typedef struct FlipsoRecordRun {
     const uint8_t* data;
     uint8_t count;
+    const struct FlipsoRecordRun* next;
 } FlipsoRecordRun;
 
 /** The records of a block of back-to-back fixed-length records. */
@@ -319,17 +429,19 @@ static FlipsoRecordRun flipso_capture_run(
     const FlipsoCapture* capture,
     const FlipsoCaptureBlock* block,
     size_t record_len) {
-    FlipsoRecordRun run = {NULL, 0};
+    FlipsoRecordRun run = {NULL, 0, NULL};
     if(!block) return run;
     run.data = capture->bytes + block->offset;
     run.count = (uint8_t)(block->len / record_len);
     return run;
 }
 
-/** True when @p record appears byte for byte anywhere in @p run. */
+/** True when @p record appears byte for byte anywhere in @p run or its sequels. */
 static bool flipso_run_holds(const FlipsoRecordRun* run, const uint8_t* record, size_t len) {
-    for(uint8_t i = 0; i < run->count; i++) {
-        if(memcmp(run->data + (size_t)i * len, record, len) == 0) return true;
+    for(; run; run = run->next) {
+        for(uint8_t i = 0; i < run->count; i++) {
+            if(memcmp(run->data + (size_t)i * len, record, len) == 0) return true;
+        }
     }
     return false;
 }
@@ -352,32 +464,35 @@ static uint8_t flipso_collect_history(
     uint8_t* out) {
     uint8_t kept = 0;
 
-    for(uint8_t i = 0; i < from->count; i++) {
-        const uint8_t* record = from->data + (size_t)i * record_len;
-        if(!present(record, record_len)) continue;
-        if(flipso_run_holds(live, record, record_len)) continue;
-        if(also_live && flipso_run_holds(also_live, record, record_len)) continue;
+    for(; from; from = from->next) {
+        for(uint8_t i = 0; i < from->count; i++) {
+            const uint8_t* record = from->data + (size_t)i * record_len;
+            if(!present(record, record_len)) continue;
+            if(flipso_run_holds(live, record, record_len)) continue;
+            if(also_live && flipso_run_holds(also_live, record, record_len)) continue;
 
-        /* Already collected: the previous file holds its live log and its own
+            /* Already collected: the previous file holds its live log and its own
          * history, and a record can sit in both if it was written twice. */
-        FlipsoRecordRun collected = {out, kept};
-        if(flipso_run_holds(&collected, record, record_len)) continue;
+            FlipsoRecordRun collected = {out, kept, NULL};
+            if(flipso_run_holds(&collected, record, record_len)) continue;
 
-        /* Insertion sort, newest first, so that a cap keeps the newest. */
-        uint8_t pos = kept;
-        for(uint8_t j = 0; j < kept; j++) {
-            if(newer(record, out + (size_t)j * record_len)) {
-                pos = j;
-                break;
+            /* Insertion sort, newest first, so that a cap keeps the newest. */
+            uint8_t pos = kept;
+            for(uint8_t j = 0; j < kept; j++) {
+                if(newer(record, out + (size_t)j * record_len)) {
+                    pos = j;
+                    break;
+                }
             }
-        }
-        if(pos >= max) continue;
+            if(pos >= max) continue;
 
-        if(kept < max) kept++;
-        for(uint8_t j = kept - 1; j > pos; j--) {
-            memcpy(out + (size_t)j * record_len, out + (size_t)(j - 1) * record_len, record_len);
+            if(kept < max) kept++;
+            for(uint8_t j = kept - 1; j > pos; j--) {
+                memcpy(
+                    out + (size_t)j * record_len, out + (size_t)(j - 1) * record_len, record_len);
+            }
+            memcpy(out + (size_t)pos * record_len, record, record_len);
         }
-        memcpy(out + (size_t)pos * record_len, record, record_len);
     }
 
     return kept;
@@ -391,12 +506,14 @@ static uint8_t flipso_count_new(
     size_t record_len,
     bool (*present)(const uint8_t* record, size_t len)) {
     uint8_t count = 0;
-    for(uint8_t i = 0; i < live->count; i++) {
-        const uint8_t* record = live->data + (size_t)i * record_len;
-        if(!present(record, record_len)) continue;
-        if(flipso_run_holds(previous, record, record_len)) continue;
-        if(flipso_run_holds(previous_history, record, record_len)) continue;
-        count++;
+    for(; live; live = live->next) {
+        for(uint8_t i = 0; i < live->count; i++) {
+            const uint8_t* record = live->data + (size_t)i * record_len;
+            if(!present(record, record_len)) continue;
+            if(flipso_run_holds(previous, record, record_len)) continue;
+            if(flipso_run_holds(previous_history, record, record_len)) continue;
+            count++;
+        }
     }
     return count;
 }
@@ -406,21 +523,35 @@ static bool flipso_value_record_present(const uint8_t* record, size_t len) {
     return !itso_is_blank(record, len);
 }
 
-/** The value records inside one product block, as a run. */
+/**
+ * The value records inside one product block, as a run: the current copy of the
+ * group, continuing into the previous copy where the card keeps one.
+ *
+ * @param previous_copy filled with the second copy's run and linked behind the
+ *                      one returned, so it must live as long as that does.
+ */
 static FlipsoRecordRun flipso_capture_value_run(
     const FlipsoCapture* capture,
     const FlipsoCaptureBlock* group,
-    uint8_t sector_size) {
-    FlipsoRecordRun run = {NULL, 0};
+    uint8_t sector_size,
+    FlipsoRecordRun* previous_copy) {
+    FlipsoRecordRun run = {NULL, 0, NULL};
+    *previous_copy = run;
     if(!group || sector_size == 0) return run;
 
+    const uint8_t* bytes = capture->bytes + group->offset;
     size_t offset = 0;
-    uint8_t records =
-        itso_value_records(capture->bytes + group->offset, group->len, sector_size, &offset);
+    uint8_t records = itso_value_records(bytes, group->len, sector_size, &offset);
     if(records == 0) return run;
-
-    run.data = capture->bytes + group->offset + offset;
+    run.data = bytes + offset;
     run.count = records;
+
+    records = itso_previous_value_records(bytes, group->len, sector_size, &offset);
+    if(records) {
+        previous_copy->data = bytes + offset;
+        previous_copy->count = records;
+        run.next = previous_copy;
+    }
     return run;
 }
 
@@ -473,8 +604,10 @@ static void flipso_merge_value_records(
          * there is not lost by this: flipso_carry_gone_products() keeps it. */
         if(!flipso_capture_same_entry(capture, previous, entry)) continue;
 
-        FlipsoRecordRun live = flipso_capture_value_run(capture, group, sector_size);
-        FlipsoRecordRun was = flipso_capture_value_run(previous, was_group, was_sector_size);
+        FlipsoRecordRun live_copy, was_copy;
+        FlipsoRecordRun live = flipso_capture_value_run(capture, group, sector_size, &live_copy);
+        FlipsoRecordRun was =
+            flipso_capture_value_run(previous, was_group, was_sector_size, &was_copy);
         FlipsoRecordRun was_history = flipso_capture_run(
             previous,
             flipso_capture_find(previous, FlipsoBlockValueHistory, entry),
@@ -496,7 +629,7 @@ static void flipso_merge_value_records(
             itso_value_record_newer,
             FLIPSO_CAPTURE_MAX_VALUE_HISTORY,
             records);
-        FlipsoRecordRun collected = {records, kept};
+        FlipsoRecordRun collected = {records, kept, NULL};
         kept += flipso_collect_history(
             &was_history,
             &live,
@@ -643,14 +776,6 @@ static void flipso_carry_gone_products(
      * previous file means nothing beyond keeping its blocks together. */
     for(uint8_t i = 0; i < count; i++) {
         const FlipsoGoneProduct* gone = &kept[i];
-        /* The header has to fit inside the same block as the group, and a block
-         * is capped at one sector chain. A group that long is longer than any
-         * geometry the decoder assembles, so this is a bound rather than a case
-         * worth handling. */
-        if((size_t)gone->group_len + FLIPSO_PRODUCT_HISTORY_HEADER > ITSO_MAX_GROUP_LEN) {
-            continue;
-        }
-
         uint8_t index = (uint8_t)(FLIPSO_CAPTURE_HISTORY_BASE + i);
         uint8_t* out = flipso_capture_reserve(
             capture,
@@ -821,7 +946,7 @@ void flipso_capture_merge_history(
         itso_tap_record_newer,
         FLIPSO_CAPTURE_MAX_LOG_HISTORY,
         records);
-    FlipsoRecordRun collected = {records, kept};
+    FlipsoRecordRun collected = {records, kept, NULL};
     kept += flipso_collect_history(
         &was_history,
         &live,
@@ -872,6 +997,9 @@ static void flipso_capture_key(const FlipsoCaptureBlock* block, char* out, size_
         break;
     case FlipsoBlockType2:
         snprintf(out, out_len, "Type 2");
+        break;
+    case FlipsoBlockTag:
+        snprintf(out, out_len, "Tag");
         break;
     case FlipsoBlockValueHistory:
         snprintf(out, out_len, "Value history %u", block->index);
@@ -1065,6 +1193,8 @@ bool flipso_capture_parse_line(FlipsoCapture* capture, const char* line) {
         kind = FlipsoBlockChip;
     } else if(strcmp(key, "Type 2") == 0) {
         kind = FlipsoBlockType2;
+    } else if(strcmp(key, "Tag") == 0) {
+        kind = FlipsoBlockTag;
     } else if(flipso_capture_indexed_key(key, "Product history ", &index)) {
         kind = FlipsoBlockProductHistory;
     } else if(flipso_capture_indexed_key(key, "Product ", &index)) {

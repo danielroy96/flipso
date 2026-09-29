@@ -338,6 +338,97 @@ def type2_page_memory(uid, entry, dataset=None, instance=T2_INSTANCE, seal=T2_SE
     return bytes(p)
 
 
+# ------------------------------------------------ Full-shell Type 2 (CMD9/CMD10)
+def sct_bits(sector_count):
+    """psi: the smallest number of bits with S <= 2^psi (TS 1000-2 5.1.5.1)."""
+    psi = 1
+    while (1 << psi) < sector_count and psi < 8:
+        psi += 1
+    return psi
+
+
+def directory(entries, chain, sector_count, dir_entries, sct_len, sequence,
+              blocked=False, instance=None):
+    """A Directory Data Group: the entries, the Sector Chain Table, DIRS#.
+
+    @p chain maps a sector to the sector that follows it. A chain ending at S-1
+    is a product in use, one ending at S-2 is blocked, and one pointing at
+    itself has never been written (TS 1000-2 clause 5.1.5.2).
+    """
+    base = 2 + 5 * dir_entries
+    d = Bits(base + sct_len + 1)
+    d.put(0, 6, 0)                              # DIRLength: RFU
+    # DIRBitMap: bit 0 stops the whole shell, bits 2:1 say the last entry is a
+    # log entry. The two sit next to each other, which is why the blocking bit
+    # is worth writing deliberately rather than by offset from the top.
+    d.put(6, 6, 0b000010 | (1 if blocked else 0))
+    d.put(12, 4, 1)                             # DIRFormatRevision
+    for i, entry in enumerate(entries):
+        d.putb(2 + i * 5, entry)
+
+    psi = sct_bits(sector_count)
+    for sector in range(1, sector_count):
+        bit = base * 8 + (sector - 1) * psi
+        if bit + psi > (base + sct_len) * 8:
+            break
+        d.put(bit, psi, chain.get(sector, 0))
+    d.buf[base + sct_len] = sequence
+    # The Directory InstanceID follows DIRS# (TS 1000-2 table 8): the key and
+    # shell iteration, then the ISAM that last sealed the directory. Some cards
+    # leave it off, which a decoder has to cope with too.
+    if instance is not None:
+        return bytes(d.buf) + instance
+    return bytes(d.buf)
+
+
+# TS 1000-10 table 107: a CMD9's Abacus, bytes 1 and 3 of page 3, by state.
+# 0x1000 is how the chip is delivered; the state is the count of bits set.
+ABACUS = dict(enumerate([
+    0x1000, 0x9000, 0xD000, 0xF000, 0xF800, 0xFC00, 0xFE00, 0xFF00,
+    0xFF80, 0xFFC0, 0xFFE0, 0xFFF0, 0xFFF8, 0xFFFC, 0xFFFE, 0xFFFF], start=1))
+
+
+def type2_full_page_memory(uid, shell, dir_a, dir_b, sectors, sector_size,
+                           locks=bytes([0xF7, 0x0F]), abacus=None):
+    """A CMD9 or CMD10 tag's page memory, up to the end of logical sector 6.
+
+    The layout of TS 1000-10 figures 4.1, 4.2 and 7: the chip pages, the shell
+    in pages 4-11 rotated so its first byte is stored last (clause 10.11.3), the
+    two Directory copies in pages 0x0C-0x15 and 0x16-0x1F, then @p sectors, a map
+    of logical sector 1-6 to its bytes, from page 0x20 at @p sector_size each.
+    The lock bytes default to the ones clause 10.23.1 recommends, which lock
+    the shell's pages; @p abacus, a state from 1 to 16, fills bytes 1 and 3 of
+    the OTP page as a CMD9's Abacus (table 107).
+    """
+    p = bytearray(128 + 6 * sector_size)
+    p[0:3] = uid[0:3]
+    p[3] = 0x88 ^ uid[0] ^ uid[1] ^ uid[2]      # BCC0
+    p[4:8] = uid[3:7]
+    p[8] = uid[3] ^ uid[4] ^ uid[5] ^ uid[6]    # BCC1
+    p[10:12] = locks
+    if abacus is not None:
+        p[13] = ABACUS[abacus] >> 8
+        p[15] = ABACUS[abacus] & 0xFF
+    shell = bytes(shell)
+    assert len(shell) == 32, "the shell block is eight pages"
+    p[16:47] = shell[1:32]
+    p[47] = shell[0]
+    for offset, copy in ((48, dir_a), (88, dir_b)):
+        assert len(copy) <= 40, "a directory copy is ten pages"
+        p[offset:offset + len(copy)] = copy
+    for sector, data in sectors.items():
+        assert 1 <= sector <= 6 and len(data) <= sector_size
+        offset = 128 + (sector - 1) * sector_size
+        p[offset:offset + len(data)] = data
+    return bytes(p)
+
+
+def split_sectors(data, sector_size):
+    """@p data cut into @p sector_size pieces, the last padded with zeros."""
+    return [pad(data[i:i + sector_size], sector_size)
+            for i in range(0, len(data), sector_size)]
+
+
 # ---------------------------------------------------------------- Value records
 def value_record(txn, seq, when, tail=b"", modifier=0xC0FFEE01, action_seq=3):
     """A value record: the TS 1000-2 table 15 common header plus a 5-byte tail

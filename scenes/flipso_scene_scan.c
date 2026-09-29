@@ -138,11 +138,12 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
 
         if(app->status == FlipsoReaderStatusSuccess) {
             /* A blocked shell read perfectly and is still useless, so it gets
-             * the same tone as a card we could not read at all. The beep is the
-             * whole result for anyone not looking at the screen, and a chirp
-             * saying "fine" over a dead card is worse than no sound. */
-            notification_message(
-                app->notifications, app->card.shell_blocked ? &sequence_error : &sequence_success);
+             * the same tone as a card we could not read at all - and so does a
+             * retired CMD9. The beep is the whole result for anyone not looking
+             * at the screen, and a chirp saying "fine" over a dead card is worse
+             * than no sound. */
+            const bool dead = app->card.shell_blocked || itso_card_retired(&app->card);
+            notification_message(app->notifications, dead ? &sequence_error : &sequence_success);
             /* Stamped here rather than on the worker thread: it is the time the
              * card was read, and the RTC is the UI thread's to ask. */
             flipso_capture_set_time(app->capture, flipso_now());

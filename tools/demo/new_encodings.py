@@ -69,6 +69,8 @@ def structure(blocks):
         return found
     sector, sectors, entries, sct_len = shell[16], shell[17], shell[18], shell[19]
     found.add(f"media: {sector}-byte sectors x {sectors}, {entries} directory entries")
+    if "Tag" in blocks:
+        found.add(f"media: NFC Type 2 tag (CMD{shell[11]}), full shell")
     if bits(shell, 6, 6) & 0b10:
         found.add("shell: carries an MCRN")
 

@@ -66,12 +66,17 @@ void flipso_scene_menu_on_enter(void* context) {
      *
      * A blocked shell displaces the branding entirely. The header is the one
      * line of this screen that is read every time, and someone who never opens
-     * Card would otherwise leave without learning the card is dead. */
+     * Card would otherwise leave without learning the card is dead. A retired
+     * CMD9, whose Abacus has run out, is as dead: a POST rejects it too. */
     const char* brand = flipso_operators_brand(app->operators, itso_card_issuer_oid(&app->card));
+    const bool retired = itso_card_retired(&app->card);
     flipso_menu_view_set_header(
-        menu, app->card.shell_blocked ? "Blocked card" : (brand ? brand : "ITSO card"));
+        menu,
+        app->card.shell_blocked ? "Blocked card" :
+        retired                 ? "Retired card" :
+                                  (brand ? brand : "ITSO card"));
     flipso_menu_view_set_header_icon(
-        menu, app->card.shell_blocked ? &I_warning_10px : &I_card_10px);
+        menu, app->card.shell_blocked || retired ? &I_warning_10px : &I_card_10px);
 
     flipso_menu_view_add_item(menu, "Summary", &I_info_10px, FlipsoMenuItemSummary);
 
@@ -100,6 +105,8 @@ void flipso_scene_menu_on_enter(void* context) {
     if(!app->card.shell_compact) {
         if(app->card.shell_blocked) {
             card_tag = "Blocked";
+        } else if(retired) {
+            card_tag = "Retired";
         } else if(
             !itso_date_open(app->card.expiry) &&
             itso_date_expired(app->card.expiry, flipso_now())) {

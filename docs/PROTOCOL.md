@@ -180,9 +180,10 @@ anti-tear rather than the hardware anti-tear DESFire backup files provide:
 - The last two sectors hold two **copies of the Directory** rather than a
   Directory and a log. Flipso reads both and takes the one whose sequence number
   is newer, wrapping at 255 as TS 1000-2 clause 5.1.6 requires.
-- The **cyclic log** therefore has no reserved sector. It is an ordinary data
-  group starting at the sector its directory entry names, and is chained like a
-  product.
+- The **cyclic log** therefore has no reserved sector. It starts at the sector
+  its directory entry names, like a product, but holds one 48-byte record per
+  sector, the second in the sector the Sector Chain Table links to - see the
+  CMD9 section below, which shares the layout.
 
 Geometry is read from the shell rather than assumed. Real CMD2 cards do not
 necessarily use the defaults in the specification: the Subway card reports
@@ -220,10 +221,10 @@ one, and what came back is classified by what sits at page 6:
   replace the good copy of the same ticket.
 - **a compact shell** - a CMD4 ticket, decoded as below.
 - **a full shell** - an ITSO card on the other Type 2 media, CMD9 (NTAG215/216)
-  or CMD10 (Ultralight EV1). Both put a full shell at page 6 (TS 1000-10
-  clauses 10.20 and 11.22) and a real directory behind it, which Flipso does not
-  walk: it says the card is ITSO but unsupported, rather than that it is not
-  ITSO at all.
+  or CMD10 (Ultralight EV1), read as the next section describes. A full shell
+  whose FVC is neither 9 nor 10 is some media definition this build does not
+  know, and is called an ITSO card Flipso cannot read yet, rather than not ITSO
+  at all.
 - **neither** - not an ITSO card.
 
 A **Compact ITSO Shell** (TS 1000-2 clause 4.2) stores only ShellLength,
@@ -318,6 +319,114 @@ style for a medium this small. A few read differently from a full ticket's:
 - **Re-use wait.** PassbackTime 0 means the reader's own rule applies, and is
   shown as that; this holds for every IPE that carries it.
 
+### Type 2 tags with a full shell (CMD9, CMD10)
+
+TS 1000-10 defines two more Type 2 media, which carry a full shell, a real
+directory and the same IPEs a smartcard does: **CMD9** on an NXP NTAG215 or
+NTAG216 (section 10) and **CMD10** on a MIFARE Ultralight EV1 MF0UL51 (section
+11). The two are laid out identically - figures 4.1, 4.2 and 7 - and differ
+only in the chip and the FVC. There is still no file system: logical sectors
+sit at fixed pages, and are read with the same `0x30` READ as a CMD4 ticket.
+
+| Pages | Holds |
+| --- | --- |
+| 0x00-0x03 | chip serial, lock bytes, one-time-programmable page (a CMD9's Abacus) |
+| 0x04-0x0B | the Shell Environment, **rotated** by one byte |
+| 0x0C-0x15 | Directory copy A: logical sector S-2 |
+| 0x16-0x1F | Directory copy B: logical sector S-1 |
+| 0x20- | logical sectors 1 to 6, B bytes each, in order |
+
+The geometry is fixed, and neither CMD allows it to be overridden (clauses
+10.11.5 and 11.14.5; tables 104, 105, 109, 110): **S = 9, E# = 2, SCTL = 3**,
+and **B = 64** on an NTAG215, **128** on an NTAG216 or Ultralight EV1. So a
+card holds one IPE (E1) and the Log Directory Entry (E2), and its ITSO data
+ends at page 0x80 or 0xE0. Flipso takes which chip it is from the FVC and B,
+and refuses a shell stating any other geometry, because the page map is only
+true of this one.
+
+**The rotated shell** (clauses 10.11.3 and 11.14.3, figures 5 and 8). The
+first byte of a shell holds ShellLength and the two top bits of the bitmap,
+which are always zero; the media move it from the front of the 32-byte block
+to the back ("Len" on page 0x0B), so every other element sits one byte early
+and the FVC lands on page 6 byte 2 - the byte a CMD4's FVC occupies. A POST
+reads page 6 to tell the family apart, and so does Flipso, but clause 10.24.1
+warns that a byte in that position is a weak signal: Flipso puts the shell back
+together and holds it to ITSO's IIN before calling it one. The SECRC is over
+the shell in its ordinary order, and verifies on the rebuilt bytes.
+
+**Software anti-tear** (clauses 10.18 and 11.20, annex A). There are no backup
+files as on a DESFire, so everything that changes is kept twice:
+
+- **Two Directory copies**, as on CMD2. The one with the newer DIRS# is live,
+  FF to 00 counting as a step forward (TS 1000-2 clause 5.1.6); annex A.3.1.2
+  starts A at 00 and B at 01. A copy that is all zeros - torn, or never written
+  - loses to one that is not. The Seals that decide a tie in a POST cannot be
+  checked without keys.
+- **Two copies of every Value Record Data Group**, chained after the IPE in the
+  order current then previous (annex A.3.2.1). A transaction is written into
+  the previous copy, which is then relinked in the Sector Chain Table as
+  current - so the copies hold **alternate records**, odd TS# in one and even
+  in the other (A.3.2.3), and a product's history is only whole with both.
+  Flipso reads the live record from the copy the chain names first and the
+  rest of the history from both. A record in the previous copy newer than the
+  live one is a transaction torn before the directory was relinked, which a
+  POST overwrites (A.3.2.4.1), so it is neither live nor history. If the
+  current copy holds nothing, the previous copy is what a POST falls back on
+  (A.3.2.4.3), and so does Flipso. The previous copy is told apart from
+  anything else a chain might run into by starting in the sector after the
+  current copy ends and carrying the same VGBitMap (A.3.2.2); the same applies
+  to CMD2, which uses annex A too.
+- **The cyclic log** keeps one record per sector rather than a chain of them
+  (TS 1000-2 clauses 2.4.8 and 5.1.5.5; annex A.3.3): record T0 at the start of
+  sector 2, the sector E2 names, and T1 in the sector SCT(2) names - sector 3,
+  "Log File B" - whose own SCT is 0. A record is 48 bytes and a sector 64 or
+  128, so Flipso takes the first 48 of each; Record Offset then indexes them as
+  it does a DESFire log. **This is also how CMD2 reads its log now.** Its
+  default B is exactly 48, where concatenating the chain came out the same,
+  but SPT's cards have 80-byte sectors, where a 48-byte stride would have
+  read T1 from the middle of a sector.
+
+The IPE itself can run from sector 1 into sector 4, "IPE optional second
+sector" in figure 4.1, and is chained there like any other.
+
+**What the chip pages say.** Pages 0-2 are laid out as on a CMD4: the 7-byte
+serial less BCC0, then the two static lock bytes, which lock pages 3 to 15 and
+freeze the lock bits in three blocks. Clause 10.23.1 recommends `F7 0F` - the
+shell's pages 4-11 locked and the lock bits frozen, leaving the directory that
+starts on page 12 writable - and the Card screen says whether the shell pages
+are locked. The dynamic lock bytes (page 0x82 or 0xE2) and the configuration
+pages lie past the ITSO data and are not read.
+
+A **CMD9's Abacus** (clause 10.24.4, table 107) is bytes 1 and 3 of the OTP
+page 3, and its value is the count of bits set: 1 as delivered, then one more
+per value record written, since each value record's TS# must be at least the
+Abacus - which is what stops an old copy of the card being written back.
+Sixteen bits set means the card is **retired**, and a POST rejects it (clause
+10.24.2); Flipso shows the uses left, 15 less the count, and a retired card's
+status as Retired. A **CMD10** keeps the same count in the Ultralight EV1's
+one-way counter #1 instead (clause 11.26.4), which only READ_CNT reaches, and
+which Flipso does not read: the clause does not say whether "counter #1" is
+the chip's counter 0 or counter 1, and no real card has been seen to settle it.
+
+**Reading.** Every page has unconditional read access (clauses 10.14 and
+11.17): the NTAG password protects writes only, so no page Flipso reads can
+NAK for want of PWD_AUTH. A read runs in two passes: the first reads until the
+tag refuses or 256 bytes, which is past a CMD4's memory and past the 128 bytes
+of shell and directories, and classifies the tag; the second continues to the
+end of sector 6, which the shell has by then said is at 512 or 896 bytes.
+Neither pass comes near the end of the chip's memory, where a READ that crosses
+the last page wraps round to page 0 and one that starts past it is refused, so
+how the chip ends its memory does not matter here. Every sector is on the chip
+whether used or not, so a second pass that stops short is a card that left the
+field, and is retried rather than shown half read.
+
+A read is **saved** as the blocks a smartcard is - Shell (put back in order),
+the live Directory copy, Product 1 and Log - plus a **Tag** block of pages 0-3,
+rather than as the page memory. That way it goes through the same decoder and
+the same history merge as a smartcard, and a value record that has moved from
+the current copy to the previous one is recognised as still on the card, not as
+new or rolled off.
+
 ## Saved cards
 
 A saved card is the raw blocks of the read above, not the decoded fields: the
@@ -346,10 +455,11 @@ Log: 14 02 00 DB EE 5A ...
 Chip: 04 01 01 01 00 18 05 ...
 ```
 
-A Type 2 tag is saved as a single block of its whole page memory instead,
-`Type 2: 05 79 76 82 ...`, and decodes from that alone. Its identity for matching
-a saved file is the chip serial rather than the card number, which a compact
-shell shares with every other ticket.
+A CMD4 paper ticket is saved as a single block of its whole page memory
+instead, `Type 2: 05 79 76 82 ...`, and decodes from that alone. Its identity
+for matching a saved file is the chip serial rather than the card number, which
+a compact shell shares with every other ticket. A CMD9 or CMD10 card is saved
+as the blocks above, plus `Tag: 04 63 08 2E ...`, its chip pages 0-3.
 
 `Chip` is the one block that is not part of the ITSO shell: a DESFire's
 GetVersion reply (seven bytes of hardware version, seven of software, the UID,
@@ -491,7 +601,10 @@ by ITSO Ltd under the Open Government Licence:
 - **Part 2** — Shell Environment, Directory, IPE, Value Record, Log Directory Entry
 - **Part 5** — per-IPE-type datasets and the Transient Ticket Record
 - **Part 10** — the customer media definitions: clause 3 for CMD2, clause 5 for
-  CMD4, clause 8 for CMD7
+  CMD4, clause 8 for CMD7, clauses 10 and 11 for CMD9 and CMD10, and annex A
+  for the software anti-tear CMD2, CMD9 and CMD10 share. The CMD9 and CMD10
+  page maps (figures 4.1, 4.2, 5, 7 and 8) are images in the PDF, which text
+  extraction does not reach
 
 Date encoding comes in two forms:
 
@@ -685,11 +798,13 @@ LocDefType 212 carries several stops and names the first, counting the rest.
 ## Limitations
 
 - Reads DESFire ITSO cards (CMD7, and CMD12 where the layout matches), ISO 7816
-  ones (CMD2) and compact-shell Type 2 tags (CMD4). The obsolete MIFARE Classic
-  media definition is not supported, nor is CMD11, which replaces the file system
-  with a proprietary command set. The other Type 2 media, CMD9 (NTAG) and CMD10
-  (Ultralight EV1), carry a full shell and are not read yet: Flipso recognises
-  them and says so.
+  ones (CMD2), compact-shell Type 2 tags (CMD4) and full-shell ones (CMD9 on an
+  NTAG215/216, CMD10 on an Ultralight EV1). The obsolete MIFARE Classic media
+  definition is not supported, nor is CMD11, which replaces the file system
+  with a proprietary command set.
+- CMD9 and CMD10 are decoded from the specification alone: no real card of
+  either has been read. A CMD10's one-way transaction counter is not read (see
+  above), so a retired CMD10 is not flagged as one.
 - Space Saving IPEs: an area given as a specific location, rather than as a
   fare code or a fare value, is identified but not decoded;
   the ScaledQtyBackup is not used to check QtyRemaining; and the TYP 29

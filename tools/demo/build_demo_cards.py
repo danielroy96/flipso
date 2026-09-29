@@ -9,8 +9,8 @@ has a wallet with a loyalty IPE, a charge-to-account product, a blocked shell
 and a revision 1 period ticket in it.
 
 So these cards are built to cover the app rather than to be plausible wallets.
-Between them they reach every screen, the CMD7, CMD2 and Type 2 (CMD4)
-geometries, every IPE type the decoder names, every value record tail it
+Between them they reach every screen, the CMD7, CMD2 and Type 2 (CMD4, CMD9,
+CMD10) geometries, every IPE type the decoder names, every value record tail it
 decodes, nearly every location renderer, and the parts of the model only a
 saved card can hold - journeys and transactions that have rolled off the card,
 and products the card no longer lists.
@@ -31,59 +31,17 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "test"))
 from itso_build import (  # noqa: E402
-    Bits, bcd, charge_tail, count_tail, date_stamp, dir_entry, dts,
+    Bits, bcd, charge_tail, count_tail, date_stamp, dir_entry, directory, dts, isam,
     instance_and_seal, isrn, journey_tail, loc1, loc2, log_entry, loyalty_tail,
     naptan, pad_sector, period_tail, purse_tail, shell_dataset, sncode, sncode2,
-    tt_record, tt_record_rev4, type2_page_memory, typ27_dataset, typ29_dataset, value_group,
-    value_record, voucher_tail)
+    tt_record, tt_record_rev4, type2_full_page_memory, type2_page_memory, typ27_dataset,
+    typ29_dataset, value_group, value_record, voucher_tail)
 
 IIN = "633597"
 
 
 def unix(y, mo, d, h=12, mi=0):
     return calendar.timegm(datetime.datetime(y, mo, d, h, mi).timetuple())
-
-
-def sct_bits(sector_count):
-    """psi: the smallest number of bits with S <= 2^psi (TS 1000-2 5.1.5.1)."""
-    psi = 1
-    while (1 << psi) < sector_count and psi < 8:
-        psi += 1
-    return psi
-
-
-def directory(entries, chain, sector_count, dir_entries, sct_len, sequence,
-              blocked=False, instance=None):
-    """A Directory Data Group: the entries, the Sector Chain Table, DIRS#.
-
-    @p chain maps a sector to the sector that follows it. A chain ending at S-1
-    is a product in use, one ending at S-2 is blocked, and one pointing at
-    itself has never been written (TS 1000-2 clause 5.1.5.2).
-    """
-    base = 2 + 5 * dir_entries
-    d = Bits(base + sct_len + 1)
-    d.put(0, 6, 0)                              # DIRLength: RFU
-    # DIRBitMap: bit 0 stops the whole shell, bits 2:1 say the last entry is a
-    # log entry. The two sit next to each other, which is why the blocking bit
-    # is worth writing deliberately rather than by offset from the top.
-    d.put(6, 6, 0b000010 | (1 if blocked else 0))
-    d.put(12, 4, 1)                             # DIRFormatRevision
-    for i, entry in enumerate(entries):
-        d.putb(2 + i * 5, entry)
-
-    psi = sct_bits(sector_count)
-    for sector in range(1, sector_count):
-        bit = base * 8 + (sector - 1) * psi
-        if bit + psi > (base + sct_len) * 8:
-            break
-        d.put(bit, psi, chain.get(sector, 0))
-    d.buf[base + sct_len] = sequence
-    # The Directory InstanceID follows DIRS# (TS 1000-2 table 8): the key and
-    # shell iteration, then the ISAM that last sealed the directory. The other
-    # cards leave it off, which a decoder has to cope with too.
-    if instance is not None:
-        return bytes(d.buf) + instance
-    return bytes(d.buf)
 
 
 def group(ipe, sector_size, values=None, instance=None):
@@ -1020,8 +978,166 @@ def card_gwr_touch():
     ]
 
 
+# ====================================================================
+# Cards 8 and 9 - a full ITSO shell on an NFC Type 2 tag
+#
+# CMD9 (an NTAG215 or NTAG216) and CMD10 (a MIFARE Ultralight EV1) carry the
+# same shell, directory and IPEs a smartcard does, over logical sectors at fixed
+# pages (TS 1000-10 sections 10 and 11): nine sectors, a single IPE and the log,
+# and TS 1000-10 annex A's software anti-tear - two copies of the directory and
+# of each value record group, the records alternating between them. A read
+# saves such a card as the blocks a smartcard is saved as, plus a "Tag" block of
+# its chip pages, which is what these are.
+# ====================================================================
+def tag_block(uid, locks, abacus=None):
+    """Pages 0-3 of a full-shell tag, as a read saves them."""
+    return type2_full_page_memory(uid, bytes(32), b"", b"", {}, 64, locks=locks,
+                                  abacus=abacus)[:16]
+
+
+def full_type2_directory(entries, chain, sequence, isam_id):
+    """A CMD9/CMD10 directory copy, padded to the ten pages it occupies."""
+    d = directory(entries, chain, 9, 2, 3, sequence,
+                  instance=bytes([0x10]) + isam_id.to_bytes(4, "big"))
+    return d + bytes(40 - len(d))
+
+
+def card_ntag():
+    B = 64
+    OID = "0163"                                 # Reading Buses
+    EXP = date_stamp(2030, 8, 31)
+    shell = shell_dataset(IIN, OID, "0800008", fvc=9, ksc=1, kvc=1, expiry=EXP,
+                          b=B, s=9, e=2, sctl=3)
+
+    # ---- E1: a carnet of ten bus rides, a TYP 23 journey ticket whose mode
+    # group counts stored journeys (TS 1000-5 table 31a).
+    carnet = Bits(36)
+    carnet.put(0, 6, 9)
+    carnet.put(6, 6, 0b001000)                   # the mode group only
+    carnet.put(12, 4, 2)
+    carnet.buf[2] = 30                           # RemoveDate: 30 days after expiry
+    carnet.putb(3, (163).to_bytes(2, "big"))
+    carnet.put(58, 14, date_stamp(2026, 9, 1))   # IssueDate
+    carnet.put(93, 3, 2)                         # Class: standard
+    carnet.buf[12] = 1                           # PartySizeAdult
+    carnet.putb(16, (1800).to_bytes(4, "big"))   # AmountPaid: GBP 18
+    carnet.put(20 * 8, 4, 3)                     # by card
+    carnet.put(29 * 8 + 4, 4, 1)                 # TYP23Mode: stored journeys
+    carnet.buf[30] = 1                           # MaxTransfers
+    carnet.buf[31] = 120                         # TimeLimit: an hour
+    carnet.putb(32, (180).to_bytes(2, "big"))    # ValueOfRideJourney: GBP 1.80
+
+    # Four rides taken. Records alternate between the copies, odd TS# in B and
+    # even in A (annex A.3.2.3), and the last, TS#4, went into A, which the
+    # chain now names first.
+    copy_a = value_group([
+        value_record(7, 2, dts(2026, 9, 8, 8, 12), journey_tail(8, 0, 0b10)),
+        value_record(7, 4, dts(2026, 9, 21, 17, 40), journey_tail(6, 0, 0b10)),
+    ], format_rev=2)
+    copy_b = value_group([
+        value_record(1, 1, dts(2026, 9, 1, 9, 30), journey_tail(10, 0, 0)),
+        value_record(7, 3, dts(2026, 9, 15, 8, 5), journey_tail(7, 1, 0b10)),
+    ], format_rev=2)
+
+    entries = [
+        dir_entry(163, 23, 3, True, date_stamp(2027, 2, 28)),
+        log_entry(ptr=1, eei=0, when=dts(2026, 9, 21, 17, 40), record_offset=0,
+                  passback=5),
+    ]
+    # IPE in sector 1, then copy A (sector 5), copy B (sector 6), then S-1. The
+    # log is Log File A in sector 2 linking to B in sector 3; Record Offset 0
+    # says T0 is next to be written, so T1 is the newer.
+    chain = {1: 5, 5: 6, 6: 8, 2: 3}
+    log = b"".join([
+        tt_record(12, dts(2026, 9, 15, 8, 5), 180,
+                  origin=loc2(209, bus_stage(163, "17", 2)),
+                  dest=loc2(209, bus_stage(163, "17", 9)), ipe_ptr=1, mop=8),
+        tt_record(12, dts(2026, 9, 21, 17, 40), 180,
+                  origin=loc2(209, bus_stage(163, "17", 9)),
+                  dest=loc2(209, bus_stage(163, "17", 2)), ipe_ptr=1, mop=8),
+    ])
+
+    return "Demo 8 Reading NTAG", unix(2026, 9, 21, 20, 15), [
+        ("Shell", bytes(shell.buf)),
+        # The Abacus has counted the four value records, plus the one it
+        # starts at: state 5, of the 16 that retire the card.
+        ("Tag", tag_block(bytes([0x04, 0x63, 0x08, 0x2E, 0x51, 0x9A, 0x40]),
+                          bytes([0xF7, 0x0F]), abacus=5)),
+        ("Directory", full_type2_directory(entries, chain, 0x09, isam(163, 0x0A21))),
+        ("Product 1", group(carnet, B, copy_a) + pad_sector(copy_b + instance_and_seal(), B)),
+        ("Log", log),
+    ]
+
+
+def card_ultralight_ev1():
+    B = 128
+    OID = "0162"                                 # Xplore Dundee
+    EXP = date_stamp(2029, 12, 31)
+    # With every optional element present, as TS 1000-10 clause 11.10.1 allows:
+    # the MCRN takes the shell to eight blocks, filling the eight pages it is
+    # stored in, and puts 0x20 rather than 0x18 in the byte the rotation moves.
+    shell = shell_dataset(IIN, OID, "0900009", fvc=10, ksc=1, kvc=1, expiry=EXP,
+                          b=B, s=9, e=2, sctl=3, mcrn="4917250331")
+
+    # ---- E1: a four-week pass, TYP 22 revision 3, anywhere in the operator's
+    # area: no locations, so the area is its to define.
+    period = Bits(32)
+    period.put(0, 6, 8)
+    period.put(6, 6, 0)
+    period.put(12, 4, 3)
+    period.buf[2] = 7                            # RemoveDate: a week after expiry
+    period.putb(3, (162).to_bytes(2, "big"))
+    period.put(40, 16, 0xFE00)                   # TYP22Flags: every part of every day
+    period.put(64, 14, date_stamp(2026, 9, 7))   # IssueDate
+    period.put(78, 11, 1440 + 60)                # ExpiryTime: 01:00 the next day
+    period.put(96, 3, 2)                         # Class: standard
+    period.put(106, 14, date_stamp(2026, 9, 7))  # ValidityStartDate
+    period.buf[18] = 0xFF                        # ValidOnDayCode: every day
+    period.buf[19] = 1                           # PartySizeAdult
+    period.putb(23, (5600).to_bytes(4, "big"))   # AmountPaid: GBP 56
+    period.put(27 * 8, 4, 3)                     # by card
+
+    current = value_group([
+        value_record(1, 2, dts(2026, 9, 7, 7, 55),
+                     period_tail(0, 0b01, date_stamp(2026, 10, 4), date_stamp(2026, 10, 4))),
+        bytes(15),
+    ], format_rev=3)
+    previous = value_group([
+        value_record(1, 1, dts(2026, 9, 6, 16, 20),
+                     period_tail(1, 0b01, date_stamp(2026, 10, 4), date_stamp(2026, 9, 6))),
+        bytes(15),
+    ], format_rev=3)
+
+    entries = [
+        dir_entry(162, 22, 1, True, date_stamp(2026, 10, 4)),
+        log_entry(ptr=1, eei=0, when=dts(2026, 9, 19, 8, 2), record_offset=1,
+                  passback=10),
+    ]
+    chain = {1: 5, 5: 6, 6: 8, 2: 3}
+    # Record Offset 1: T0 was written last, and T1 is the older journey.
+    log = b"".join([
+        tt_record(12, dts(2026, 9, 19, 8, 2), 0,
+                  origin=loc2(209, bus_stage(162, "22", 5)), dest=None, ipe_ptr=1,
+                  mop=8),
+        tt_record(12, dts(2026, 9, 18, 17, 31), 0,
+                  origin=loc2(209, bus_stage(162, "22", 11)),
+                  dest=loc2(209, bus_stage(162, "22", 5)), ipe_ptr=1, mop=8),
+    ])
+
+    return "Demo 9 Dundee EV1", unix(2026, 9, 21, 20, 25), [
+        ("Shell", bytes(shell.buf)),
+        # Locked as TS 1000-10 clause 10.23.1 recommends. CMD10 keeps its
+        # transaction count in a one-way counter, not page 3.
+        ("Tag", tag_block(bytes([0x04, 0x62, 0x10, 0x3C, 0x7D, 0x81, 0x55]),
+                          bytes([0xF7, 0x0F]))),
+        ("Directory", full_type2_directory(entries, chain, 0x03, isam(162, 0x0311))),
+        ("Product 1", group(period, B, current) + pad_sector(previous + instance_and_seal(), B)),
+        ("Log", log),
+    ]
+
+
 CARDS = [card_the_key, card_blocked, card_cmd2, card_history, card_subway_paper,
-         card_subway_return, card_gwr_touch]
+         card_subway_return, card_gwr_touch, card_ntag, card_ultralight_ev1]
 
 
 def main():

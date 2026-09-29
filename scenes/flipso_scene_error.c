@@ -74,11 +74,12 @@ void flipso_scene_error_on_enter(void* context) {
         title = "Unsupported card";
         if(app->card.shell_valid) {
             /* Only the Type 2 transport decodes a shell and still calls the card
-             * unsupported: an ITSO card on NTAG or Ultralight EV1 media (CMD9,
-             * CMD10), whose full directory Flipso does not walk. Saying it is
-             * ITSO is the useful part - it tells the holder the card is not
-             * faulty. Which media it is goes last, as the bad-shell reason
-             * does: it is for whoever files the bug, not for the holder. */
+             * unsupported: a full shell laid out as CMD9 and CMD10 lay theirs
+             * out, under an FVC that is neither - a media definition newer than
+             * this build. Saying it is ITSO is the useful part - it tells the
+             * holder the card is not faulty. Which media it is goes last, as the
+             * bad-shell reason does: it is for whoever files the bug, not for
+             * the holder. */
             built = furi_string_alloc_printf(
                 "This is an ITSO card, on\n"
                 "a kind of NFC tag that\n"

@@ -27,4 +27,3 @@ Every brief assumes the working rules in `CLAUDE.md` — in particular:
 | [save-as-new-copy.md](save-as-new-copy.md) | Keep a snapshot of a card instead of updating its record | Medium |
 | [unsaved-card-warning.md](unsaved-card-warning.md) | Don't let Back silently throw away a card that was just read | Small |
 | [save-failed-reads.md](save-failed-reads.md) | Save the raw data of a card that would not decode, for bug reports | Medium |
-| [cmd9-cmd10-media.md](cmd9-cmd10-media.md) | Read ITSO cards on NTAG and Ultralight EV1 tags with a full shell | Large |

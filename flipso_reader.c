@@ -877,7 +877,8 @@ static void flipso_reader_start_transport(FlipsoReader* reader) {
     } else if(transport == FlipsoTransportType2) {
         /* Read the raw Type 2 tag over the base ISO 14443-3A poller: it activates
          * with anticollision and select but no RATS, which is all a Type 2 tag
-         * answers. Allocated late, like the CMD2 buffers, for the same reason. */
+         * answers. Allocated late, like the CMD2 buffers, and freed as soon as
+         * the poller stops. */
         if(!reader->type2) reader->type2 = flipso_type2_alloc();
         reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolIso14443_3a);
         nfc_poller_start(reader->poller, flipso_type2_poller_callback, reader);
@@ -942,6 +943,13 @@ void flipso_reader_stop(FlipsoReader* reader) {
         nfc_poller_stop(reader->poller);
         nfc_poller_free(reader->poller);
         reader->poller = NULL;
+    }
+    /* The Type 2 page buffer is nearly a kilobyte, and nothing reads it once
+     * the poller has stopped: the card and its blocks are copied out by then.
+     * A retry allocates it again. */
+    if(reader->type2) {
+        flipso_type2_free(reader->type2);
+        reader->type2 = NULL;
     }
     reader->running = false;
 }

@@ -56,7 +56,8 @@ flipso_reader.c       card reading: DESFire (CMD7/CMD12), and the pollers
 flipso_scan_session.c which transport next, retries and the verdict; pure C,
                       host-tested by test_scan_session.c
 flipso_cmd2.c         ISO 7816 transport for CMD2 media
-flipso_type2.c        NFC Type 2 tag transport for CMD4 (SPT paper tickets)
+flipso_type2.c        NFC Type 2 tag transport: CMD4 (SPT paper tickets), and
+                      CMD9/CMD10 (a full shell on an NTAG or Ultralight EV1)
 flipso_media.c        what a DESFire says about itself (incl. Oyster); the text is flipso_format.c's
 flipso_capture.c      the raw blocks a read produced; saved cards decode from these
 flipso_saved.c        those blocks on the SD card: write, read, browse, match, rename, delete
@@ -105,13 +106,14 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-about 66 KB of the 214 KB file as of 2026-09-27, because the 79 KB station
+about 72 KB of the 223 KB file as of 2026-09-28, because the 79 KB station
 table lives in `.fapassets`, which the firmware unpacks to the SD card and never
 maps. Anything added as a `const` array *does* reach RAM. Flipso costs about
-101 KB of heap all told while running (measured 2026-09-27 with `flipctl mem
---cost`; the CMD4 paper-ticket support added 5 KB, almost all of it code), of
-which that 66 KB is the image and the rest is what it allocates - about 15 KB
-of that is `ItsoCard`, twenty products and twelve taps. Measure it
+88 KB of heap at the idle scan screen (measured 2026-09-28 with `flipctl mem
+--cost`: 85.7 KB before CMD9/CMD10 support, 88.0 KB after, all of it code),
+more once a card is on screen - about 15 KB of `ItsoCard` alone, twenty
+products and twelve taps. That leaves roughly 25 KB free with the app up, and
+each RPC session (a screenshot, an upload, a push) holds more of it. Measure it
 as the difference between `flipctl mem` with the app up and with the desktop
 showing, which is the only honest way to read it.
 
@@ -219,6 +221,13 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
   was held, `ready` never ran, and the device sat at the desktop while
   everything downstream assumed it was ready. Use `; echo $?`, or
   `set -o pipefail`.
+- **Pushing a file while Flipso is up can run the Flipper out of memory.**
+  Measured on 2026-09-28: straight after a deploy, with 13 KB of heap free,
+  two 2 KB `flipctl push`es and the firmware rebooted with "out of memory" on
+  screen. A storage RPC session needs more room than the app leaves, and a
+  screenshot's session holds about 25 KB after it ends, which is why the heap
+  low-water drops to a few KB during a screenshot-heavy UI check. `push` now
+  closes the app first; do the same before any other RPC-heavy work.
 - **Do not move megabytes over USB.** The CDC port manages a few KB/s for bulk
   file transfer: the 21 MB NaPTAN table ran for a full hour through
   `storage.py send` without finishing, and halted the device doing it. The same

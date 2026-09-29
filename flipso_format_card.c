@@ -33,7 +33,7 @@ static void flipso_cat_pages(FuriString* out, uint16_t pages) {
 }
 
 /** The ISO/IEC 7816-6 manufacturer of a Type A UID's first byte, for the two
- *  makers of the Ultralight-class chips ITSO's CMD4 names, or NULL. */
+ *  makers of the chips ITSO's Type 2 media name, or NULL. */
 static const char* flipso_chip_maker(uint8_t code) {
     switch(code) {
     case 0x04:
@@ -319,6 +319,8 @@ void flipso_format_card(
         /* Already stated, from the product. */
     } else if(card->shell_blocked) {
         furi_string_cat(out, "Status: Blocked\n");
+    } else if(itso_card_retired(card)) {
+        furi_string_cat(out, "Status: Retired\n");
     } else if(!itso_date_open(card->expiry) && itso_date_expired(card->expiry, f->now)) {
         furi_string_cat(out, "Status: Expired\n");
     } else if(card->dir_valid) {
@@ -363,6 +365,9 @@ void flipso_format_card(
          * and is the only thing that tells one paper ticket from another. */
         furi_string_cat(out, "\n");
         flipso_cat_heading(out, FlipsoIconNone, "Chip");
+        /* A full-shell tag's chip is named by its media definition. */
+        const char* chip = itso_type2_chip_name(card);
+        if(chip) furi_string_cat_printf(out, "Chip: %s\n", chip);
         furi_string_cat(out, "UID: ");
         flipso_cat_hex(out, card->chip_uid, sizeof(card->chip_uid));
         furi_string_push_back(out, '\n');
@@ -395,11 +400,32 @@ void flipso_format_card(
                 flipso_cat_pages(out, unlocked);
                 furi_string_push_back(out, '\n');
             }
+        } else if(chip) {
+            /* CMD9 and CMD10 only recommend it (TS 1000-10 clause 10.23.1): the
+             * shell never changes, so its pages are locked, and the directory
+             * that starts on page 12 is left writable. */
+            uint16_t unlocked = ITSO_TYPE2_FULL_LOCKED_PAGES & ~locked;
+            flipso_cat_flag(out, "  ", "Shell locked", !unlocked);
         }
         /* The block-lock bits, which fix the lock bits themselves. */
         furi_string_cat(out, "Lock bits frozen: ");
         flipso_cat_pages(out, itso_type2_frozen_pages(card->chip_lock));
         furi_string_push_back(out, '\n');
+
+        /* A CMD9's one-way count of transactions (TS 1000-10 table 107). Each
+         * value record written must be numbered at least this high, which is
+         * what stops an old copy of the card being written back; the count
+         * starts at 1 and 16 retires the card, so a product on it can be used
+         * fifteen times less what has been counted. */
+        if(card->chip_abacus_valid) {
+            if(itso_card_retired(card)) {
+                furi_string_cat(out, "Uses left: None, retired\n");
+            } else {
+                furi_string_cat_printf(
+                    out, "Uses left: %u\n", card->chip_abacus < 15 ? 15 - card->chip_abacus : 0);
+            }
+            furi_string_cat_printf(out, "  Abacus: %u of 16\n", card->chip_abacus);
+        }
     }
 
     furi_string_cat(out, "\n");
@@ -414,6 +440,12 @@ void flipso_format_card(
         break;
     case 7:
         furi_string_cat(out, "Card type: DESFire (CMD7)\n");
+        break;
+    case 9:
+        furi_string_cat(out, "Card type: NTAG (CMD9)\n");
+        break;
+    case 10:
+        furi_string_cat(out, "Card type: Ultralight EV1 (CMD10)\n");
         break;
     case 12:
         furi_string_cat(out, "Card type: DESFire (CMD12)\n");

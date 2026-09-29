@@ -414,6 +414,8 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
         flipso_cat_ticket_state(out, "Ticket", card, f->now);
     } else if(card->shell_blocked) {
         furi_string_cat(out, "Card: Blocked by its issuer\n");
+    } else if(itso_card_retired(card)) {
+        furi_string_cat(out, "Card: Retired\n");
     } else if(expired) {
         /* One label and a value that says both things, as a product's summary
          * line does: "Card: Expired 30/06/2030". */

@@ -513,6 +513,10 @@ uint16_t itso_card_issuer_oid(const ItsoCard* card) {
     return card->oid;
 }
 
+bool itso_card_retired(const ItsoCard* card) {
+    return card->chip_abacus_valid && card->chip_abacus >= 16;
+}
+
 uint16_t itso_type2_locked_pages(const uint8_t lock[2]) {
     return (uint16_t)(((uint16_t)lock[1] << 8) | (lock[0] & 0xF8));
 }

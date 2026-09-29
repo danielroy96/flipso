@@ -658,7 +658,9 @@ typedef struct {
     uint16_t oid; /**< Shell owner. */
     uint16_t expiry; /**< Raw DATE. */
     uint8_t format_rev; /**< ShellFormatRevision. */
-    uint8_t fvc; /**< Format Version Code: 4 = Ultralight CMD4, 7 = DESFire CMD7, 12 = CMD12. */
+    /** Format Version Code, the media definition: 2 = ISO 7816 CMD2, 4 = Ultralight
+     *  CMD4, 7 = DESFire CMD7, 9 = NTAG CMD9, 10 = Ultralight EV1 CMD10, 12 = CMD12. */
+    uint8_t fvc;
     /**
      * A Compact ITSO Shell (TS 1000-2 clause 4.2): the tiny page-based media that
      * cannot hold a full shell - a MIFARE Ultralight / Infineon my-d (CMD4), as
@@ -673,13 +675,22 @@ typedef struct {
      */
     bool shell_compact;
     /** A Type 2 tag's 7-byte chip serial (pages 0-1, less BCC0): the identity a
-     *  compact shell lacks. Set only by itso_parse_type2(). */
+     *  compact shell lacks. Set by itso_parse_type2() and itso_parse_type2_tag(). */
     bool chip_uid_valid;
     uint8_t chip_uid[7];
     /** The tag's two static lock bytes (page 2, bytes 2-3); see
      *  itso_type2_locked_pages() and itso_type2_frozen_pages(). */
     uint8_t chip_lock[2];
     uint16_t chip_memory_len; /**< Bytes of page memory the tag gave up. */
+    /**
+     * A CMD9 card's Abacus (TS 1000-10 clause 10.24.4, table 107): the bits
+     * set across the one-time-programmable bytes 1 and 3 of page 3. It counts
+     * value-record transactions and can only go up, so it is what stops an old
+     * copy of the card being written back; 16 means the card is retired. Set
+     * by itso_parse_type2_tag().
+     */
+    bool chip_abacus_valid;
+    uint8_t chip_abacus;
     uint8_t ksc;
     uint8_t kvc;
     uint8_t shell_len; /**< ShellLength, in blocks of ITSO_SHELL_BLOCK_LEN. */
@@ -855,9 +866,14 @@ typedef enum {
      *  so the read stopped early and says nothing about the card. */
     ItsoType2Incomplete,
     ItsoType2NotItso, /**< No ITSO shell at page 6. */
-    /** A full shell at page 6: a CMD9 (NTAG215/216) or CMD10 (Ultralight EV1)
-     *  card, which lays out a real directory and is not decoded. */
+    /** A full shell, stored rotated from page 4 so that its FVC lands on page 6
+     *  byte 2 where a compact shell's does: a CMD9 (NTAG215/216) or CMD10
+     *  (Ultralight EV1) card. Read with itso_type2_full_shell() and the sector
+     *  map below; itso_parse_type2() does not take it. */
     ItsoType2FullShell,
+    /** A full shell laid out the same way whose FVC is not 9 or 10: an ITSO card
+     *  on some Type 2 media definition this build does not know. */
+    ItsoType2OtherShell,
     ItsoType2Compact, /**< A CMD4 compact shell, which itso_parse_type2() decodes. */
 } ItsoType2Kind;
 
@@ -865,6 +881,133 @@ typedef enum {
  * Classify a Type 2 tag's page memory by what sits at ITSO_TYPE2_SHELL_OFFSET.
  */
 ItsoType2Kind itso_type2_kind(const uint8_t* pages, size_t len);
+
+/* ------------------------------------------------------------------ */
+/* Full-shell Type 2 media: CMD9 (NTAG215/216), CMD10 (Ultralight EV1) */
+/* ------------------------------------------------------------------ */
+
+/*
+ * TS 1000-10 clauses 10.10-10.11 (CMD9) and 11.13-11.14 (CMD10) share one
+ * layout, figures 4.1, 4.2 and 7 in page numbers:
+ *
+ *   0x00-0x03  chip serial, lock bytes, OTP (the CMD9 Abacus lives in 0x03)
+ *   0x04-0x0B  the Shell Environment, rotated by one byte (below)
+ *   0x0C-0x15  Directory copy A, logical sector S-2
+ *   0x16-0x1F  Directory copy B, logical sector S-1
+ *   0x20-      logical sectors 1 to 6, B bytes each, in order
+ *
+ * The geometry is fixed - no override is allowed (clauses 10.11.5, 11.14.5):
+ * S = 9, E# = 2, SCTL = 3, and B = 64 on an NTAG215, 128 on an NTAG216 or an
+ * Ultralight EV1. So there is one IPE (E1), the Log Directory Entry (E2), and
+ * the software anti-tear of TS 1000-10 annex A: two directory copies, two
+ * copies of every value record group, and a two-record log.
+ */
+#define ITSO_FVC_NTAG           9
+#define ITSO_FVC_ULTRALIGHT_EV1 10
+
+/** Pages 4-11: where the rotated shell is stored. */
+#define ITSO_TYPE2_FULL_SHELL_OFFSET 16
+#define ITSO_TYPE2_FULL_SHELL_LEN    32
+/** A directory copy: pages 0x0C-0x15 or 0x16-0x1F. */
+#define ITSO_TYPE2_DIR_A_OFFSET      48
+#define ITSO_TYPE2_DIR_B_OFFSET      88
+#define ITSO_TYPE2_DIR_LEN           40
+/** Page 0x20, where logical sector 1 starts. Everything before it - the chip
+ *  pages, the shell and both directories - is what clause 10.24.2's single
+ *  FAST_READ of pages 4 to 0x1F brings back. */
+#define ITSO_TYPE2_SECTORS_OFFSET    128
+/** The data sectors, 1 to S-3. */
+#define ITSO_TYPE2_DATA_SECTORS      6
+/** The most page memory a full-shell card's ITSO data reaches: the end of
+ *  sector 6 at B = 128, page 0xE0. */
+#define ITSO_TYPE2_FULL_MAX_LEN      (ITSO_TYPE2_SECTORS_OFFSET + ITSO_TYPE2_DATA_SECTORS * 128)
+/** Pages 0-3, which the saved card keeps as its own block: the chip serial,
+ *  the lock bytes and the one-time-programmable page. */
+#define ITSO_TYPE2_TAG_LEN           16
+/** Pages 4-11, the shell, which TS 1000-10 clause 10.23.1 recommends a CMD9 or
+ *  CMD10 locks once issued, as a mask of bit n for page n. */
+#define ITSO_TYPE2_FULL_LOCKED_PAGES 0x0FF0
+
+/**
+ * The Shell Environment Data Group of a CMD9 or CMD10 card, in TS 1000-2 order.
+ *
+ * The shell is stored rotated (clauses 10.11.3, 11.14.3): its first byte -
+ * ShellLength and the two top bits of the bitmap - is moved from the front to
+ * the last byte of the 32-byte block, so that every other element moves one
+ * byte earlier and the FVC falls on page 6 byte 2, where CMD4's does. This puts
+ * that byte back.
+ *
+ * @param out ITSO_TYPE2_FULL_SHELL_LEN bytes.
+ * @return false when @p len does not reach the end of the shell.
+ */
+bool itso_type2_full_shell(const uint8_t* pages, size_t len, uint8_t* out);
+
+/**
+ * Where logical sector @p sector of a CMD9 or CMD10 card lies in its page
+ * memory. Sectors 1 to 6 are B bytes each; S-2 and S-1 are the two directory
+ * copies, which are ITSO_TYPE2_DIR_LEN bytes whatever B is.
+ *
+ * @param card with the shell decoded into it.
+ * @return false for a sector the media has no room for, or for a shell whose
+ *         geometry is not the one the CMD fixes.
+ */
+bool itso_type2_sector(const ItsoCard* card, uint8_t sector, size_t* offset, size_t* len);
+
+/** A CMD9 or CMD10 card's page memory, as the context of itso_type2_read_sector(). */
+typedef struct {
+    const ItsoCard* card; /**< With the shell decoded into it, for the sector map. */
+    const uint8_t* pages;
+    size_t len; /**< Bytes of @c pages actually read. */
+} ItsoType2Pages;
+
+/**
+ * An ItsoSectorRead over a CMD9 or CMD10 card's page memory, for
+ * itso_read_chain() and itso_read_log_sectors(): the sector the map puts there,
+ * or 0 when it is not in the bytes read or does not fit.
+ *
+ * @param context an ItsoType2Pages.
+ */
+size_t itso_type2_read_sector(void* context, uint8_t sector, uint8_t* out, size_t capacity);
+
+/**
+ * How many bytes of page memory a CMD9 or CMD10 card's ITSO data occupies, from
+ * page 0 to the end of sector 6: 512 at B = 64, 896 at B = 128.
+ *
+ * @return 0 when the shell's geometry is not one of those CMDs'.
+ */
+size_t itso_type2_full_len(const ItsoCard* card);
+
+/**
+ * The live one of a CMD9 or CMD10 card's two Directory copies (TS 1000-10 annex
+ * A.3.1.3): the one with the newer DIRS#, counting FF to 00 as a step forward
+ * (TS 1000-2 clause 5.1.6). A copy that is all zeros - never written, or torn
+ * - loses to one that is not. The Seals that would settle a tie are not
+ * checkable without keys.
+ *
+ * @param card with the shell decoded into it.
+ * @return the chosen copy's ITSO_TYPE2_DIR_LEN bytes within @p pages, or NULL
+ *         when @p len does not hold both.
+ */
+const uint8_t* itso_type2_directory(const ItsoCard* card, const uint8_t* pages, size_t len);
+
+/**
+ * Take what a CMD9 or CMD10 card holds outside its ITSO sectors from pages 0-3:
+ * the chip serial, the static lock bytes, the memory the chip has, and for
+ * CMD9 the Abacus.
+ *
+ * Call after itso_parse_shell(): which chip this is, and so how much memory it
+ * has, is known from the FVC and B the shell states (TS 1000-10 table 104).
+ *
+ * @param pages at least ITSO_TYPE2_TAG_LEN bytes from page 0.
+ */
+void itso_parse_type2_tag(ItsoCard* card, const uint8_t* pages, size_t len);
+
+/**
+ * The chip a CMD9 or CMD10 card is on, from its FVC and B (TS 1000-10 tables
+ * 104 and 109): "NTAG215", "NTAG216" or "Ultralight EV1". NULL for any other
+ * card.
+ */
+const char* itso_type2_chip_name(const ItsoCard* card);
 
 /**
  * Read one Sector Chain Table element.
@@ -909,6 +1052,31 @@ size_t itso_read_chain(
     size_t capacity);
 
 /**
+ * Gather a software anti-tear card's cyclic log, one Transient Ticket Record
+ * per logical sector.
+ *
+ * On media that give each record a sector of its own (TS 1000-2 clause 2.4.8) -
+ * CMD2 and CMD9/CMD10 - record T0 sits at the start of the sector the Log
+ * Directory Entry's number names, and SCT of that sector names the sector
+ * holding T1, whose own SCT is 0 (clause 5.1.5.5). Each sector is B bytes of
+ * which a record uses 48, so the chain cannot simply be concatenated: this
+ * keeps the first ITSO_TAP_RECORD_LEN bytes of each, so record n sits at n × 48
+ * and Record Offset indexes it as it does a DESFire log.
+ *
+ * @param read fetches one whole sector; @p out must have room for a whole
+ *             sector past the records already gathered.
+ * @return bytes gathered, a multiple of ITSO_TAP_RECORD_LEN.
+ */
+size_t itso_read_log_sectors(
+    const ItsoCard* card,
+    const uint8_t* dir,
+    size_t dir_len,
+    ItsoSectorRead read,
+    void* context,
+    uint8_t* out,
+    size_t capacity);
+
+/**
  * Decode the IPE Data Group (and any Value Record Data Group) for one product.
  * @param group  bytes of every chained sector, concatenated in chain order.
  */
@@ -929,6 +1097,28 @@ void itso_parse_ipe(ItsoProduct* product, const uint8_t* group, size_t len, uint
  *         group or it does not fit; @p offset is untouched in that case.
  */
 uint8_t itso_value_records(const uint8_t* group, size_t len, uint8_t sector_size, size_t* offset);
+
+/**
+ * Locate the second copy of a product's Value Record Data Group, on media with
+ * software anti-tear (TS 1000-10 annex A.3.2): CMD2, CMD9 and CMD10.
+ *
+ * Such a card keeps two copies, chained after the IPE in the order current then
+ * previous, and writes each transaction into the previous copy before relinking
+ * it as current. So the two hold alternate records - odd TS# in one, even in
+ * the other - and the history is only whole with both. The previous copy starts
+ * in the sector after the current one ends, and holds as many records as it
+ * (clause A.3.2.2), which is how it is told from whatever else a chain might
+ * run on into. A card with hardware anti-tear keeps one copy, and its chain ends
+ * with it.
+ *
+ * @return records in the previous copy, 0 when there is none; @p offset is
+ *         untouched in that case.
+ */
+uint8_t itso_previous_value_records(
+    const uint8_t* group,
+    size_t len,
+    uint8_t sector_size,
+    size_t* offset);
 
 /**
  * Decode value records an earlier read of this card saw.
@@ -1069,6 +1259,13 @@ uint16_t itso_isam_oid(uint32_t isam);
  * the operator is named by the owner of the one product the ticket carries.
  */
 uint16_t itso_card_issuer_oid(const ItsoCard* card);
+
+/**
+ * True for a CMD9 card whose Abacus has reached 16, "Retired" in TS 1000-10
+ * table 107: a POST reads the Abacus to learn whether the card is retired, and
+ * rejects one that is (clause 10.24.2).
+ */
+bool itso_card_retired(const ItsoCard* card);
 
 /** ITSO language code (TS 1000-5 annex A.24) as ISO 639-1, e.g. "en". False if unknown. */
 bool itso_language_code(uint8_t code, char out[3]);

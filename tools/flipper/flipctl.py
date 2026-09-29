@@ -1532,6 +1532,20 @@ def cmd_push(args):
     require_free_port(port, force=args.force)
     storage = sdk_storage()
 
+    # Measured 2026-09-28: two 2 KB demo cards pushed straight after a deploy,
+    # with Flipso up and 13 KB of heap free, ran the Flipper out of memory and
+    # the firmware rebooted it. The storage RPC session needs more room than
+    # that, and nothing written to the card needs the app, so it goes first.
+    f = Flipper(port)
+    try:
+        running = f.app_running()
+        if running:
+            print(f"[flipctl] {running} is running - closing it to leave the RPC "
+                  "session room", flush=True)
+            ensure_closed(f)
+    finally:
+        f.close()
+
     # The reference tables land in a directory the app creates on first run, so
     # it may not exist on a device that has only ever been flashed. mkdir is
     # best effort: it fails harmlessly when the directory is already there.

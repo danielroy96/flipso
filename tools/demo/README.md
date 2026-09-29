@@ -1,9 +1,9 @@
 # Demo cards
 
-Seven synthetic ITSO cards, written as saved-card files and copied to the
+Nine synthetic ITSO cards, written as saved-card files and copied to the
 Flipper, so that Flipso can be seen without owning the cards that carry the
 features. Nobody has a wallet with a loyalty IPE, a charge-to-account product,
-a blocked shell and a revision 1 period ticket in it; between them these seven
+a blocked shell and a revision 1 period ticket in it; between them these nine
 have all of it.
 
 A saved card is the raw blocks a read produced, not the decoded fields, so a
@@ -30,6 +30,8 @@ a card that was tapped, and nor would anyone reading the screen.
 | **Demo 5 Subway paper** | An NFC Type 2 tag (CMD4): a compact shell and one TYP 27 day ticket at fixed page offsets, in the shape of a real SPT paper ticket. |
 | **Demo 6 Subway return** | A TYP 29 multi-use return with one ride left, rebuilt byte for byte from a published dump of real SPT tickets. |
 | **Demo 7 GWR Touch** | The shapes a real GWR Touch card carried and no other demo did: 160-byte sectors, a revision 1 ID with nothing optional, revision 2 season tickets with and without CPICC and with no value records, the two revision 4 records a rail gate writes (a check-in carrying only the entry operator, a check-out with no fare or entry), each reader's InstanceID, and a Directory InstanceID with an extended-range ISAM. |
+| **Demo 8 Reading NTAG** | A full ITSO shell on an NFC Type 2 tag (CMD9, NTAG215): 64-byte sectors at fixed pages, the chip pages saved as a Tag block, an Abacus with ten uses left, and a journey ticket whose value records alternate between two anti-tear copies of the group - its history is only whole with both. |
+| **Demo 9 Dundee EV1** | The same layout on an Ultralight EV1 (CMD10): 128-byte sectors, a shell carrying an MCRN (so the rotated first byte is 0x20), a period ticket with value records in both copies, and a log whose Record Offset makes the first slot the newer. |
 
 ## Adding one
 
@@ -50,7 +52,7 @@ card, as Demo 7 is. Then:
 - check it with `tools/test/screens.py` and `tools/test/replay.py`, and against
   the real card's screens, which should differ only in the values;
 - pin the lines only it produces in `tools/test/test_format.c`, as `demo_seven()`
-  does, and bump the card count there;
+  and `demo_type2_full()` do, and bump the card count there;
 - run `new_encodings.py` on the real card again: it should say nothing is new.
 
 ## What they are not

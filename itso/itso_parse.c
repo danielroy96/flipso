@@ -304,6 +304,37 @@ size_t itso_read_chain(
     return total;
 }
 
+size_t itso_read_log_sectors(
+    const ItsoCard* card,
+    const uint8_t* dir,
+    size_t dir_len,
+    ItsoSectorRead read,
+    void* context,
+    uint8_t* out,
+    size_t capacity) {
+    if(card->log_dir_index == 0) return 0;
+
+    /* A data sector, never a directory copy: S-2 and S-1 are terminators in any
+     * other chain, and in this one SCT(T1) is 0 (TS 1000-2 clause 5.1.5.5). The
+     * cap is the four records a two-bit Record Offset can name, which also
+     * stops a chain that loops. */
+    size_t total = 0;
+    uint8_t sector = card->log_dir_index;
+    for(uint8_t record = 0; record < 4; record++) {
+        if(sector == 0 || sector >= card->sector_count - 2) break;
+        if(total + card->sector_size > capacity) break;
+
+        size_t got = read(context, sector, out + total, capacity - total);
+        if(got < ITSO_TAP_RECORD_LEN) break;
+        total += ITSO_TAP_RECORD_LEN;
+
+        uint8_t next = itso_sct_entry(card, dir, dir_len, sector);
+        if(next == card->log_dir_index) break;
+        sector = next;
+    }
+    return total;
+}
+
 /** Decode one 5-byte IPE Directory Entry (TS 1000-2 clause 6.1). */
 static void itso_parse_dir_entry(ItsoProduct* product, const uint8_t* entry, uint8_t index) {
     product->present = true;
@@ -459,8 +490,135 @@ ItsoType2Kind itso_type2_kind(const uint8_t* pages, size_t len) {
     const uint8_t* shell = pages + ITSO_T2_SHELL_OFFSET;
     size_t shell_len = len - ITSO_T2_SHELL_OFFSET;
     if(itso_shell_is_compact(shell, shell_len)) return ItsoType2Compact;
-    if(itso_looks_like_shell(shell, shell_len)) return ItsoType2FullShell;
-    return ItsoType2NotItso;
+
+    /* A full shell is stored from page 4, rotated so that its FVC shares page 6
+     * byte 2 with a compact shell's (TS 1000-10 clauses 10.11.3, 11.14.3). Clause
+     * 10.24.1 warns that the FVC alone gives false positives, so the shell is
+     * put back together and held to the IIN like any other. */
+    uint8_t full[ITSO_TYPE2_FULL_SHELL_LEN];
+    if(!itso_type2_full_shell(pages, len, full)) return ItsoType2NotItso;
+    if(!itso_looks_like_shell(full, sizeof(full))) return ItsoType2NotItso;
+    if(full[11] == ITSO_FVC_NTAG || full[11] == ITSO_FVC_ULTRALIGHT_EV1) {
+        return ItsoType2FullShell;
+    }
+    return ItsoType2OtherShell;
+}
+
+/* ------------------------------------------------------------------ */
+/* Full-shell Type 2 media (TS 1000-10 clauses 10 and 11: CMD9, CMD10) */
+/* ------------------------------------------------------------------ */
+
+bool itso_type2_full_shell(const uint8_t* pages, size_t len, uint8_t* out) {
+    if(len < ITSO_TYPE2_FULL_SHELL_OFFSET + ITSO_TYPE2_FULL_SHELL_LEN) return false;
+    const uint8_t* stored = pages + ITSO_TYPE2_FULL_SHELL_OFFSET;
+    /* The omitted first byte is kept as the block's last ("Len" in figures 5
+     * and 8), and everything else sits one byte early. */
+    out[0] = stored[ITSO_TYPE2_FULL_SHELL_LEN - 1];
+    memcpy(out + 1, stored, ITSO_TYPE2_FULL_SHELL_LEN - 1);
+    return true;
+}
+
+/**
+ * True for the geometry TS 1000-10 tables 104 (CMD9) and 109 (CMD10) fix, which
+ * the sector map below is only valid for: neither CMD allows an override.
+ */
+static bool itso_type2_full_geometry(const ItsoCard* card) {
+    if(card->sector_count != 9 || card->dir_entries != 2 || card->sct_len != 3) return false;
+    if(card->fvc == ITSO_FVC_NTAG) return card->sector_size == 64 || card->sector_size == 128;
+    if(card->fvc == ITSO_FVC_ULTRALIGHT_EV1) return card->sector_size == 128;
+    return false;
+}
+
+bool itso_type2_sector(const ItsoCard* card, uint8_t sector, size_t* offset, size_t* len) {
+    if(!card->shell_valid || !itso_type2_full_geometry(card)) return false;
+
+    /* The two directory copies sit ahead of the data sectors, at the same place
+     * on every chip of the family (figures 4.1, 4.2 and 7). */
+    if(sector == card->sector_count - 2 || sector == card->sector_count - 1) {
+        *offset = sector == card->sector_count - 2 ? ITSO_TYPE2_DIR_A_OFFSET :
+                                                     ITSO_TYPE2_DIR_B_OFFSET;
+        *len = ITSO_TYPE2_DIR_LEN;
+        return true;
+    }
+    if(sector == 0 || sector > ITSO_TYPE2_DATA_SECTORS) return false;
+
+    *offset = ITSO_TYPE2_SECTORS_OFFSET + (size_t)(sector - 1) * card->sector_size;
+    *len = card->sector_size;
+    return true;
+}
+
+size_t itso_type2_read_sector(void* context, uint8_t sector, uint8_t* out, size_t capacity) {
+    const ItsoType2Pages* source = context;
+    size_t offset = 0, len = 0;
+    if(!itso_type2_sector(source->card, sector, &offset, &len)) return 0;
+    if(offset + len > source->len || len > capacity) return 0;
+    memcpy(out, source->pages + offset, len);
+    return len;
+}
+
+size_t itso_type2_full_len(const ItsoCard* card) {
+    size_t offset = 0, len = 0;
+    if(!itso_type2_sector(card, ITSO_TYPE2_DATA_SECTORS, &offset, &len)) return 0;
+    return offset + len;
+}
+
+const uint8_t* itso_type2_directory(const ItsoCard* card, const uint8_t* pages, size_t len) {
+    if(len < ITSO_TYPE2_SECTORS_OFFSET) return NULL;
+    const uint8_t* a = pages + ITSO_TYPE2_DIR_A_OFFSET;
+    const uint8_t* b = pages + ITSO_TYPE2_DIR_B_OFFSET;
+
+    /* A torn or never-written copy is all zeros, and a DIRS# of 00 would beat an
+     * FF on the other copy by the rollover rule. */
+    bool a_blank = itso_is_blank(a, ITSO_TYPE2_DIR_LEN);
+    bool b_blank = itso_is_blank(b, ITSO_TYPE2_DIR_LEN);
+    if(a_blank != b_blank) return a_blank ? b : a;
+
+    /* DIRS# follows the entries and the Sector Chain Table (TS 1000-2 table 6).
+     * Annex A.3.1.2 starts A at 00 and B at 01, and every update overwrites the
+     * older copy, so the two never match on a card written as the spec says;
+     * should they, B is taken, as the CMD2 transport does. */
+    size_t sequence = 2 + (size_t)card->dir_entries * ITSO_DIR_ENTRY_LEN + card->sct_len;
+    if(sequence >= ITSO_TYPE2_DIR_LEN) return NULL;
+    return (uint8_t)(b[sequence] - a[sequence]) < 0x80 ? b : a;
+}
+
+const char* itso_type2_chip_name(const ItsoCard* card) {
+    if(!itso_type2_full_geometry(card)) return NULL;
+    if(card->fvc == ITSO_FVC_ULTRALIGHT_EV1) return "Ultralight EV1";
+    return card->sector_size == 64 ? "NTAG215" : "NTAG216";
+}
+
+void itso_parse_type2_tag(ItsoCard* card, const uint8_t* pages, size_t len) {
+    if(len < ITSO_TYPE2_TAG_LEN) return;
+
+    /* Pages 0-2 are laid out as on the CMD4 Ultralight: the serial less BCC0,
+     * then the two static lock bytes (TS 1000-10 clauses 10.5, 11.5). */
+    const uint8_t uid[7] = {pages[0], pages[1], pages[2], pages[4], pages[5], pages[6], pages[7]};
+    memcpy(card->chip_uid, uid, sizeof(uid));
+    card->chip_uid_valid = true;
+    card->chip_lock[0] = pages[10];
+    card->chip_lock[1] = pages[11];
+
+    /* What the chip has in all, from which chip the shell says it is: NTAG215
+     * is 540 bytes, NTAG216 and the Ultralight EV1 924 (clauses 10.4, 11.4).
+     * The read itself stops at the end of the ITSO sectors, well short. */
+    const char* chip = itso_type2_chip_name(card);
+    if(chip) card->chip_memory_len = card->sector_size == 64 ? 540 : 924;
+
+    /* The Abacus is two of the four OTP bytes in page 3, and its value is the
+     * count of bits set in them, so that a chip that arrives with different
+     * bits preset still counts from where it is (clause 10.24.4). CMD10 keeps
+     * the same count in a one-way counter instead, which a READ does not
+     * reach, and leaves page 3 to the issuer. */
+    if(card->fvc == ITSO_FVC_NTAG && chip) {
+        uint8_t bits = 0;
+        for(uint8_t mask = 0x80; mask; mask >>= 1) {
+            if(pages[13] & mask) bits++;
+            if(pages[15] & mask) bits++;
+        }
+        card->chip_abacus = bits;
+        card->chip_abacus_valid = true;
+    }
 }
 
 /**
@@ -785,6 +943,32 @@ uint8_t itso_value_records(const uint8_t* group, size_t len, uint8_t sector_size
     return records;
 }
 
+uint8_t itso_previous_value_records(
+    const uint8_t* group,
+    size_t len,
+    uint8_t sector_size,
+    size_t* offset) {
+    size_t current = 0;
+    uint8_t records = itso_value_records(group, len, sector_size, &current);
+    if(records == 0) return 0;
+
+    /* The current copy is its dataset - VGLength blocks, extension included -
+     * then an InstanceID and a Seal (TS 1000-2 clause 7), and the previous copy
+     * starts in the sector after (annex A.3.2.1). */
+    const uint8_t* vg = group + current - 2;
+    size_t dataset_len = (size_t)itso_bits(vg, 0, 6) * ITSO_IPE_BLOCK_LEN;
+    size_t group_len = dataset_len + ITSO_INSTANCE_ID_LEN + ITSO_SEAL_LEN;
+    size_t previous = current - 2 + (group_len + sector_size - 1) / sector_size * sector_size;
+    if(previous + 2 + (size_t)records * ITSO_VALUE_RECORD_LEN > len) return 0;
+
+    /* Both copies support the same number of records (annex A.3.2.2), so their
+     * headers match; anything else is not the other copy. */
+    if(group[previous] != vg[0] || group[previous + 1] != vg[1]) return 0;
+
+    *offset = previous + 2;
+    return records;
+}
+
 /**
  * The VGXRef of the Value Group Extension a value group carries, or 0.
  *
@@ -894,6 +1078,42 @@ static void itso_add_value_record(ItsoProduct* product, const ItsoValueRecord* r
 }
 
 /**
+ * Add a run of value records to the product's history, and return the newest.
+ *
+ * Records the card has not written yet are all zeros, and are skipped: a blank
+ * TS# of zero would beat a live record that has since wrapped past it, and a
+ * blank DTS decodes to 2028, which is later than any real timestamp.
+ *
+ * @param live    when not NULL, the live record from another run: a record here
+ *                newer than its TS# @p live_ts is skipped rather than kept.
+ */
+static const uint8_t* itso_add_value_run(
+    ItsoProduct* product,
+    const uint8_t* run,
+    uint8_t records,
+    const uint8_t* live,
+    uint16_t live_ts) {
+    const uint8_t* newest = NULL;
+    uint16_t newest_ts = 0;
+    for(uint8_t i = 0; i < records; i++) {
+        const uint8_t* record = run + (size_t)i * ITSO_VALUE_RECORD_LEN;
+        if(itso_is_blank(record, ITSO_VALUE_RECORD_LEN)) continue;
+
+        ItsoValueRecord decoded;
+        itso_decode_value_record(&decoded, record, product->typ);
+        if(live && itso_ts_newer(decoded.ts, live_ts)) continue;
+        decoded.on_card = true;
+        itso_add_value_record(product, &decoded);
+
+        if(newest == NULL || itso_ts_newer(decoded.ts, newest_ts)) {
+            newest = record;
+            newest_ts = decoded.ts;
+        }
+    }
+    return newest;
+}
+
+/**
  * Decode the Value Record Data Group bound to an IPE (TS 1000-2 clause 7).
  *
  * It is not a purse feature: any IPE may carry one, and table 15 gives every
@@ -917,32 +1137,29 @@ static void itso_parse_value_records(
     /* Records are written cyclically, so the live one is the newest, and TS# is
      * what orders them. The DTS cannot do that job: it has a resolution of one
      * minute, and a tap that spends a ride writes a record in the same minute as
-     * the tap in - two records, one timestamp, and picking either at random.
-     *
-     * Records the card has not written yet are all zeros. Skip them: a blank TS#
-     * of zero would beat a live record that has since wrapped past it, and a
-     * blank DTS decodes to 2028, which is later than any real timestamp. */
-    const uint8_t* newest = NULL;
-    uint16_t newest_ts = 0;
-    for(uint8_t i = 0; i < records; i++) {
-        const uint8_t* record = group + offset + (size_t)i * ITSO_VALUE_RECORD_LEN;
-        if(itso_is_blank(record, ITSO_VALUE_RECORD_LEN)) continue;
+     * the tap in - two records, one timestamp, and picking either at random. */
+    const uint8_t* newest = itso_add_value_run(product, group + offset, records, NULL, 0);
 
-        ItsoValueRecord decoded;
-        itso_decode_value_record(&decoded, record, product->typ);
-        decoded.on_card = true;
-        itso_add_value_record(product, &decoded);
-
-        if(newest == NULL || itso_ts_newer(decoded.ts, newest_ts)) {
-            newest = record;
-            newest_ts = decoded.ts;
-        }
+    /* A software anti-tear card keeps a second copy behind the first, holding
+     * the other half of the history (TS 1000-10 annex A.3.2). The copy the
+     * chain names first is the current one, and anything in the other that is
+     * newer is a transaction torn before the directory was relinked to it -
+     * which a POST discards and so does this (clause A.3.2.4.1). Should the
+     * current copy hold nothing at all, the previous copy is what a POST falls
+     * back on, and so is this (clause A.3.2.4.3). */
+    size_t previous = 0;
+    uint8_t previous_records = itso_previous_value_records(group, len, sector_size, &previous);
+    if(previous_records) {
+        uint16_t ceiling = newest ? (uint16_t)itso_bits(newest, 4, 12) : 0;
+        const uint8_t* fallback =
+            itso_add_value_run(product, group + previous, previous_records, newest, ceiling);
+        if(!newest) newest = fallback;
     }
     if(newest == NULL) return;
 
     product->value_parsed = true;
     product->value_txn = (uint8_t)itso_bits(newest, 0, 4);
-    product->value_ts = newest_ts;
+    product->value_ts = (uint16_t)itso_bits(newest, 4, 12);
     product->value_dts = itso_bits(newest, 16, 24);
     product->value_isam = itso_bits(newest, 40, 32);
     product->value_action_seq = newest[9];

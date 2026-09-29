@@ -14,7 +14,7 @@ from itso_build import (  # noqa: E402
     capping_vgx, isam, log_entry, loc1, loyalty_tail, loc2, luhn, nlc, pad, period_tail, purse_tail,
     put_secrc, tt_record, tt_record_rev4, type2_page_memory, typ27_dataset, typ28_dataset,
     typ29_dataset, value_group,
-    value_record)
+    value_record, directory, isrn, shell_dataset, split_sectors, type2_full_page_memory)
 
 # ---------------------------------------------------------------- Shell (FID 15)
 IIN, OID, ISSN = "633597", "1234", "0012345"
@@ -554,11 +554,111 @@ cmd4_location = type2_page_memory(
     dir_entry(131, 27, 0, False, CMD4_EXPIRY, extended=True),
     typ27_dataset(issue_date=CMD4_EXPIRY, amount=445, area_type=1, geo=0x12345678))
 
-# A full ITSO shell at page 6 of a larger tag: a CMD9 (NTAG215) card, which
-# Flipso identifies but does not read. 128 bytes, well short of a real NTAG215,
-# is enough to hold the shell and to be a whole Type 2 read.
-cmd9_pages = bytearray(128)
-cmd9_pages[24:24 + len(shell.buf)] = shell.buf
+# ================================================================== CMD9 card
+# A full ITSO shell on an NTAG215 (TS 1000-10 section 10): 64-byte sectors,
+# nine of them, two directory entries - one IPE and the log - and TS 1000-10
+# annex A's software anti-tear, so two of everything that changes.
+CMD9_B = 64
+CMD9_EXP = date_stamp(2031, 5, 31)
+cmd9_shell = shell_dataset("633597", "1234", "0090009", fvc=9, ksc=1, kvc=1,
+                           expiry=CMD9_EXP, b=CMD9_B, s=9, e=2, sctl=3)
+CMD9_ISRN = isrn("633597", "1234", "0090009")
+
+# E1: the journey ticket above, whose 68-byte IPE group runs out of sector 1
+# into the "IPE optional second sector", sector 4 (figure 4.1). Its value
+# record group has two copies, in sectors 5 and 6, holding alternate records
+# (annex A.3.2.3): TS#1 and TS#3 in copy B, TS#2 in copy A. The last
+# transaction wrote TS#3 into B and relinked the chain to name B first.
+cmd9_ipe = split_sectors(bytes(ipe23.buf) + instance_and_seal(), CMD9_B)
+cmd9_copy_a = value_group([
+    value_record(6, 2, dts(2026, 9, 12, 7, 50), journey_tail(8, 0, 0x02)),
+    bytes(15),
+], format_rev=2)
+cmd9_copy_b = value_group([
+    value_record(1, 1, dts(2026, 9, 10, 17, 5), journey_tail(9, 0, 0)),
+    value_record(6, 3, dts(2026, 9, 14, 8, 41), journey_tail(7, 1, 0x02)),
+], format_rev=2)
+
+# E2: the log, T0 in sector 2 and T1 in sector 3 (Log Files A and B). Record
+# Offset 0 says T0 is next to be written, so T1 is the newest.
+cmd9_t0 = tt_record(12, dts(2026, 9, 12, 7, 50), 0, NLC_1072, NLC_1444, 1)
+cmd9_t1 = tt_record(11, dts(2026, 9, 14, 8, 41), 0, NLC_1072, None, 1)
+
+def cmd9_directory(chain, sequence, record_offset, when):
+    return directory(
+        [dir_entry(1234, 23, 4, True, CMD9_EXP),
+         log_entry(ptr=1, eei=1, when=when, record_offset=record_offset, passback=0)],
+        chain, 9, 2, 3, sequence,
+        instance=bytes([0x10]) + isam(1234, 0x0909).to_bytes(4, "big"))
+
+# Copy B is the live directory, DIRS# 7; copy A is the one before the last tap,
+# DIRS# 6, still naming copy A of the value records first.
+cmd9_dir_live = cmd9_directory({1: 4, 4: 6, 6: 5, 5: 8, 2: 3}, 0x07, 0,
+                               dts(2026, 9, 14, 8, 41))
+cmd9_dir_old = cmd9_directory({1: 4, 4: 5, 5: 6, 6: 8, 2: 3}, 0x06, 1,
+                              dts(2026, 9, 12, 7, 50))
+CMD9_UID = bytes([0x04, 0x19, 0x09, 0x21, 0x5A, 0x6B, 0x7C])
+cmd9_pages = type2_full_page_memory(
+    CMD9_UID, cmd9_shell.buf, cmd9_dir_old, cmd9_dir_live,
+    {1: cmd9_ipe[0], 4: cmd9_ipe[1],
+     5: cmd9_copy_a + instance_and_seal(), 6: cmd9_copy_b + instance_and_seal(),
+     2: cmd9_t0, 3: cmd9_t1},
+    CMD9_B, abacus=3)
+assert len(cmd9_pages) == 512
+
+# The same card torn mid-transaction (annex A.3.2.4.1): TS#4 made it into copy A
+# but the directory was never relinked, so B is still current and TS#4 is an
+# orphan a POST writes over. It must not become the live record.
+cmd9_torn_a = value_group([
+    value_record(6, 2, dts(2026, 9, 12, 7, 50), journey_tail(8, 0, 0x02)),
+    value_record(6, 4, dts(2026, 9, 15, 9, 0), journey_tail(6, 0, 0x02)),
+], format_rev=2)
+cmd9_torn = type2_full_page_memory(
+    CMD9_UID, cmd9_shell.buf, cmd9_dir_old, cmd9_dir_live,
+    {1: cmd9_ipe[0], 4: cmd9_ipe[1],
+     5: cmd9_torn_a + instance_and_seal(), 6: cmd9_copy_b + instance_and_seal(),
+     2: cmd9_t0, 3: cmd9_t1},
+    CMD9_B, abacus=3)
+
+# The same card read before its last tap: TS#2 was the newest, written to copy
+# A and linked first; T0 was the only journey. Directory A (DIRS# 6) was live,
+# and B held the one before it.
+cmd9_before = type2_full_page_memory(
+    CMD9_UID, cmd9_shell.buf, cmd9_dir_old,
+    cmd9_directory({1: 4, 4: 6, 6: 5, 5: 8, 2: 3}, 0x05, 0, dts(2026, 9, 10, 17, 5)),
+    {1: cmd9_ipe[0], 4: cmd9_ipe[1],
+     5: cmd9_copy_a + instance_and_seal(),
+     6: value_group([cmd9_copy_b[2:17], bytes(15)], format_rev=2) + instance_and_seal(),
+     2: cmd9_t0},
+    CMD9_B, abacus=2)
+
+# ================================================================= CMD10 card
+# A full ITSO shell on an Ultralight EV1 (TS 1000-10 section 11): 128-byte
+# sectors, otherwise laid out as CMD9. A purse whose IPE fits one sector, an
+# empty log, and no Abacus: CMD10 counts in a one-way counter instead.
+CMD10_B = 128
+cmd10_shell = shell_dataset("633597", "1234", "0100010", fvc=10, ksc=1, kvc=1,
+                            expiry=CMD9_EXP, b=CMD10_B, s=9, e=2, sctl=3)
+CMD10_ISRN = isrn("633597", "1234", "0100010")
+cmd10_current = value_group([
+    value_record(4, 2, dts(2026, 9, 2, 12, 0), purse_tail(1500)),
+    bytes(15),
+], format_rev=1)
+cmd10_previous = value_group([
+    value_record(4, 1, dts(2026, 9, 1, 12, 0), purse_tail(1000)),
+    bytes(15),
+], format_rev=1)
+cmd10_dir = directory(
+    [dir_entry(1234, 2, 0, True, CMD9_EXP),
+     log_entry(ptr=0, eei=0, when=0, record_offset=0, passback=0)],
+    {1: 5, 5: 6, 6: 8, 2: 3}, 9, 2, 3, 0x01)
+# Copy A never written since the card was made: blank, and so beaten by B.
+cmd10_pages = type2_full_page_memory(
+    bytes([0x04, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10]), cmd10_shell.buf, bytes(40), cmd10_dir,
+    {1: sector1, 5: cmd10_current + instance_and_seal(),
+     6: cmd10_previous + instance_and_seal()},
+    CMD10_B, locks=bytes([0x00, 0x00]))
+assert len(cmd10_pages) == 896
 
 # ---------------------------------------------------------------- emit
 def carr(name, data):
@@ -607,8 +707,16 @@ with open("card_data.h", "w") as f:
     f.write(carr("cmd4_spent", cmd4_spent))
     f.write(carr("cmd4_fare_value", cmd4_fare_value))
     f.write(carr("cmd4_location", cmd4_location))
-    f.write(carr("cmd9_pages", bytes(cmd9_pages)))
+    f.write("\n/* Synthetic ITSO CMD9 and CMD10 full-shell cards (Type 2 tags). */\n")
+    f.write(f'#define EXPECT_CMD9_ISRN "{CMD9_ISRN}"\n')
+    f.write(f'#define EXPECT_CMD10_ISRN "{CMD10_ISRN}"\n')
+    f.write(carr("cmd9_pages", cmd9_pages))
+    f.write(carr("cmd9_torn", cmd9_torn))
+    f.write(carr("cmd9_before", cmd9_before))
+    f.write(carr("cmd10_pages", cmd10_pages))
 print("ISRN:", ISRN)
 print("CMD2 ISRN:", CMD2_ISRN)
 print("CMD4 ISRN:", CMD4_ISRN)
+print("CMD9 ISRN:", CMD9_ISRN)
+print("CMD10 ISRN:", CMD10_ISRN)
 print("wrote card_data.h")

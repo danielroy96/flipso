@@ -17,8 +17,9 @@
  *   - CMD2 uses software anti-tear, so the last two sectors are two copies of
  *     the Directory rather than a Directory and a cyclic log. The copy with the
  *     newer sequence number is the live one.
- *   - The cyclic log therefore has no reserved sector. It is an ordinary data
- *     group whose starting sector is its Directory entry number, like a product.
+ *   - The cyclic log therefore has no reserved sector. Its first record is in
+ *     the sector its Directory entry number names, like a product, and its
+ *     second in the sector the Sector Chain Table links from there.
  */
 #include "flipso_cmd2.h"
 #include "flipso_reader.h"
@@ -388,11 +389,21 @@ static size_t flipso_cmd2_source_group(void* context, uint8_t sector, const uint
 }
 
 static size_t flipso_cmd2_source_log(void* context, const uint8_t** data) {
-    /* CMD2 reserves no sector for the cyclic log: it is an ordinary data group
-     * starting at the sector its Directory entry names, exactly like a
-     * product. */
+    /* CMD2 reserves no sector for the cyclic log: it starts at the sector its
+     * Directory entry names, like a product, but holds one record per sector
+     * rather than one group across them - which matters as soon as B is not
+     * the 48 bytes of a record, as on SPT's cards with their 80. */
     FlipsoCmd2Source* source = context;
-    return flipso_cmd2_source_group(context, source->card->log_dir_index, data);
+    FlipsoCmd2* cmd2 = source->cmd2;
+    *data = cmd2->group;
+    return itso_read_log_sectors(
+        source->card,
+        cmd2->dir,
+        cmd2->dir_len,
+        flipso_cmd2_source_sector,
+        source,
+        cmd2->group,
+        ITSO_MAX_GROUP_LEN);
 }
 
 static bool flipso_cmd2_source_lost(void* context) {

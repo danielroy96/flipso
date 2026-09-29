@@ -39,6 +39,7 @@ TS 1000 specification. Flipso decodes as much of it as it can:
 * **Cardholder** — name, date of birth, concession and entitlements
 * **Journeys** — recent taps and completed journeys, with origin, destination, fare and whether you were inside the gates
 * **Paper tickets** — ITSO's compact paper tickets, such as the Glasgow Subway's singles, returns and day tickets: rides left, price, when and at which station they were last used
+* **NFC tag tickets** — ITSO cards on NTAG215/216 and MIFARE Ultralight EV1 tags (CMD9 and CMD10), read like a smartcard, with the chip's lock bits and, on an NTAG, how many uses it has left
 
 Station and operator names are resolved on the device from bundled reference
 data, so a card that stores nothing but a code still shows a place you
@@ -117,7 +118,7 @@ page; these are the ones Flipso is written against:
 | [TS 1000-2](https://www.itso.org.uk/hubfs/TS_1000-2_V2_1_5_2025_03.pdf) | Customer Media Format and Data Record Definitions | The shell, directory, product (IPE) and value record layouts |
 | [TS 1000-5](https://www.itso.org.uk/hubfs/TS_1000-5_V2_1_5_2025_03.pdf) | Customer Media Data and Customer Media Architecture | The fields of each product type, and the journey log |
 | [TS 1000-7](https://www.itso.org.uk/hubfs/TS_1000-7_V2_1_5_2025_03.pdf) | ITSO Security Subsystem | The seals, and why Flipso cannot check them without an ISAM |
-| [TS 1000-10](https://www.itso.org.uk/hubfs/TS_1000-10_V2_1_5_2025_03.pdf) | Customer Media Definitions | Where the data sits on each kind of card (CMD2, CMD4, CMD7) |
+| [TS 1000-10](https://www.itso.org.uk/hubfs/TS_1000-10_V2_1_5_2025_03.pdf) | Customer Media Definitions | Where the data sits on each kind of card (CMD2, CMD4, CMD7, CMD9, CMD10) |
 
 [`docs/PROTOCOL.md`](docs/PROTOCOL.md) cites the clause and table behind each
 field Flipso decodes.

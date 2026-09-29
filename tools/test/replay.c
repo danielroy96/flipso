@@ -162,9 +162,21 @@ int main(void) {
     if(replay_type2_len) {
         printf("Type 2 tag (%zu bytes of page memory)\n", replay_type2_len);
         static const char* const kinds[] = {
-            "incomplete read", "no ITSO shell", "full shell (CMD9/CMD10)", "compact shell (CMD4)"};
+            [ItsoType2Incomplete] = "incomplete read",
+            [ItsoType2NotItso] = "no ITSO shell",
+            [ItsoType2FullShell] = "full shell (CMD9/CMD10)",
+            [ItsoType2OtherShell] = "full shell of an unknown media definition",
+            [ItsoType2Compact] = "compact shell (CMD4)",
+        };
         ItsoType2Kind kind = itso_type2_kind(replay_type2, replay_type2_len);
         printf("  %s\n", kinds[kind]);
+        if(kind == ItsoType2FullShell) {
+            /* A read saves a CMD9 or CMD10 as the blocks a smartcard is saved
+             * as, so it is that file which replays - page memory from a debug
+             * dump would need the transport's own walk. */
+            printf("  save the card in the app and replay the .flipso instead\n");
+            return 1;
+        }
         if(!itso_parse_type2(&card, replay_type2, replay_type2_len)) {
             printf("  REJECTED by itso_parse_type2 - not a whole CMD4 ticket\n");
             return 1;
@@ -300,6 +312,18 @@ int main(void) {
     printf("  card number   %s (check digit %s)\n", card.isrn, card.isrn_check_ok ? "ok" : "BAD");
     printf(
         "  IIN %u, OID %u, FVC %u, format rev %u\n", card.iin, card.oid, card.fvc, card.format_rev);
+    /* A CMD9 or CMD10's chip pages, saved beside its shell. */
+    if(replay_tag_len) {
+        itso_parse_type2_tag(&card, replay_tag, replay_tag_len);
+        printf(
+            "  chip          %s, UID ",
+            itso_type2_chip_name(&card) ? itso_type2_chip_name(&card) : "unknown");
+        for(size_t i = 0; i < sizeof(card.chip_uid); i++)
+            printf("%02X", card.chip_uid[i]);
+        printf(", locked pages %04X", itso_type2_locked_pages(card.chip_lock));
+        if(card.chip_abacus_valid) printf(", Abacus %u of 16", card.chip_abacus);
+        printf("\n");
+    }
     printf(
         "  geometry      %u sectors of %u bytes, %u directory entries, SCTL %u\n",
         card.sector_count,

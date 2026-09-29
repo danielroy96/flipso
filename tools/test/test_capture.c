@@ -1046,6 +1046,159 @@ static void merge_type2(void) {
     flipso_capture_free(previous);
 }
 
+/* ------------------------------------------------------------------ */
+/* CMD9 and CMD10: a Type 2 tag saved as a smartcard is                 */
+/* ------------------------------------------------------------------ */
+
+/** The blocks flipso_type2.c keeps for a full-shell card. */
+static void capture_full(FlipsoCapture* capture, const uint8_t* pages, size_t len) {
+    static ItsoCard scratch;
+    check("a whole CMD9 is kept", flipso_capture_add_type2_full(capture, &scratch, pages, len));
+}
+
+static void full_type2_card(void) {
+    FlipsoCapture* capture = flipso_capture_alloc();
+    capture_full(capture, cmd9_pages, sizeof(cmd9_pages));
+    check("a CMD9 capture is worth saving", flipso_capture_valid(capture));
+
+    /* A full shell has a number of its own, unlike a compact one. */
+    char number[ITSO_ISRN_DIGITS + 1];
+    check(
+        "a CMD9 is known by its card number",
+        flipso_capture_card_number(capture, number) && strcmp(number, EXPECT_CMD9_ISRN) == 0);
+
+    static ItsoCard direct, loaded_card;
+    check("a CMD9 capture decodes", flipso_capture_decode(capture, &direct));
+    check(
+        "to the NTAG215 with its Abacus",
+        strcmp(itso_type2_chip_name(&direct), "NTAG215") == 0 && direct.chip_abacus == 3 &&
+            direct.chip_uid_valid);
+    check(
+        "its journey ticket and both journeys",
+        direct.product_count == 1 && direct.products[0].value_ts == 3 &&
+            direct.products[0].value_history_count == 3 && direct.tap_count == 2);
+
+    size_t count = 0;
+    char** lines = to_lines(capture, &count);
+    check("header plus shell, tag, directory, product and log", count == 3 + 5);
+    bool keyed = false;
+    for(size_t i = 0; i < count; i++) {
+        if(strncmp(lines[i], "Tag: 04 19 09", 13) == 0) keyed = true;
+    }
+    check("the chip pages are written under their own key", keyed);
+
+    FlipsoCapture* loaded = flipso_capture_alloc();
+    for(size_t i = 0; i < count; i++) {
+        flipso_capture_parse_line(loaded, lines[i]);
+    }
+    check("the saved CMD9 decodes", flipso_capture_decode(loaded, &loaded_card));
+    check("exactly as the read did", memcmp(&direct, &loaded_card, sizeof(ItsoCard)) == 0);
+
+    free_lines(lines, count);
+    flipso_capture_free(loaded);
+    flipso_capture_free(capture);
+}
+
+/* What is not a whole CMD9 or CMD10 is refused, and leaves nothing behind. */
+static void full_type2_refused(void) {
+    static ItsoCard scratch;
+    bool clean = true;
+    for(size_t cut = 0; cut < sizeof(cmd9_pages); cut += 8) {
+        uint8_t* exact = malloc(cut ? cut : 1);
+        memcpy(exact, cmd9_pages, cut);
+        FlipsoCapture* capture = flipso_capture_alloc();
+        if(flipso_capture_add_type2_full(capture, &scratch, exact, cut) ||
+           flipso_capture_valid(capture)) {
+            clean = false;
+        }
+        flipso_capture_free(capture);
+        free(exact);
+    }
+    check("a CMD9 short of its sixth sector is not kept", clean);
+
+    FlipsoCapture* capture = flipso_capture_alloc();
+    check(
+        "nor is a CMD4 ticket",
+        !flipso_capture_add_type2_full(capture, &scratch, cmd4_pages, sizeof(cmd4_pages)) &&
+            !flipso_capture_valid(capture));
+    flipso_capture_free(capture);
+}
+
+/*
+ * A product whose chain fills a group exactly - an Ultralight EV1's IPE over two
+ * 128-byte sectors and both value record copies - still has to be kept when the
+ * card lets it go, header and all.
+ */
+static void gone_full_chain(void) {
+    static uint8_t chain[ITSO_MAX_GROUP_LEN];
+    memcpy(chain, group1, sizeof(group1));
+
+    FlipsoCapture* previous = flipso_capture_alloc();
+    flipso_capture_add(previous, FlipsoBlockShell, 0, card_shell, sizeof(card_shell));
+    flipso_capture_add(previous, FlipsoBlockDirectory, 0, card_dir, sizeof(card_dir));
+    flipso_capture_add(previous, FlipsoBlockProduct, 1, chain, sizeof(chain));
+    flipso_capture_set_time(previous, 1790000000u);
+
+    /* The card now lists something else in E1: a different expiry. */
+    static uint8_t dir_now[sizeof(card_dir)];
+    memcpy(dir_now, card_dir, sizeof(card_dir));
+    dir_now[2 + 4] ^= 0x01;
+    FlipsoCapture* now = flipso_capture_alloc();
+    flipso_capture_add(now, FlipsoBlockShell, 0, card_shell, sizeof(card_shell));
+    flipso_capture_add(now, FlipsoBlockDirectory, 0, dir_now, sizeof(dir_now));
+    flipso_capture_add(now, FlipsoBlockProduct, 1, group1, sizeof(group1));
+
+    FlipsoCaptureDiff diff;
+    flipso_capture_merge_history(now, previous, &diff);
+    check("a dropped product with a full chain is kept", diff.kept_products == 1);
+
+    /* And it survives the file, whose longest line is now that block's. */
+    size_t count = 0;
+    char** lines = to_lines(now, &count);
+    size_t longest = 0;
+    for(size_t i = 0; i < count; i++) {
+        if(strlen(lines[i]) > longest) longest = strlen(lines[i]);
+    }
+    check("its line fits FLIPSO_CAPTURE_LINE_MAX", longest + 1 <= FLIPSO_CAPTURE_LINE_MAX);
+    FlipsoCapture* loaded = flipso_capture_alloc();
+    for(size_t i = 0; i < count; i++) {
+        flipso_capture_parse_line(loaded, lines[i]);
+    }
+    static ItsoCard card;
+    check(
+        "and it loads back as a product off the card",
+        flipso_capture_decode(loaded, &card) && card.product_count == 6 &&
+            !card.products[5].on_card && card.products[5].dir_index == 1);
+
+    free_lines(lines, count);
+    flipso_capture_free(loaded);
+    flipso_capture_free(now);
+    flipso_capture_free(previous);
+}
+
+/*
+ * A CMD9 read before and after one ride. Its value records alternate between
+ * two copies of the group, so a record the last read saw in the current copy
+ * is in the previous copy now - still on the card, and neither new nor rolled
+ * off. Only TS#3 is new, and nothing needs keeping.
+ */
+static void merge_full_type2(void) {
+    FlipsoCapture* previous = flipso_capture_alloc();
+    capture_full(previous, cmd9_before, sizeof(cmd9_before));
+    FlipsoCapture* now = flipso_capture_alloc();
+    capture_full(now, cmd9_pages, sizeof(cmd9_pages));
+
+    FlipsoCaptureDiff diff;
+    flipso_capture_merge_history(now, previous, &diff);
+    check("one new transaction, across both copies", diff.new_values == 1);
+    check("and none carried forward that the card still holds", diff.kept_values == 0);
+    check("one new journey", diff.new_taps == 1 && diff.kept_taps == 0);
+    check("the ticket is the same product", diff.new_products == 0 && diff.kept_products == 0);
+
+    flipso_capture_free(now);
+    flipso_capture_free(previous);
+}
+
 static void gone_needs_a_directory(void) {
     ItsoCard reference;
     reference_decode(&reference);
@@ -1076,6 +1229,8 @@ int main(void) {
     round_trip();
     chip_block();
     type2_card();
+    full_type2_card();
+    full_type2_refused();
     printf("\nIncomplete reads\n");
     partial();
     spare_entry();
@@ -1089,10 +1244,12 @@ int main(void) {
     merge_cap();
     merge_new_product();
     merge_type2();
+    merge_full_type2();
     printf("\nProducts the card has dropped\n");
     merge_gone_product();
     gone_product_cap();
     gone_needs_a_directory();
+    gone_full_chain();
 
     printf("\n%s\n", failures ? "FAILURES" : "All capture tests passed");
     return failures ? 1 : 0;

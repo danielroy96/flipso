@@ -53,7 +53,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 
 
-SAVED_KEYS = {"shell": "SHELL", "directory": "DIR", "log": "LOG", "type 2": "TYPE2"}
+SAVED_KEYS = {"shell": "SHELL", "directory": "DIR", "log": "LOG", "type 2": "TYPE2", "tag": "TAG"}
 
 
 def parse_saved(path):
@@ -137,6 +137,7 @@ def write_header(blocks, path):
     directory = next((b[3] for b in blocks if b[0] == "DIR"), b"")
     log = next((b[3] for b in blocks if b[0] in ("LOG", "LOGGROUP")), b"")
     type2 = next((b[3] for b in blocks if b[0] == "TYPE2"), b"")
+    tag = next((b[3] for b in blocks if b[0] == "TAG"), b"")
     groups = [b for b in blocks if b[0] in ("GROUP", "IPE")]
 
     # Generated, so exempt from ufbt lint: clang-format would split every array.
@@ -149,6 +150,7 @@ def write_header(blocks, path):
     out.append(c_array("replay_dir", directory))
     out.append(c_array("replay_log", log))
     out.append(c_array("replay_type2", type2))
+    out.append(c_array("replay_tag", tag))
     for _, index, _, data in groups:
         out.append(c_array(f"replay_group_{index}", data))
     out.append("static const ReplayBlock replay_groups[] = {")
