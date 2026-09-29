@@ -241,7 +241,12 @@ this is the only way to see what the app actually looks like, so use it freely
 when changing a screen, and show the user before-and-after when a layout
 changes.
 
-- Write screenshots to the scratchpad directory, not into the repo.
+- `--amber` draws black on the Flipper's own #FF8200, which is what the
+  README's screenshots in `docs/screenshots/` are. Take those with it, straight
+  to their final path, and capture them from the demo cards so no real card
+  number or name is in them. No recolouring step is needed.
+- Write screenshots to the scratchpad directory, not into the repo, unless
+  they are the README's.
 - Straight after a `deploy`, the first capture can show the pre-launch frame.
   Send any key first, or capture twice.
 - The screenshot uses the RPC protocol rather than the text CLI. If it is

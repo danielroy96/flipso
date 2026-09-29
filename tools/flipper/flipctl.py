@@ -1376,7 +1376,7 @@ def show_heap(f: Flipper, label: str = "", stats: dict | None = None):
 
 
 def snapshot(port: str, out: str, scale: int = 3, invert: bool = False,
-             timeout: float = 20.0):
+             timeout: float = 20.0, palette: str = "screen"):
     """Capture the screen over RPC and write it as a PNG. Dies on failure."""
     try:
         from flipperzero_protobuf.flipper_proto import FlipperProto
@@ -1401,7 +1401,7 @@ def snapshot(port: str, out: str, scale: int = 3, invert: bool = False,
         proto = FlipperProto()
         frame = proto.rpc_gui_snapshot_screen()
         signal.alarm(0)
-        write_png(frame, out, scale=scale, invert=invert)
+        write_png(frame, out, scale=scale, invert=invert, palette=palette)
         print(f"captured {out}")
     except Timeout:
         if not cli_alive(port):
@@ -1434,24 +1434,37 @@ def cmd_shot(args):
         time.sleep(0.4)
 
     snapshot(port, args.out, scale=args.scale, invert=args.invert,
-             timeout=args.timeout)
+             timeout=args.timeout, palette="amber" if args.amber else "screen")
     return 0
 
 
-def write_png(frame: bytes, path: str, scale: int = 3, invert: bool = False):
+# Lit and unlit pixels as RGB. The screen palette is what the grey capture has
+# always been; amber is the Flipper's own backlit screen - black on #FF8200 -
+# which is what the README's screenshots use, so they match the hardware.
+PALETTES = {
+    "screen": ((0x11, 0x11, 0x11), (0xE8, 0xE8, 0xE8)),
+    "amber": ((0x00, 0x00, 0x00), (0xFF, 0x82, 0x00)),
+}
+
+
+def write_png(frame: bytes, path: str, scale: int = 3, invert: bool = False,
+              palette: str = "screen"):
     """The screen comes back as a column-major 1bpp bitmap, 8 rows per byte."""
     import struct
     import zlib
 
     W, H = 128, 64
-    on, off = (0xE8, 0x11) if invert else (0x11, 0xE8)
+    on, off = PALETTES[palette]
+    if invert:
+        on, off = off, on
+    on, off = bytes(on) * scale, bytes(off) * scale
     rows = b""
     for y in range(H):
         line = bytearray()
         base = (y // 8) * W
         bit = y % 8
         for x in range(W):
-            line += bytes([on if (frame[base + x] >> bit) & 1 else off]) * scale
+            line += on if (frame[base + x] >> bit) & 1 else off
         rows += (b"\x00" + bytes(line)) * scale
 
     def chunk(tag, payload):
@@ -1459,7 +1472,9 @@ def write_png(frame: bytes, path: str, scale: int = 3, invert: bool = False):
         return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
 
     png = b"\x89PNG\r\n\x1a\n"
-    png += chunk(b"IHDR", struct.pack(">IIBBBBB", W * scale, H * scale, 8, 0, 0, 0, 0))
+    # 8-bit truecolour: two colours do not need it, but a palette PNG buys a
+    # few hundred bytes at the cost of a second code path.
+    png += chunk(b"IHDR", struct.pack(">IIBBBBB", W * scale, H * scale, 8, 2, 0, 0, 0))
     png += chunk(b"IDAT", zlib.compress(rows, 9))
     png += chunk(b"IEND", b"")
     with open(path, "wb") as fh:
@@ -1930,6 +1945,8 @@ def build_parser():
     s.add_argument("--settle", type=float, default=0.3)
     s.add_argument("--scale", type=int, default=3)
     s.add_argument("--invert", action="store_true")
+    s.add_argument("--amber", action="store_true",
+                   help="black on the Flipper's amber, as the README's screenshots are")
     s.add_argument("--timeout", type=float, default=20.0)
     s.set_defaults(func=cmd_shot)
 

@@ -362,6 +362,28 @@ def main():
         check("the marker is recognised across two reads", flipctl.launch_app(f, "flipso"))
     flipctl.APP_STARTUP_LIMIT_S = limit
 
+    # Screenshots: the frame is column-major, 8 rows to a byte, and an amber
+    # capture is what the README's screenshots are, so it needs no recolouring.
+    import tempfile
+    import zlib
+    frame = bytearray(128 * 64 // 8)
+    frame[0] = 0x01                     # (0, 0) lit
+    frame[128 + 5] = 0x02               # (5, 9) lit
+    def pixels(palette):
+        with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+            flipctl.write_png(bytes(frame), tmp.name, scale=1, palette=palette)
+            data = open(tmp.name, "rb").read()
+        idat = data[data.index(b"IDAT") + 4:data.index(b"IEND") - 8]
+        raw = zlib.decompress(idat)
+        stride = 1 + 128 * 3
+        return lambda x, y: tuple(raw[y * stride + 1 + x * 3:y * stride + 4 + x * 3])
+    px = pixels("amber")
+    check("an amber shot draws lit pixels black", px(0, 0) == (0, 0, 0) and px(5, 9) == (0, 0, 0))
+    check("on the Flipper's amber", px(1, 0) == (0xFF, 0x82, 0x00))
+    px = pixels("screen")
+    check("the plain shot is the grey it always was",
+          px(0, 0) == (0x11, 0x11, 0x11) and px(1, 0) == (0xE8, 0xE8, 0xE8))
+
     print("FAILED" if failures else "All flipctl recovery tests passed")
     return 1 if failures else 0
 
