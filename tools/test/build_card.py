@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from itso_build import (  # noqa: E402
-    Bits, bcd, date_stamp, dir_entry, dts, instance_and_seal, journey_tail,
+    Bits, bcd, charge_tail, date_stamp, dir_entry, dts, instance_and_seal, journey_tail,
     capping_vgx, isam, log_entry, loc1, loyalty_tail, loc2, luhn, nlc, pad, period_tail, purse_tail,
     put_secrc, tt_record, tt_record_rev4, type2_page_memory, typ27_dataset, typ28_dataset,
     typ29_dataset, value_group,
@@ -241,7 +241,7 @@ sector5 = bytes(ipe3.buf) + instance_and_seal()
 # fit the two-byte slot a purse balance uses (TS 1000-5 table 9).
 sector12 = value_group([
     value_record(1, 20, dts(2026, 8, 1, 10, 0), loyalty_tail(1200)),
-    value_record(1, 21, dts(2026, 9, 10, 10, 0), loyalty_tail(74500)),
+    value_record(1, 21, dts(2026, 9, 10, 10, 0), loyalty_tail(74500, user=4660)),
 ], format_rev=1) + instance_and_seal()
 
 # Period tickets at revisions 1 and 2, as whole product groups rather than as
@@ -333,6 +333,162 @@ def capping_group(ref):
             instance_and_seal())
 capping1_group = capping_group(1)
 capping2_group = capping_group(2)
+
+# The purse above with a ValueCurrencyCode that scales by ten (TS 1000-5 annex
+# A.21.2). The dataset's threshold, top-up, ceiling and overdraft are priced in
+# it, so they scale with the balance; the deposit has a currency code of its own.
+purse_scaled_group = (
+    pad(bytes(ipe2.buf) + instance_and_seal(), 64) +
+    value_group([value_record(4, 1, dts(2026, 9, 1, 12, 0), purse_tail(1234, valc=0b0100))],
+                format_rev=1) + instance_and_seal())
+
+# Charge to account, mode 1 (TS 1000-5 table 10): a credit limit priced in the
+# value record's currency, here scaled by ten, and a deposit with its VAT.
+ipe4 = Bits(16)
+ipe4.put(0, 6, 4)           # IPELength = 4 blocks = 16 bytes
+ipe4.put(12, 4, 1)
+ipe4.buf[2] = 255
+ipe4.putb(3, (8000).to_bytes(2, "big"))
+ipe4.buf[5] = 0b00100000    # TYP4Flags: print ticket, no receipt
+ipe4.putb(6, (5000).to_bytes(2, "big"))     # MaxValue4: 5000 units of ten pence
+ipe4.putb(8, (1500).to_bytes(2, "big"))     # DepositAmount: GBP 15.00
+ipe4.put(80, 14, date_stamp(2026, 1, 1))    # StartDateCTA
+ipe4.put(94, 14, date_stamp(2026, 12, 31))  # EndDate
+ipe4.put(108, 4, 3)         # DepositMethodOfPayment: card
+ipe4.put(112, 4, 0)         # DepositCurrencyCode: sterling
+ipe4.put(116, 12, 1750)     # DepositVATSalesTax: 17.50%
+charge1_group = (
+    pad(bytes(ipe4.buf) + instance_and_seal(), 64) +
+    value_group([value_record(7, 3, dts(2026, 9, 2, 9, 0),
+                              purse_tail(123, valc=0b0100, legs=1, flags=0b010))],
+                format_rev=1) + instance_and_seal())
+
+# Charge to account, mode 2 (TS 1000-5 table 15). Its value record holds a
+# count, not money, but a ValueCurrencyCode all the same - euro, scaled by ten
+# - and MaxValue5 is priced in it. TYP5ValueFlags marks it to be used first.
+ipe5 = Bits(20)
+ipe5.put(0, 6, 5)           # IPELength = 5 blocks = 20 bytes
+ipe5.put(12, 4, 1)
+ipe5.buf[2] = 255
+ipe5.putb(3, (8000).to_bytes(2, "big"))
+ipe5.buf[5] = 0b01000000    # TYP5Flags: print receipt only
+ipe5.buf[6] = 2             # WeeksPerPeriod
+ipe5.buf[7] = 40            # QuantityTransactions
+ipe5.putb(8, (2500).to_bytes(2, "big"))     # MaxValue5
+ipe5.putb(10, (800).to_bytes(2, "big"))     # DepositAmount: GBP 8.00
+ipe5.put(96, 14, date_stamp(2026, 1, 5))    # StartDateCTA, a Monday
+ipe5.put(110, 14, date_stamp(2026, 12, 27)) # EndDate
+ipe5.put(124, 4, 1)         # DepositMethodOfPayment: cash
+ipe5.put(128, 4, 0)         # DepositCurrencyCode: sterling
+ipe5.put(132, 12, 500)      # DepositVATSalesTax: 5.00%
+charge2_group = (
+    pad(bytes(ipe5.buf) + instance_and_seal(), 64) +
+    value_group([value_record(7, 9, dts(2026, 9, 8, 9, 0),
+                              charge_tail(3, date_stamp(2026, 9, 7), legs=1,
+                                          valc=0b0101, flags=0b0010))],
+                format_rev=1) + instance_and_seal())
+
+# Entitlements (TYP 14) at both revisions. Where an ID puts ProductRetailer's
+# neighbours an entitlement has CPICC, HolderID straight after PassbackTime, the
+# rounding flags in front of the entitlement dates, and one deposit whose
+# currency nibble comes first (TS 1000-5 tables 20 and 20a).
+ent1 = Bits(20)
+ent1.put(0, 6, 5)           # IPELength = 5 blocks = 20 bytes
+ent1.put(12, 4, 1)          # IPEFormatRevision = 1
+ent1.buf[2] = 255
+ent1.putb(3, (0x0321).to_bytes(2, "big"))   # CPICC
+ent1.buf[5] = 0b00100001    # IDFlags: personalised, print ticket
+ent1.put(48, 1, 1)          # RoundingFlagsEnable
+ent1.put(50, 6, 10)         # PassbackTime
+ent1.putb(7, (55501).to_bytes(4, "big"))    # HolderID
+ent1.put(88, 1, 1)          # RoundingFlag: up
+ent1.put(89, 1, 1)          # RoundingValueFlag: to 5p
+ent1.put(90, 14, date_stamp(2027, 8, 31))   # EntitlementExpiryDate
+ent1.put(108, 4, 0)         # DepositCurrencyCode: sterling
+ent1.put(112, 4, 1)         # DepositMethodOfPayment: cash
+ent1.putb(16, (250).to_bytes(2, "big"))     # DepositAmount: GBP 2.50
+ent1.buf[18] = 14           # EntitlementCode
+ent1.buf[19] = 5            # ConcessionaryClass
+entitlement_rev1_group = bytes(ent1.buf) + instance_and_seal()
+
+ent2 = Bits(24)
+ent2.put(0, 6, 6)           # IPELength = 6 blocks = 24 bytes
+ent2.put(12, 4, 2)          # IPEFormatRevision = 2
+ent2.buf[2] = 255
+ent2.putb(3, (0x0654).to_bytes(2, "big"))   # CPICC
+ent2.buf[5] = 0b01000000    # IDFlags: the deposit is refundable
+ent2.put(48, 1, 1)          # RoundingFlagsEnable
+ent2.putb(7, (0x00ABCDEF).to_bytes(4, "big"))  # HolderID
+ent2.put(89, 1, 1)          # RoundingValueFlag: to 5p, rounding down
+ent2.put(90, 14, date_stamp(2026, 4, 1))    # EntitlementStartDate
+ent2.put(104, 14, date_stamp(2027, 3, 31))  # EntitlementExpiryDate
+ent2.put(124, 4, 0)         # DepositCurrencyCode: sterling
+ent2.put(128, 4, 3)         # DepositMethodOfPayment: card
+ent2.put(132, 12, 2000)     # DepositVATSalesTax: 20.00%
+ent2.putb(18, (1000).to_bytes(2, "big"))    # DepositAmount: GBP 10.00
+ent2.buf[20] = 11           # EntitlementCode
+ent2.buf[21] = 4            # ConcessionaryClass
+entitlement_rev2_group = bytes(ent2.buf) + instance_and_seal()
+
+# A journey ticket at revision 3 (TS 1000-5 table 31b): a return, mode 3,
+# which is RFU before this revision. The ride value is four bytes and has a
+# currency code of its own - euro, scaled by ten - distinct from the sterling
+# the ticket was paid in.
+ipe23r3 = Bits(60)
+ipe23r3.put(0, 6, 15)       # IPELength = 15 blocks = 60 bytes
+ipe23r3.put(6, 6, 0b001010) # IPEBitMap: mode group, route and locations
+ipe23r3.put(12, 4, 3)       # IPEFormatRevision = 3
+ipe23r3.buf[2] = 255
+ipe23r3.buf[5] = 0b01000000 # TYP23Flags: print receipt
+ipe23r3.put(50, 6, 5)       # PassbackTime
+ipe23r3.put(58, 14, date_stamp(2026, 9, 20))   # IssueDate
+ipe23r3.put(72, 24, dts(2026, 9, 21, 6, 0))    # ValidityStartDTS
+ipe23r3.put(96, 5, 3)       # ValidityCode
+ipe23r3.put(101, 11, 1439)  # ExpiryTime: 23:59
+ipe23r3.put(117, 3, 2)      # Class: standard
+ipe23r3.buf[15] = 1         # PartySizeAdult
+ipe23r3.putb(19, (1200).to_bytes(4, "big"))    # AmountPaid: GBP 12.00
+ipe23r3.put(23 * 8, 4, 3)   # AmountPaidMethodOfPayment: card
+ipe23r3.buf[32] = 2         # AutoRenewQuantity
+ipe23r3.put(33 * 8 + 4, 4, 3)                  # TYP23Mode: return
+ipe23r3.buf[34] = 1         # MaxTransfers
+ipe23r3.buf[35] = 91        # TimeLimit: 91 x 30 s = 45 min 30 s
+ipe23r3.putb(36, (600).to_bytes(4, "big"))     # ValueOfRideJourney
+ipe23r3.put(40 * 8 + 4, 4, 0b0101)             # ...in euro, scaled by ten
+ipe23r3.putb(41, b"00700")  # RouteCode
+ipe23r3.putb(46, loc1(203, nlc("1072")))
+ipe23r3.putb(52, loc1(203, nlc("1444")))
+journey_rev3_group = bytes(ipe23r3.buf) + instance_and_seal()
+
+# A period ticket at revision 3 carrying the IdentityDocumentID its bitmap bit
+# 2 adds (table 3.27): after the route and both locations, a three-bit type, a
+# five-bit length, then the document - here as text. TYP22Flags sets
+# PrintTicket and TreatmentOfExpiredSP, flags 5 and 7.
+ipe22id = Bits(56)
+ipe22id.put(0, 6, 14)       # IPELength = 14 blocks = 56 bytes
+ipe22id.put(6, 6, 0b000110) # IPEBitMap: identity document, route and locations
+ipe22id.put(12, 4, 3)
+ipe22id.put(40, 16, T22_ALL_DAYS | (1 << 5) | (1 << 7))
+ipe22id.buf[18] = 0xFF
+ipe22id.putb(29, b"00000")  # RouteCode
+ipe22id.putb(34, loc1(203, nlc("1072")))
+ipe22id.putb(40, loc1(203, nlc("1444")))
+ipe22id.put(46 * 8, 3, 2)   # IdentityDocumentIDType: ASCII
+ipe22id.put(46 * 8 + 3, 5, 8)
+ipe22id.putb(47, b"RC123456")
+period_rev3_id_group = bytes(ipe22id.buf) + instance_and_seal()
+
+# The same element with no route or locations in front of it, as a number
+# longer than Flipso keeps: twenty bytes, of which sixteen are held.
+ipe22long = Bits(52)
+ipe22long.put(0, 6, 13)     # IPELength = 13 blocks = 52 bytes
+ipe22long.put(6, 6, 0b000100)
+ipe22long.put(12, 4, 3)
+ipe22long.put(40, 16, T22_ALL_DAYS)
+ipe22long.put(29 * 8, 3, 1) # IdentityDocumentIDType: HEX
+ipe22long.put(29 * 8 + 3, 5, 20)
+ipe22long.putb(30, bytes(range(1, 21)))
+period_rev3_long_id_group = bytes(ipe22long.buf) + instance_and_seal()
 
 # ---------------------------------------------------------------- Cyclic log (FID 1)
 log = bytearray(192)
@@ -540,7 +696,9 @@ cmd4_spent = type2_page_memory(
         issue_date=CMD4_EXPIRY, rides_left=0, amount=330, mop=3,
         usage_code=0b101, usage=bytes.fromhex("5F280002")))
 # The two other ways GeoValidity can be coded (TS 1000-5 table 50): a fare
-# value, here GBP 1.75, and a location of LocDefType 201.
+# value, here GBP 1.75, and a location - a LOC4 of LocDefType 204 whose origin
+# slot is a zone map of zones 1 to 3, the way a zonal day ticket would say where
+# it is good.
 cmd4_fare_value = type2_page_memory(
     T2_SERIAL,
     dir_entry(131, 27, 0, False, CMD4_EXPIRY, extended=True),
@@ -552,7 +710,33 @@ cmd4_fare_value = type2_page_memory(
 cmd4_location = type2_page_memory(
     T2_SERIAL,
     dir_entry(131, 27, 0, False, CMD4_EXPIRY, extended=True),
-    typ27_dataset(issue_date=CMD4_EXPIRY, amount=445, area_type=1, geo=0x12345678))
+    typ27_dataset(issue_date=CMD4_EXPIRY, amount=445, area_type=4,
+                  area_slots=bytes([0b00000111, 0, 0, 0])))
+# AreaValidity as a LOC3 with both ends (TS 1000-1 table 18): a carnet of day
+# passes between two stations.
+cmd4_journey_area = type2_page_memory(
+    T2_SERIAL,
+    dir_entry(131, 28, 0, False, date_stamp(2026, 10, 10), extended=True),
+    typ28_dataset(issue_date=date_stamp(2026, 9, 10), amount=2000, area_type=3,
+                  area_slots=b"1072" + b"1444"))
+# A LOC3 fare stage (TS 1000-1 table 14): the destination is a bare stage
+# number on the origin's machine.
+cmd4_stage_area = type2_page_memory(
+    T2_SERIAL,
+    dir_entry(131, 29, 0, False, CMD4_EXPIRY, extended=True),
+    typ29_dataset(issue_date=CMD4_EXPIRY, rides_left=1, amount=175, area_type=2,
+                  area_slots=bytes([0x5F, 0x28, 0x00, 0x04, 0x09, 0, 0, 0])))
+# ScaledQtyBackup (TS 1000-5 table 58b). Ten rides left at ScalingFactor 4, a
+# bit per four used, so the backup can say only "up to twelve"; and one ride
+# left whose backup still says three, as a write torn between the two would.
+cmd4_backup_scaled = type2_page_memory(
+    T2_SERIAL,
+    dir_entry(131, 29, 0, False, CMD4_EXPIRY, extended=True),
+    typ29_dataset(issue_date=CMD4_EXPIRY, rides_left=10, amount=1500, scaling=4))
+cmd4_backup_torn = type2_page_memory(
+    T2_SERIAL,
+    dir_entry(131, 29, 0, False, CMD4_EXPIRY, extended=True),
+    typ29_dataset(issue_date=CMD4_EXPIRY, rides_left=1, amount=330, backup_left=3))
 
 # ================================================================== CMD9 card
 # A full ITSO shell on an NTAG215 (TS 1000-10 section 10): 64-byte sectors,
@@ -687,6 +871,14 @@ with open("card_data.h", "w") as f:
     f.write(carr("period_rev3_group", period_rev3_group))
     f.write(carr("capping1_group", capping1_group))
     f.write(carr("capping2_group", capping2_group))
+    f.write(carr("purse_scaled_group", purse_scaled_group))
+    f.write(carr("charge1_group", charge1_group))
+    f.write(carr("charge2_group", charge2_group))
+    f.write(carr("entitlement_rev1_group", entitlement_rev1_group))
+    f.write(carr("entitlement_rev2_group", entitlement_rev2_group))
+    f.write(carr("journey_rev3_group", journey_rev3_group))
+    f.write(carr("period_rev3_id_group", period_rev3_id_group))
+    f.write(carr("period_rev3_long_id_group", period_rev3_long_id_group))
     f.write("\n/* Synthetic ITSO CMD2 card. */\n")
     f.write(f'#define EXPECT_CMD2_ISRN "{CMD2_ISRN}"\n')
     f.write(carr("cmd2_shell", cmd2_shell.buf))
@@ -707,6 +899,10 @@ with open("card_data.h", "w") as f:
     f.write(carr("cmd4_spent", cmd4_spent))
     f.write(carr("cmd4_fare_value", cmd4_fare_value))
     f.write(carr("cmd4_location", cmd4_location))
+    f.write(carr("cmd4_journey_area", cmd4_journey_area))
+    f.write(carr("cmd4_stage_area", cmd4_stage_area))
+    f.write(carr("cmd4_backup_scaled", cmd4_backup_scaled))
+    f.write(carr("cmd4_backup_torn", cmd4_backup_torn))
     f.write("\n/* Synthetic ITSO CMD9 and CMD10 full-shell cards (Type 2 tags). */\n")
     f.write(f'#define EXPECT_CMD9_ISRN "{CMD9_ISRN}"\n')
     f.write(f'#define EXPECT_CMD10_ISRN "{CMD10_ISRN}"\n')

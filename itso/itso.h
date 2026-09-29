@@ -143,12 +143,34 @@ typedef enum {
     ItsoCountCoupons, /**< TYP 29 coupons: units of travel, several to a journey. */
 } ItsoCountKind;
 
-/** TYP23Mode: how a journey ticket's rides are counted (TS 1000-5 table 35a). */
+/** TYP23Mode: how a journey ticket's rides are counted (TS 1000-5 tables 35a, 35b). */
 typedef enum {
     ItsoJourneyModeStoredRides = 0, /**< Each ride uses one. */
     ItsoJourneyModeStoredJourneys = 1, /**< Each journey uses one, legs within limits. */
     ItsoJourneyModeSimple = 2, /**< An ordinary ticket, the default. */
+    /** Revision 3 only, RFU before it: journeys in outward and return pairs, each
+     *  leg within the same limits as stored journeys (table 35b). */
+    ItsoJourneyModeReturn = 3,
 } ItsoJourneyMode;
+
+/* PrintTicket and PrintReceipt: flags 5 and 6 of TYP2Flags, TYP4Flags,
+ * TYP5Flags, TYP22Flags and TYP23Flags (TS 1000-5 tables 5, 13, 18, 30 and 34),
+ * and for PrintTicket alone IDFlags bit 5 (table 24) - what a machine should
+ * print when the product is used. */
+#define ITSO_PRINT_TICKET  0x01
+#define ITSO_PRINT_RECEIPT 0x02
+
+/* Room kept for a revision 3 period ticket's IdentityDocumentID (TS 1000-5
+ * table 3.27), which may run to 31 bytes. A photocard or railcard number is a
+ * fraction of that, and the element is in every product slot. */
+#define ITSO_ID_DOC_LEN 16
+
+/** IdentityDocumentIDType: how IdentityDocumentID is coded (TS 1000-5 table 3.27). */
+typedef enum {
+    ItsoIdDocHex = 1, /**< A number. */
+    ItsoIdDocAscii = 2, /**< Text. */
+    ItsoIdDocEntry = 3, /**< The directory entry of another product on the card. */
+} ItsoIdDocType;
 
 /* The pass flags of the Space Saving IPEs, numbered from the least significant
  * bit: TYP27PassFlags, TYP28PassFlags and TYP29PassFlags (TS 1000-5 tables 49,
@@ -159,91 +181,6 @@ typedef enum {
 /** Clear: the ticket ends at 23:59. Set: at a time the IPE owner configures in
  *  its readers, which may run past midnight or stop short of it. */
 #define ITSO_SS_EXPIRY_TIME (1u << 3)
-
-/**
- * How a Space Saving IPE's area element restricts where it is good (TS 1000-5
- * tables 50, 53 and 57). A reference fare code is the owner's own, so even code
- * 0 says only that the operator decides - a whole-network day ticket and a
- * one-zone ticket may both carry one.
- */
-typedef enum {
-    ItsoAreaFareCode, /**< An owner-defined reference fare code. */
-    ItsoAreaFareValue, /**< An actual fare value, in minor currency units. */
-    ItsoAreaLocation, /**< A LOCE of the LocDefType held in the value; not decoded. */
-} ItsoAreaKind;
-
-/**
- * The parts of a Space Saving IPE (TYP 27/28/29, TS 1000-5 clauses 2.14-2.16)
- * that a full IPE has no field for.
- *
- * Held once on the card rather than in every product slot: only a CMD4 carries
- * a Space Saving IPE, and it carries exactly one, so these would otherwise cost
- * their size twenty times over for one product that uses them. The elements
- * shared with a full ticket - price, issue date, class, travellers, passback -
- * go in the product's @c ticket as usual, and the place a TYP 29 was last used
- * in its @c from.
- */
-typedef struct {
-    uint8_t flags; /**< ITSO_SS_* pass flags. */
-    bool euro; /**< Sterling/Euro flag: the currency of every amount. */
-    uint8_t area_kind; /**< ItsoAreaKind. */
-    uint32_t area_value; /**< Fare code, fare value, or the location's LocDefType. */
-
-    bool has_last_use; /**< The type carries a LastUseDTS (TYP 27, 28, 29 rev 2). */
-    uint32_t last_use_dts; /**< Raw DTS of the last use; 0 is never used. */
-    bool has_events; /**< TYP 27: Event1 and Event2 are present. */
-    uint8_t event1; /**< EN1545 EventTypeCode. */
-    uint8_t event2;
-
-    /* TYP 29 revision 1: whether UsageRec is where the holder got on or got off
-     * (table 58). The place is in the product's @c from. */
-    bool usage_alighted;
-
-    /* TYP 29 revision 2, multi-leg journeys (table 55a). */
-    uint32_t journey_start_dts; /**< JnyComDTS: when the latest journey began. */
-    uint8_t transfers; /**< TransferCounter: changes made on that journey. */
-    uint8_t daily_journeys; /**< DailyJnyCounter: journeys begun that day. */
-    uint8_t max_daily_journeys; /**< MaxDailyJourneys. */
-
-    /* TYP 28, a carnet of day passes (clause 2.15.2): each tick is the day a
-     * pass was used, as days before the directory expiry. 0 is a pass not yet
-     * used and 31 one never sold; the two flags stand for passes on the first
-     * and last days, which spend no tick. */
-    uint8_t carnet_ticks[6];
-    bool carnet_issue_day; /**< NDoIE: a pass is valid on the day of issue. */
-    bool carnet_expiry_day; /**< NDoEE: a pass is valid on the day of expiry. */
-} ItsoSpaceSaving;
-
-/** PassDurationCode: the unit PassDuration counts in (TS 1000-5 table 3.30a). */
-typedef enum {
-    ItsoDurationDays = 0, /**< The only unit revisions 1 and 2 have. */
-    ItsoDurationMonths = 1,
-    ItsoDurationQuarters = 2,
-    ItsoDurationYears = 3,
-} ItsoDurationUnit;
-
-/* TYP22Flags, numbered from the least significant bit (TS 1000-5 table 30). The
- * AM/PM pairs are a second day-of-week filter on top of ValidOnDayCode: rule 7
- * of clause 2.9.1.4 makes a ticket valid only when both allow today. */
-#define ITSO_T22_TRANSFERABLE   (1u << 0)
-#define ITSO_T22_OFF_PEAK_ONLY  (1u << 8)
-#define ITSO_T22_WEEKDAY_AM     (1u << 9)
-#define ITSO_T22_WEEKDAY_PM     (1u << 10)
-#define ITSO_T22_SATURDAY_AM    (1u << 11)
-#define ITSO_T22_SATURDAY_PM    (1u << 12)
-#define ITSO_T22_SUNDAY_AM      (1u << 13)
-#define ITSO_T22_SUNDAY_PM      (1u << 14)
-#define ITSO_T22_PUBLIC_HOLIDAY (1u << 15)
-#define ITSO_T22_DAY_MASK       0xFE00u
-
-/* DAYOFWEEK, TS 1000-5 annex A.6: Monday is the most significant bit and the
- * least significant is "special days", which schemes use for public holidays. */
-#define ITSO_DOW_MONDAY   0x80u
-#define ITSO_DOW_SATURDAY 0x04u
-#define ITSO_DOW_SUNDAY   0x02u
-#define ITSO_DOW_SPECIAL  0x01u
-#define ITSO_DOW_WEEKDAYS 0xF8u
-#define ITSO_DOW_ALL_DAYS 0xFEu
 
 /**
  * Which national register @c ItsoLocation::code is a key into.
@@ -292,6 +229,107 @@ static inline ItsoLocCodeKind itso_location_code_kind(const ItsoLocation* locati
 }
 
 /**
+ * How a Space Saving IPE's area element restricts where it is good (TS 1000-5
+ * tables 50, 53 and 57). A reference fare code is the owner's own, so even code
+ * 0 says only that the operator decides - a whole-network day ticket and a
+ * one-zone ticket may both carry one.
+ */
+typedef enum {
+    ItsoAreaFareCode, /**< An owner-defined reference fare code. */
+    ItsoAreaFareValue, /**< An actual fare value, in minor currency units. */
+    ItsoAreaLocation, /**< A LOC3 or LOC4 of the LocDefType held in the value. */
+} ItsoAreaKind;
+
+/**
+ * The parts of a Space Saving IPE (TYP 27/28/29, TS 1000-5 clauses 2.14-2.16)
+ * that a full IPE has no field for.
+ *
+ * Held once on the card rather than in every product slot: only a CMD4 carries
+ * a Space Saving IPE, and it carries exactly one, so these would otherwise cost
+ * their size twenty times over for one product that uses them. The elements
+ * shared with a full ticket - price, issue date, class, travellers, passback -
+ * go in the product's @c ticket as usual, and the place a TYP 29 was last used
+ * in its @c from.
+ */
+typedef struct {
+    uint8_t flags; /**< ITSO_SS_* pass flags. */
+    bool euro; /**< Sterling/Euro flag: the currency of every amount. */
+    uint8_t area_kind; /**< ItsoAreaKind. */
+    uint32_t area_value; /**< Fare code, fare value, or the location's LocDefType. */
+    /** An ItsoAreaLocation's origin, destination and via, as TS 1000-1 lays out
+     *  a LOC4 (TYP 27's GeoValidity); a LOC3 (TYP 28 and 29) has no via. */
+    ItsoLocation area[3];
+
+    /* TYP 29's ScaledQtyBackup (tables 55, 55a and 58b): one-time-programmable
+     * bits a POST sets one per @c backup_step rides or coupons used, from which
+     * it can rebuild a torn QtyRemaining. */
+    bool has_backup; /**< IPEBitMap bit 3 set and a non-zero ScalingFactor. */
+    uint16_t backup_step; /**< m, the rides each bit stands for. */
+    uint16_t backup_count; /**< What the backup says is left: m times the bits unset. */
+
+    bool has_last_use; /**< The type carries a LastUseDTS (TYP 27, 28, 29 rev 2). */
+    uint32_t last_use_dts; /**< Raw DTS of the last use; 0 is never used. */
+    bool has_events; /**< TYP 27: Event1 and Event2 are present. */
+    uint8_t event1; /**< EN1545 EventTypeCode. */
+    uint8_t event2;
+
+    /* TYP 29 revision 1: whether UsageRec is where the holder got on or got off
+     * (table 58). The place is in the product's @c from. */
+    bool usage_alighted;
+
+    /* TYP 29 revision 2, multi-leg journeys (table 55a). */
+    uint32_t journey_start_dts; /**< JnyComDTS: when the latest journey began. */
+    uint8_t transfers; /**< TransferCounter: changes made on that journey. */
+    uint8_t daily_journeys; /**< DailyJnyCounter: journeys begun that day. */
+    uint8_t max_daily_journeys; /**< MaxDailyJourneys. */
+
+    /* TYP 28, a carnet of day passes (clause 2.15.2): each tick is the day a
+     * pass was used, as days before the directory expiry. 0 is a pass not yet
+     * used and 31 one never sold; the two flags stand for passes on the first
+     * and last days, which spend no tick. */
+    uint8_t carnet_ticks[6];
+    bool carnet_issue_day; /**< NDoIE: a pass is valid on the day of issue. */
+    bool carnet_expiry_day; /**< NDoEE: a pass is valid on the day of expiry. */
+} ItsoSpaceSaving;
+
+/** PassDurationCode: the unit PassDuration counts in (TS 1000-5 table 3.30a). */
+typedef enum {
+    ItsoDurationDays = 0, /**< The only unit revisions 1 and 2 have. */
+    ItsoDurationMonths = 1,
+    ItsoDurationQuarters = 2,
+    ItsoDurationYears = 3,
+} ItsoDurationUnit;
+
+/* TYP22Flags, numbered from the least significant bit (TS 1000-5 table 30). The
+ * AM/PM pairs are a second day-of-week filter on top of ValidOnDayCode: rule 7
+ * of clause 2.9.1.4 makes a ticket valid only when both allow today. */
+#define ITSO_T22_TRANSFERABLE   (1u << 0)
+#define ITSO_T22_PRINT_TICKET   (1u << 5)
+#define ITSO_T22_PRINT_RECEIPT  (1u << 6)
+/** Revision 3's TreatmentOfExpiredSP (table 3.30, rule 8 of clause 2.9.3.4):
+ *  set, a top-up adds its passes to any that have expired; clear, the expired
+ *  ones are written off. RFU in revisions 1 and 2. */
+#define ITSO_T22_KEEP_EXPIRED   (1u << 7)
+#define ITSO_T22_OFF_PEAK_ONLY  (1u << 8)
+#define ITSO_T22_WEEKDAY_AM     (1u << 9)
+#define ITSO_T22_WEEKDAY_PM     (1u << 10)
+#define ITSO_T22_SATURDAY_AM    (1u << 11)
+#define ITSO_T22_SATURDAY_PM    (1u << 12)
+#define ITSO_T22_SUNDAY_AM      (1u << 13)
+#define ITSO_T22_SUNDAY_PM      (1u << 14)
+#define ITSO_T22_PUBLIC_HOLIDAY (1u << 15)
+#define ITSO_T22_DAY_MASK       0xFE00u
+
+/* DAYOFWEEK, TS 1000-5 annex A.6: Monday is the most significant bit and the
+ * least significant is "special days", which schemes use for public holidays. */
+#define ITSO_DOW_MONDAY   0x80u
+#define ITSO_DOW_SATURDAY 0x04u
+#define ITSO_DOW_SUNDAY   0x02u
+#define ITSO_DOW_SPECIAL  0x01u
+#define ITSO_DOW_WEEKDAYS 0xF8u
+#define ITSO_DOW_ALL_DAYS 0xFEu
+
+/**
  * A monetary amount plus the currency/scaling nibble that gives it meaning.
  *
  * Field order is deliberate: a product can carry half a dozen of these, so
@@ -337,6 +375,14 @@ typedef struct {
     uint8_t max_transfers; /**< TYP 23 MaxTransfers per journey. */
     uint8_t time_limit; /**< TYP 23 TimeLimit between legs, in 30 second steps. */
     bool has_mode_group; /**< TYP 23 bitmap bit 3: the four elements above. */
+    /** RouteCode, owner-defined, zero when unused (revisions 2 and 3 of both types). */
+    uint8_t route_code[5];
+    bool has_route_code;
+    /* TYP 22 revision 3 IdentityDocumentID: the ID the holder must carry. */
+    bool has_id_doc;
+    uint8_t id_doc_type; /**< ItsoIdDocType. */
+    uint8_t id_doc_len; /**< Bytes the card holds, which may exceed ITSO_ID_DOC_LEN. */
+    uint8_t id_doc[ITSO_ID_DOC_LEN];
     bool valid; /**< The fixed part of the dataset was long enough to read. */
     bool has_start_time;
     bool has_pass_duration;
@@ -476,8 +522,19 @@ typedef struct {
     uint16_t deposit_vat; /**< DepositVATSalesTax in 0.01% steps. */
     bool auto_top_up_internal; /**< TYP2ValueFlags bit 2: tops up from another purse. */
 
+    /* What a machine should print on use: ITSO_PRINT_* in @c print_flags, for
+     * the ones the type defines in @c print_defined (none, or ticket only on an
+     * ID). */
+    uint8_t print_defined;
+    uint8_t print_flags;
+
+    /* TYP 3's UserDefined: two bytes of the live value record the loyalty
+     * scheme's owner uses as it likes (TS 1000-5 table 9). */
+    bool has_owner_data;
+    uint16_t owner_data;
+
     /* Concessionary Pass Issuer Identity, or the owner's cost centre or ticket
-     * subtype: TYP 16, 22 and 23 all carry one, at different offsets. */
+     * subtype: TYP 14, 16, 22 and 23 all carry one, not always in one place. */
     bool has_cpicc;
     uint16_t cpicc;
 
@@ -513,6 +570,9 @@ typedef struct {
     uint16_t value_ts; /**< TS#: how many times the record has been written. */
     uint32_t value_isam; /**< ISAMIDModifier: the POST that wrote the record. */
     uint8_t value_action_seq; /**< ActionSequenceNumber, for action lists. */
+    /** ValueCurrencyCode of the live record, scaling bits and all: TYP 2, 4 and 5
+     *  price their IPE's limits in it (TS 1000-5 tables 2, 10 and 15). */
+    uint8_t value_valc;
 
     /* Stored value (TYP 2 Value, TYP 4 CumulativeAmount). The two are the same
      * field in the same place and differ only in sign of meaning: a purse counts
@@ -740,7 +800,7 @@ typedef struct {
      * dropped since a file was written - so a screen that walks the array in
      * order shows the card before it shows the card's past.
      *
-     * Allocated to fit: 620 bytes a product, and the cap is 20 while a real card
+     * Allocated to fit: 652 bytes a product, and the cap is 20 while a real card
      * carries five or six, so a fixed array spent most of the card's memory on
      * slots nothing filled. The card owns it - see itso_card_init(). */
     ItsoProduct* products;

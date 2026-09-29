@@ -31,6 +31,22 @@ size_t itso_parse_location(
     ItsoLocStruct variant,
     ItsoLocation* out);
 
+/**
+ * Decode the locations of a fixed-length LOC3 or LOC4 structure (TS 1000-1
+ * clauses 4.2.4.2.3 and 4.2.4.2.4): an origin, a destination and, in a LOC4, a
+ * via, each a LOCE of up to four bytes padded to four. The half-byte type in
+ * front of them is the caller's to read, as it seldom falls on a byte.
+ *
+ * A slot of zeros is left invalid: it is the padding the structure requires
+ * where a place is not recorded.
+ *
+ * @param def_type LocDefType, 200 to 215.
+ * @param data     the first slot; @p slots × 4 bytes are read.
+ * @param slots    2 for a LOC3, 3 for a LOC4.
+ * @param[out] out @p slots locations.
+ */
+void itso_parse_loc_fixed(uint8_t def_type, const uint8_t* data, uint8_t slots, ItsoLocation* out);
+
 /** Decode a VALC nibble and a raw amount into an ItsoMoney. */
 void itso_decode_money(int32_t raw, uint8_t valc, ItsoMoney* out);
 

@@ -469,7 +469,208 @@ static void space_saving_types(void) {
     parse_type2_exact(&card, cmd4_location, sizeof(cmd4_location));
     check(
         "GeoValidity can be a location, kept by its LocDefType",
-        card.space.area_kind == ItsoAreaLocation && card.space.area_value == 201);
+        card.space.area_kind == ItsoAreaLocation && card.space.area_value == 204);
+    check(
+        "a LOC4 zone map fills its origin slot with four zone bytes",
+        card.space.area[0].valid && strcmp(card.space.area[0].text, "Zones 1,2,3") == 0);
+    check(
+        "and leaves its empty destination and via absent",
+        !card.space.area[1].valid && !card.space.area[2].valid);
+
+    parse_type2_exact(&card, cmd4_journey_area, sizeof(cmd4_journey_area));
+    check(
+        "AreaValidity as a LOC3 has both ends",
+        card.space.area_kind == ItsoAreaLocation && card.space.area_value == 203 &&
+            strcmp(card.space.area[0].text, "Station 1072") == 0 &&
+            strcmp(card.space.area[1].text, "Station 1444") == 0 &&
+            itso_location_code_kind(&card.space.area[1]) == ItsoLocCodeNlc);
+    check("a LOC3 has no via", !card.space.area[2].valid);
+
+    parse_type2_exact(&card, cmd4_stage_area, sizeof(cmd4_stage_area));
+    check(
+        "a LOC3 fare stage's destination is on the origin's machine",
+        strcmp(card.space.area[0].text, "Fare stage 4 (6236160)") == 0 &&
+            strcmp(card.space.area[1].text, "Fare stage 9 (6236160)") == 0);
+
+    /* ScaledQtyBackup (table 58b): a bit per m used, so it says what is left
+     * to within m. */
+    parse_type2_exact(&card, cmd4_return, sizeof(cmd4_return));
+    check(
+        "a Subway return's backup counts one ride, a bit to a ride",
+        card.space.has_backup && card.space.backup_step == 1 && card.space.backup_count == 1);
+    parse_type2_exact(&card, cmd4_backup_scaled, sizeof(cmd4_backup_scaled));
+    check(
+        "at ScalingFactor 4, ten left reads as up to twelve",
+        card.products[0].count == 10 && card.space.backup_step == 4 &&
+            card.space.backup_count == 12);
+    parse_type2_exact(&card, cmd4_backup_torn, sizeof(cmd4_backup_torn));
+    check(
+        "a backup that disagrees is kept as it stands",
+        card.products[0].count == 1 && card.space.backup_count == 3);
+    parse_type2_exact(&card, cmd4_multileg, sizeof(cmd4_multileg));
+    check(
+        "revision 2 keeps its backup too",
+        card.space.has_backup && card.space.backup_count == card.products[0].count);
+    parse_type2_exact(&card, cmd4_carnet, sizeof(cmd4_carnet));
+    check("a carnet has no backup", !card.space.has_backup);
+}
+
+/** Decode one IPE group of type @p typ from an exact-length heap copy. */
+static void parse_group(ItsoProduct* p, uint8_t typ, bool vgp, const uint8_t* src, size_t len) {
+    memset(p, 0, sizeof(*p));
+    p->present = true;
+    p->typ = typ;
+    p->value_group = vgp;
+    uint8_t* exact = malloc(len);
+    memcpy(exact, src, len);
+    itso_parse_ipe(p, exact, len, 64);
+    free(exact);
+}
+
+/*
+ * Elements a review of Flipso against TS 1000-5 (2026-09-29) found missing or
+ * misread: each is a case the decoder got wrong or left out.
+ */
+static void spec_review_fields(void) {
+    ItsoProduct p;
+
+    /* A ValueCurrencyCode's scaling applies to the limits it prices, not only
+     * to the balance (TS 1000-5 table 2, annex A.21.2). */
+    parse_group(
+        &p, ItsoTypStoredTravelRights, true, purse_scaled_group, sizeof(purse_scaled_group));
+    check("a scaled purse balance", p.balance.value == 12340);
+    check(
+        "the purse limits scale with it",
+        p.max_value.value == 90000 && p.max_negative.value == 2000 &&
+            p.top_up_threshold.value == 5000 && p.top_up_amount.value == 10000);
+    check("the deposit keeps its own currency code", p.deposit.value == 500);
+    check(
+        "TYP2Flags print ticket and receipt",
+        p.print_defined == (ITSO_PRINT_TICKET | ITSO_PRINT_RECEIPT) &&
+            p.print_flags == (ITSO_PRINT_TICKET | ITSO_PRINT_RECEIPT));
+
+    parse_group(&p, ItsoTypChargeToAccount1, true, charge1_group, sizeof(charge1_group));
+    check("TYP 4 spend scales", p.balance.value == 1230 && p.balance_is_spend);
+    check("TYP 4 credit limit scales with it", p.max_value.value == 50000);
+    check(
+        "TYP 4 deposit has its VAT",
+        p.deposit.value == 1500 && p.deposit_mop == 3 && p.deposit_vat == 1750);
+    check("TYP 4 prints a ticket and no receipt", p.print_flags == ITSO_PRINT_TICKET);
+    check("TYP 4 priority flag", p.priority_override);
+
+    parse_group(&p, ItsoTypChargeToAccount2, true, charge2_group, sizeof(charge2_group));
+    check(
+        "MaxValue5 is priced in the value record's currency",
+        p.max_value.value == 25000 && p.max_value.currency == 1);
+    check("TYP 5 deposit has its VAT", p.deposit.value == 800 && p.deposit_vat == 500);
+    check("TYP5ValueFlags priority override", p.priority_override);
+    check("TYP 5 prints a receipt only", p.print_flags == ITSO_PRINT_RECEIPT);
+    check("TYP 5 still counts transactions", p.count == 3 && p.journey_legs == 1);
+
+    /* TYP 14 carries CPICC, a HolderID, rounding and a deposit as TYP 16 does,
+     * at offsets of its own (tables 20 and 20a). */
+    parse_group(
+        &p, ItsoTypEntitlement, false, entitlement_rev1_group, sizeof(entitlement_rev1_group));
+    check("TYP 14 rev 1 CPICC", p.has_cpicc && p.cpicc == 0x0321);
+    check("TYP 14 rev 1 HolderID", p.has_holder_id && p.holder_id == 55501);
+    check(
+        "TYP 14 rev 1 rounding up to 5p",
+        p.rounding == (ITSO_ROUNDING_ENABLED | ITSO_ROUNDING_FLAG | ITSO_ROUNDING_VALUE));
+    check(
+        "TYP 14 rev 1 deposit",
+        p.has_deposit && p.deposit.value == 250 && p.deposit_mop == 1 && p.deposit_vat == 0);
+    check(
+        "TYP 14 rev 1 dates and entitlement still in place",
+        p.entitlement_code == 14 && p.concession_class == 5 && !p.has_start &&
+            strcmp(fmt_unix(itso_date_to_unix(p.sub_expiry)), "2027-08-31 00:00") == 0 &&
+            p.passback == 10);
+    check(
+        "an entitlement's IDFlags print ticket",
+        p.print_defined == ITSO_PRINT_TICKET && p.print_flags == ITSO_PRINT_TICKET);
+    check("an entitlement has no language", p.language == 0 && !p.has_shell_deposit);
+
+    parse_group(
+        &p, ItsoTypEntitlement, false, entitlement_rev2_group, sizeof(entitlement_rev2_group));
+    check("TYP 14 rev 2 CPICC", p.cpicc == 0x0654);
+    check("TYP 14 rev 2 HolderID", p.holder_id == 0x00ABCDEF);
+    check(
+        "TYP 14 rev 2 rounding down to 5p",
+        p.rounding == (ITSO_ROUNDING_ENABLED | ITSO_ROUNDING_VALUE));
+    check(
+        "TYP 14 rev 2 deposit by card at 20%",
+        p.deposit.value == 1000 && p.deposit_mop == 3 && p.deposit_vat == 2000);
+    check(
+        "TYP 14 rev 2 entitlement",
+        p.has_start && p.entitlement_code == 11 && p.concession_class == 4);
+    check("no print flag set", p.print_flags == 0);
+
+    /* TYP 23 revision 3: mode 3, and a ride value in its own currency. */
+    parse_group(&p, ItsoTypJourneyTicket, false, journey_rev3_group, sizeof(journey_rev3_group));
+    const ItsoTicketTerms* t = &p.ticket;
+    check("a rev 3 return", t->has_mode_group && t->mode == ItsoJourneyModeReturn);
+    check(
+        "its legs within 45 min 30 s and one change",
+        t->time_limit == 91 && t->max_transfers == 1);
+    check(
+        "the ride value takes its own currency code",
+        t->ride_value.value == 6000 && t->ride_value.currency == 1);
+    check(
+        "and the price paid its own",
+        t->amount_paid.value == 1200 && t->amount_paid.currency == 0);
+    check("a rev 3 RouteCode", t->has_route_code && memcmp(t->route_code, "00700", 5) == 0);
+    check(
+        "a rev 3 journey's ends land after the route",
+        strcmp(p.from.text, "Station 1072") == 0 && strcmp(p.to.text, "Station 1444") == 0);
+    check("TYP23Flags print receipt", p.print_flags == ITSO_PRINT_RECEIPT);
+    check("AutoRenewQuantity", t->renew_quantity == 2);
+
+    /* TYP 22 revision 3 IdentityDocumentID, after the route and locations. */
+    parse_group(
+        &p, ItsoTypPeriodTicket, false, period_rev3_id_group, sizeof(period_rev3_id_group));
+    check(
+        "a period ticket's identity document, as text",
+        p.ticket.has_id_doc && p.ticket.id_doc_type == ItsoIdDocAscii &&
+            p.ticket.id_doc_len == 8 && memcmp(p.ticket.id_doc, "RC123456", 8) == 0);
+    check("with the route before it", p.ticket.has_route_code && p.to.valid);
+    check(
+        "TYP22Flags print ticket and keep expired passes",
+        p.print_flags == ITSO_PRINT_TICKET && (p.ticket.flags & ITSO_T22_KEEP_EXPIRED));
+
+    parse_group(
+        &p,
+        ItsoTypPeriodTicket,
+        false,
+        period_rev3_long_id_group,
+        sizeof(period_rev3_long_id_group));
+    check(
+        "a long identity document keeps its length and what fits",
+        p.ticket.has_id_doc && p.ticket.id_doc_type == ItsoIdDocHex && p.ticket.id_doc_len == 20 &&
+            p.ticket.id_doc[0] == 1 && p.ticket.id_doc[ITSO_ID_DOC_LEN - 1] == ITSO_ID_DOC_LEN);
+    check("and has no route", !p.ticket.has_route_code && !p.from.valid);
+
+    /* Every truncation, each an exactly sized allocation, so ASan sees any
+     * read past the end of the new elements. */
+    const struct {
+        uint8_t typ;
+        bool vgp;
+        const uint8_t* group;
+        size_t len;
+    } all[] = {
+        {ItsoTypStoredTravelRights, true, purse_scaled_group, sizeof(purse_scaled_group)},
+        {ItsoTypChargeToAccount1, true, charge1_group, sizeof(charge1_group)},
+        {ItsoTypChargeToAccount2, true, charge2_group, sizeof(charge2_group)},
+        {ItsoTypEntitlement, false, entitlement_rev1_group, sizeof(entitlement_rev1_group)},
+        {ItsoTypEntitlement, false, entitlement_rev2_group, sizeof(entitlement_rev2_group)},
+        {ItsoTypJourneyTicket, false, journey_rev3_group, sizeof(journey_rev3_group)},
+        {ItsoTypPeriodTicket, false, period_rev3_id_group, sizeof(period_rev3_id_group)},
+        {ItsoTypPeriodTicket, false, period_rev3_long_id_group, sizeof(period_rev3_long_id_group)},
+    };
+    for(size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++) {
+        for(size_t cut = 1; cut <= all[i].len; cut++) {
+            parse_group(&p, all[i].typ, all[i].vgp, all[i].group, cut);
+        }
+    }
+    check("the new elements survive every truncation", 1);
 }
 
 /*
@@ -1903,6 +2104,9 @@ int main(void) {
     full_shell_type2();
     space_saving_types();
 
+    printf("\n== Fields from the TS 1000-5 review ==\n");
+    spec_review_fields();
+
     printf("\n== Robustness ==\n");
     bus_stop_locations();
     shell_reject_reasons();
@@ -1995,6 +2199,23 @@ int main(void) {
         check(
             "journey locations still land after the terms",
             j->from.valid && strcmp(j->from.text, "Station 5631") == 0);
+        check(
+            "journey RouteCode, revision 2",
+            t->has_route_code && memcmp(t->route_code, "00000", 5) == 0);
+        check(
+            "period RouteCode, revision 3",
+            card.products[2].ticket.has_route_code &&
+                memcmp(card.products[2].ticket.route_code, "00000", 5) == 0);
+        check(
+            "a period ticket without bitmap bit 2 has no identity document",
+            !card.products[2].ticket.has_id_doc);
+        check(
+            "the loyalty scheme's own two bytes",
+            card.products[4].has_owner_data && card.products[4].owner_data == 4660);
+        check(
+            "an ID defines PrintTicket and this one leaves it clear",
+            card.products[1].print_defined == ITSO_PRINT_TICKET &&
+                card.products[1].print_flags == 0);
     }
 
     {

@@ -170,15 +170,23 @@ def card_the_key():
     # ---- E3: period ticket, revision 3 (TS 1000-5 clause 2.9.3)
     period = Bits(48)
     period.put(0, 6, 12)
-    period.put(6, 6, 0b000010)                   # RouteCode and both locations
+    period.put(6, 6, 0b000110)                   # identity document, route, locations
     # No CPICC (bit 4), so RouteCode follows the 29 fixed bytes directly and the
     # locations start at 29 + 5 = 34 (TS 1000-5 table 3.27).
     period.put(12, 4, 3)
     period.buf[2] = 255
     period.putb(3, (289).to_bytes(2, "big"))
+    # TYP22Flags: print a ticket, and keep expired passes at a top-up
+    # (TreatmentOfExpiredSP, revision 3 only).
+    period.put(40, 16, (1 << 5) | (1 << 7))
     period.put(106, 14, date_stamp(2026, 9, 1))  # ValidityStartDate
     period.putb(34, loc1(203, b"5148"))          # London Bridge
     period.putb(40, loc1(203, b"5018"))          # Margate
+    # IdentityDocumentID after the locations: type 3, a pointer to directory
+    # entry 2 - the holder must carry the ITSO ID the season is priced against.
+    period.put(46 * 8, 3, 3)
+    period.put(46 * 8 + 3, 5, 1)
+    period.buf[47] = 2
     period_values = value_group([
         value_record(1, 21, dts(2026, 9, 1, 7, 40),
                      period_tail(6, 0b01, date_stamp(2027, 1, 31), date_stamp(2026, 9, 30))),
@@ -210,7 +218,7 @@ def card_the_key():
     loyalty.putb(3, (96).to_bytes(2, "big"))
     loyalty_values = value_group([
         value_record(1, 44, dts(2026, 7, 2, 10, 15), loyalty_tail(4250)),
-        value_record(9, 45, dts(2026, 9, 14, 19, 2), loyalty_tail(5100)),
+        value_record(9, 45, dts(2026, 9, 14, 19, 2), loyalty_tail(5100, user=321)),
     ], format_rev=1)
 
     # ---- E6: charge to account, TYP 5 (TS 1000-5 table 15)
@@ -228,10 +236,13 @@ def card_the_key():
     charge.put(110, 14, date_stamp(2027, 4, 5))  # EndDate, 3.75 bytes in
     charge.buf[15] |= 6                          # DepositMethodOfPayment: direct debit
     charge.put(128, 4, 0)                        # DepositCurrencyCode
+    charge.put(132, 12, 2000)                    # DepositVATSalesTax: 20.00%
+    charge.buf[5] = 0b01000000                   # TYP5Flags: print a receipt
     charge_values = value_group([
         value_record(15, 9, dts(2026, 8, 6, 9, 0), charge_tail(0, date_stamp(2026, 8, 6))),
         value_record(7, 10, dts(2026, 9, 19, 18, 22),
-                     charge_tail(23, date_stamp(2026, 9, 6), legs=1)),
+                     # TYP5ValueFlags bit 1: spent before any other product
+                     charge_tail(23, date_stamp(2026, 9, 6), legs=1, flags=0b0010)),
     ], format_rev=1)
 
     # ---- E7: a voucher, which the decoder reports from its directory entry and
@@ -253,10 +264,17 @@ def card_the_key():
     ent.put(6, 6, 0b000100)                      # bit 2: ValidAtOrFrom present
     ent.put(12, 4, 2)
     ent.buf[2] = 255
-    ent.buf[5] = 0b00010101                      # IDFlags: photo, female, companion
+    ent.putb(3, (0x0165).to_bytes(2, "big"))     # CPICC: the pass issuer
+    ent.buf[5] = 0b00110101                      # IDFlags: photo, female, companion, print
+    ent.put(48, 1, 1)                            # RoundingFlagsEnable
     ent.put(50, 6, 60)                           # PassbackTime
+    ent.putb(7, (300417).to_bytes(4, "big"))     # HolderID
+    ent.put(88, 1, 1)                            # RoundingFlag: up, to the penny
     ent.put(90, 14, date_stamp(2026, 4, 1))      # EntitlementStartDate
     ent.put(104, 14, date_stamp(2027, 3, 31))    # EntitlementExpiryDate
+    ent.put(124, 4, 0)                           # DepositCurrencyCode: sterling
+    ent.put(128, 4, 1)                           # DepositMethodOfPayment: cash
+    ent.putb(18, (500).to_bytes(2, "big"))       # DepositAmount: GBP 5.00
     ent.buf[20] = 14                             # EntitlementCode: free travel
     ent.buf[21] = 5                              # ConcessionaryClass: disabled
     ent.putb(24, loc1(204, bytes([0b00000111, 0, 0])))  # zones 1, 2 and 3
@@ -385,9 +403,12 @@ def card_blocked():
     ident.put(6, 6, 0b000100)
     ident.put(12, 4, 1)
     ident.buf[2] = 255
-    ident.buf[5] = 0b00010101                    # IDFlags: photo, female, companion
+    # IDFlags: photo, female, companion, and URI - the holder's details are in
+    # another application on the card, so the Language below is not used.
+    ident.buf[5] = 0b00011101
     ident.put(50, 6, 45)                         # PassbackTime
     ident.putb(7, bcd("19480922"))
+    ident.buf[11] = 44                           # Language: English
     ident.put(130, 14, EXP)                      # EntitlementExpiryDate
     ident.buf[27] = 14                           # EntitlementCode: free travel
     ident.buf[28] = 4                            # ConcessionaryClass: pensioner
@@ -402,9 +423,16 @@ def card_blocked():
     ent.put(6, 6, 0)
     ent.put(12, 4, 1)
     ent.buf[2] = 255
+    ent.putb(3, (0x00E2).to_bytes(2, "big"))     # CPICC
     ent.buf[5] = 0b00010101
+    ent.put(48, 1, 1)                            # RoundingFlagsEnable
     ent.put(50, 6, 45)
+    ent.putb(7, (81142).to_bytes(4, "big"))      # HolderID, straight after passback
+    ent.put(89, 1, 1)                            # RoundingValueFlag: down, to 5p
     ent.put(90, 14, EXP)                         # EntitlementExpiryDate
+    ent.put(108, 4, 0)                           # DepositCurrencyCode, ahead of...
+    ent.put(112, 4, 3)                           # ...DepositMethodOfPayment: card
+    ent.putb(16, (1000).to_bytes(2, "big"))      # DepositAmount: GBP 10.00
     ent.buf[18] = 2                              # EntitlementCode: limited free ride
     ent.buf[19] = 4                              # ConcessionaryClass: pensioner
 
@@ -447,19 +475,46 @@ def card_blocked():
                      period_tail(1, 0b00, date_stamp(2026, 11, 30), date_stamp(2026, 6, 1))),
     ], format_rev=1)
 
+    # ---- E6: journey ticket, revision 3 (table 31b): a return, mode 3, whose
+    # legs may be joined by one change within 45 minutes 30 seconds. Sixty
+    # bytes of dataset, so it runs into a second sector.
+    ret = Bits(60)
+    ret.put(0, 6, 15)
+    ret.put(6, 6, 0b001010)                      # mode group, route and locations
+    ret.put(12, 4, 3)
+    ret.buf[2] = 7
+    ret.putb(3, (143).to_bytes(2, "big"))
+    ret.buf[5] = 0b01100000                      # TYP23Flags: print ticket and receipt
+    ret.put(58, 14, date_stamp(2026, 9, 1))      # IssueDate
+    ret.put(72, 24, dts(2026, 9, 2, 6, 0))       # ValidityStartDTS
+    ret.put(101, 11, 1440 + 180)                 # ExpiryTime: 03:00 the day after
+    ret.put(117, 3, 2)                           # Class: standard
+    ret.buf[15] = 1                              # PartySizeAdult
+    ret.putb(19, (2140).to_bytes(4, "big"))      # AmountPaid: GBP 21.40
+    ret.put(23 * 8, 4, 1)                        # AmountPaidMethodOfPayment: cash
+    ret.put(33 * 8 + 4, 4, 3)                    # TYP23Mode: return
+    ret.buf[34] = 1                              # MaxTransfers
+    ret.buf[35] = 91                             # TimeLimit: 91 x 30 s
+    ret.putb(36, (1070).to_bytes(4, "big"))      # ValueOfRideJourney: GBP 10.70
+    ret.putb(41, b"00000")                       # RouteCode: any permitted
+    ret.putb(46, loc1(203, b"5416"))             # Gatwick Airport
+    ret.putb(52, loc1(203, b"5148"))             # London Bridge
+
     entries = [
         dir_entry(226, 16, 0, False, EXP),                          # E1 ITSO ID
         dir_entry(96, 14, 0, False, EXP),                           # E2 entitlement
         dir_entry(226, 2, 0, True, EXP),                            # E3 purse
         dir_entry(226, 27, 0, False, date_stamp(2026, 6, 30)),      # E4 expired
         dir_entry(143, 22, 1, True, date_stamp(2026, 11, 30)),      # E5 blocked
-        bytes(5), bytes(5),                                         # E6-E7 unused
+        dir_entry(143, 23, 7, False, date_stamp(2026, 9, 30)),      # E6 return
+        bytes(5),                                                   # E7 unused
         # Basic mode: the POST updates the log entry and writes no journey
         # record, so the card has a last tap and no log to show for it.
         log_entry(ptr=3, eei=0, when=dts(2026, 9, 2, 8, 19), record_offset=0,
                   passback=0, normal_mode=False),
     ]
-    chain = {1: ACTIVE, 2: ACTIVE, 3: 9, 9: ACTIVE, 4: ACTIVE, 5: 11, 11: BLOCKED}
+    chain = {1: ACTIVE, 2: ACTIVE, 3: 9, 9: ACTIVE, 4: ACTIVE, 5: 11, 11: BLOCKED,
+             6: 7, 7: ACTIVE}
 
     return "Demo 2 blocked pass", unix(2026, 9, 21, 19, 20), [
         ("Shell", bytes(shell.buf)),
@@ -469,6 +524,7 @@ def card_blocked():
         ("Product 3", group(purse, B, purse_values)),
         ("Product 4", group(compact, B)),
         ("Product 5", group(period, B, period_values)),
+        ("Product 6", group(ret, B)),
     ]
 
 
@@ -860,6 +916,32 @@ def card_subway_return():
 
 
 # ====================================================================
+# Card 10 - a zonal book of coupons on paper
+#
+# A Multi-Use ticket (TYP 29 revision 1) in the coupon form: QtyRemaining
+# counts coupons, several of which a journey may take. Two things no Subway
+# ticket has: its AreaValidity is a location rather than a fare code - a LOC3
+# zone map, zones 1 to 3 - and its ScalingFactor is 4, so each of the 32
+# one-time-programmable backup bits stands for four coupons and the backup can
+# only say "up to" (TS 1000-5 tables 57 and 58b). Hypothetical: SPT's product
+# OID for the branding, but a scheme's shape rather than a ticket's.
+# ====================================================================
+def card_zonal_coupons():
+    day = date_stamp(2026, 9, 1)
+    pages = type2_page_memory(
+        bytes([0x04, 0x3C, 0x71, 0x0E, 0x92, 0x5D, 0xA8]),
+        dir_entry(131, 29, 5, False, date_stamp(2026, 12, 31), extended=True),
+        typ29_dataset(
+            # Thirty-eight coupons, not yet taken through a gate.
+            issue_date=day, rides_left=38, amount=2000, mop=3, coupons=True,
+            scaling=4, area_type=4,                   # LocDefType 204, zone map
+            area_slots=bytes([0b00000111, 0, 0, 0])))  # zones 1, 2 and 3
+    return "Demo 10 zonal coupons", unix(2026, 9, 21, 19, 50), [
+        ("Type 2", pages),
+    ]
+
+
+# ====================================================================
 # Card 7 - a rail season ticket card: GWR Touch
 #
 # Built from the shape of a real GWR Touch card read on 2026-09-28, which
@@ -1137,7 +1219,8 @@ def card_ultralight_ev1():
 
 
 CARDS = [card_the_key, card_blocked, card_cmd2, card_history, card_subway_paper,
-         card_subway_return, card_gwr_touch, card_ntag, card_ultralight_ev1]
+         card_subway_return, card_gwr_touch, card_ntag, card_ultralight_ev1,
+         card_zonal_coupons]
 
 
 def main():

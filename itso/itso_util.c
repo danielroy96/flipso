@@ -325,7 +325,10 @@ static void itso_render_location(
     case 204: /* Zonal bit map, valid within zone. */
     case 205: /* Zonal bit map, valid zone to zone. */
         if(n >= 3) {
-            itso_decode_zones(body, 3, scratch, sizeof(scratch));
+            /* Three bytes in a LOC1 or LOC2, four in each slot of a LOC3 or
+             * LOC4 (TS 1000-1 tables 20-23). A LOC2 pads its fourth with zero,
+             * which names no zone. */
+            itso_decode_zones(body, n >= 4 ? 4 : 3, scratch, sizeof(scratch));
             if(strcmp(scratch, "none") == 0) {
                 snprintf(out, len, "No zones");
             } else {
@@ -491,6 +494,26 @@ size_t itso_parse_location(
      * replaces the first stop's code with its name (TS 1000-1 4.2.4.3.13). */
     if(def_type == 212 && body_len >= 8) out->more = (uint8_t)(body_len / 4 - 1);
     return consumed;
+}
+
+void itso_parse_loc_fixed(uint8_t def_type, const uint8_t* data, uint8_t slots, ItsoLocation* out) {
+    for(uint8_t i = 0; i < slots; i++) {
+        const uint8_t* slot = data + (size_t)i * 4;
+        /* Each slot is the LOCE a LOC2 would carry, so it is decoded as one. A
+         * fare stage is the exception (TS 1000-1 tables 14 and 15): the
+         * destination and via are bare stage numbers on the origin's machine. */
+        uint8_t loc2[7] = {def_type, slot[0], slot[1], slot[2], slot[3], 0, 0};
+        bool blank = itso_is_blank(slot, 4);
+        if(def_type == 202 && i > 0) {
+            loc2[1] = data[0];
+            loc2[2] = data[1];
+            loc2[3] = data[2];
+            loc2[4] = slot[0];
+            blank = slot[0] == 0;
+        }
+        itso_parse_location(loc2, sizeof(loc2), ItsoLocStructLoc2, &out[i]);
+        if(blank) out[i].valid = false;
+    }
 }
 
 uint8_t itso_half_days_mask(uint16_t half_days) {

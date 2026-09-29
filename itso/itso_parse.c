@@ -705,12 +705,34 @@ static void itso_space_area(ItsoSpaceSaving* ss, const uint8_t* ds, uint8_t bits
          * fare and any fare table an operator could print will fit. */
         ss->area_value = itso_bits(ds, 60 + bits - 32, 32);
     } else {
-        /* A LOCE of LocDefType 200+n fills the rest of the element. Every ticket
-         * seen so far carries a fare code instead, so the location itself is not
-         * decoded: its type is kept, and the screen says it is not decoded. */
+        /* The element is then a LOC4 (TYP 27's 100 bits) or a LOC3 (TYP 28 and
+         * 29's 68) of LocDefType 200+n: the nibble, then four-byte slots for
+         * an origin, a destination and in a LOC4 a via (TS 1000-1 clauses
+         * 4.2.4.2.3-4), which start on a byte here. */
         ss->area_kind = ItsoAreaLocation;
         ss->area_value = (uint32_t)locdef + 200;
+        itso_parse_loc_fixed((uint8_t)ss->area_value, ds + 8, bits == 100 ? 3 : 2, ss->area);
     }
+}
+
+/**
+ * TYP 29's ScaledQtyBackup (tables 58a and 58b): each bit set stands for m
+ * rides or coupons used, so the ones left unset say how many remain - to
+ * within m - should QtyRemaining be lost to a torn write.
+ */
+static void
+    itso_space_backup(ItsoSpaceSaving* ss, const uint8_t* ds, uint8_t bitmap, uint8_t code) {
+    static const uint16_t step[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 32, 64, 128, 256};
+    /* Bit 3 says the backup is in use; a ScalingFactor of 0 says it is not. */
+    if(!(bitmap & (1 << 3)) || code == 0) return;
+    uint32_t bits = itso_bits(ds, 192, 32);
+    uint8_t unset = 32;
+    for(; bits; bits &= bits - 1) {
+        unset--;
+    }
+    ss->has_backup = true;
+    ss->backup_step = step[code & 0x0F];
+    ss->backup_count = (uint16_t)(ss->backup_step * unset);
 }
 
 /** LastUseDTS, where the type has one. Zero is "never used" at creation (and
@@ -878,6 +900,7 @@ static void itso_parse_space_saving(
              * difference. */
             product->count_kind = itso_bits(ds, 31, 1) ? ItsoCountCoupons : ItsoCountRides;
             product->count = 8191 - itso_bits(ds, 147, 13);
+            itso_space_backup(ss, ds, product->bitmap, (uint8_t)itso_bits(ds, 32, 4));
             uint8_t code = (uint8_t)itso_bits(ds, 144, 3); /* TYP29UsageRecCode. */
             ss->usage_alighted = code & 0x01;
             itso_space_usage_place(product, (uint8_t)(200 + ((code >> 1) & 0x03)), ds + 20);
@@ -886,6 +909,7 @@ static void itso_parse_space_saving(
             ss->journey_start_dts = itso_bits(ds, 128, 24);
             product->count_kind = ItsoCountRides;
             product->count = 255 - itso_bits(ds, 152, 8);
+            itso_space_backup(ss, ds, product->bitmap, (uint8_t)itso_bits(ds, 44, 4));
             ss->transfers = (uint8_t)itso_bits(ds, 160, 4);
             ss->daily_journeys = (uint8_t)itso_bits(ds, 164, 4);
             itso_space_last_use(ss, ds);
@@ -1246,6 +1270,7 @@ static void itso_parse_value_records(
     case ItsoTypStoredTravelRights:
         /* TS 1000-5 table 4. */
         product->balance = live->amount;
+        product->value_valc = newest[12] >> 4;
         product->journey_legs = newest[12] & 0x0F;
         itso_decode_money(
             (int32_t)itso_bits(newest, 104, 13),
@@ -1265,12 +1290,15 @@ static void itso_parse_value_records(
         /* TS 1000-5 table 9: points rather than money, and three bytes of them. */
         product->count_kind = ItsoCountPoints;
         product->count = live->count;
+        product->owner_data = (uint16_t)((newest[13] << 8) | newest[14]);
+        product->has_owner_data = true;
         break;
 
     case ItsoTypChargeToAccount1:
         /* TS 1000-5 table 12. The layout matches TYP 2 exactly; what differs is
          * the meaning, so the same bytes are read and flagged as spend. */
         product->balance = live->amount;
+        product->value_valc = newest[12] >> 4;
         product->balance_is_spend = true;
         product->journey_legs = newest[12] & 0x0F;
         itso_decode_money(
@@ -1288,6 +1316,11 @@ static void itso_parse_value_records(
         product->count = live->count;
         product->last_reset = (uint16_t)itso_bits(newest, 90, 14);
         product->has_last_reset = true;
+        /* ValueCurrencyCode at offset 15 prices MaxValue5, though the record
+         * itself holds no money; TYP5ValueFlags beside it has the priority bit
+         * that TYP 4 keeps at the end of its record (table 19). */
+        product->value_valc = newest[13] >> 4;
+        product->priority_override = (newest[13] & 0x02) != 0;
         product->journey_legs = newest[14] & 0x0F;
         product->has_journey = true;
         break;
@@ -1418,9 +1451,19 @@ static void itso_parse_instance_id(
  * it is. TS 1000-5 tables 2, 10 and 15.
  */
 static void itso_parse_purse_ipe(ItsoProduct* product, const uint8_t* data, size_t len) {
-    /* The currency for every amount in the dataset is the value record's
-     * ValueCurrencyCode, which the value record parser has already decoded. */
-    uint8_t currency = product->balance.valid ? product->balance.currency : 0;
+    /* The currency for every amount in the dataset but the deposit is the value
+     * record's ValueCurrencyCode, which the value record parser has already
+     * read - the whole nibble, since its scaling bits apply to a limit as much
+     * as to the balance. */
+    uint8_t currency = product->value_parsed ? product->value_valc : 0;
+
+    /* TYP2Flags, TYP4Flags and TYP5Flags define only these two (tables 5, 13
+     * and 18). */
+    if(len >= 6) {
+        product->print_defined = ITSO_PRINT_TICKET | ITSO_PRINT_RECEIPT;
+        if(data[5] & 0x20) product->print_flags |= ITSO_PRINT_TICKET;
+        if(data[5] & 0x40) product->print_flags |= ITSO_PRINT_RECEIPT;
+    }
 
     switch(product->typ) {
     case ItsoTypStoredTravelRights:
@@ -1435,7 +1478,7 @@ static void itso_parse_purse_ipe(ItsoProduct* product, const uint8_t* data, size
         product->deposit_mop = data[19] & 0x0F;
         product->deposit_vat = (uint16_t)itso_bits(data, 164, 12);
         product->has_deposit = product->deposit.value != 0;
-        /* StartDateAutoTopUp: a DATE at byte 16, two bits into the byte. */
+        /* StartDateAutoTopUp: a DATE at byte 16, followed by RFU to 19.5. */
         product->start = (uint16_t)itso_bits(data, 128, 14);
         product->has_start = product->start != 0;
         break;
@@ -1446,6 +1489,7 @@ static void itso_parse_purse_ipe(ItsoProduct* product, const uint8_t* data, size
         product->has_limits = true;
         itso_decode_money(itso_int16(data + 8), (data[14] >> 4) & 0x0F, &product->deposit);
         product->deposit_mop = data[13] & 0x0F;
+        product->deposit_vat = (uint16_t)itso_bits(data, 116, 12); /* At byte 14.5. */
         product->has_deposit = product->deposit.value != 0;
         product->start = (uint16_t)itso_bits(data, 80, 14); /* StartDateCTA at byte 10. */
         product->has_start = product->start != 0;
@@ -1462,6 +1506,7 @@ static void itso_parse_purse_ipe(ItsoProduct* product, const uint8_t* data, size
         product->has_limits = true;
         itso_decode_money(itso_int16(data + 10), (data[16] >> 4) & 0x0F, &product->deposit);
         product->deposit_mop = data[15] & 0x0F;
+        product->deposit_vat = (uint16_t)itso_bits(data, 132, 12); /* At byte 16.5. */
         product->has_deposit = product->deposit.value != 0;
         product->start = (uint16_t)itso_bits(data, 96, 14); /* StartDateCTA at byte 12. */
         product->has_start = product->start != 0;
@@ -1587,6 +1632,9 @@ static void itso_parse_id_ipe(
     if(len >= 7) {
         product->id_flags = data[5];
         product->has_id_flags = true;
+        /* IDFlags bit 5, PrintTicket; an ID has no PrintReceipt (table 24). */
+        product->print_defined = ITSO_PRINT_TICKET;
+        if(data[5] & 0x20) product->print_flags |= ITSO_PRINT_TICKET;
         /* PassbackTime is six bits, two bits into byte 6. */
         product->passback = (uint8_t)itso_bits(data, 50, 6);
         product->has_passback = true;
@@ -1625,17 +1673,32 @@ static void itso_parse_id_ipe(
     product->concession_class = data[entitlement_offset + 1];
     product->has_entitlement = true;
 
-    if(product->typ == ItsoTypId) {
+    /* Both types put CPICC where others put ProductRetailer, and both carry a
+     * HolderID and the three rounding flags - the ID after its date of birth
+     * and language, the entitlement straight after PassbackTime. */
+    product->cpicc = (uint16_t)((data[3] << 8) | data[4]);
+    product->has_cpicc = product->cpicc != 0;
+    const size_t holder = product->typ == ItsoTypId ? 12 : 7;
+    product->holder_id = itso_bits(data, (uint32_t)holder * 8, 32);
+    product->has_holder_id = product->holder_id != 0;
+    const uint8_t rounding = data[holder + 4]; /* RoundingFlag, RoundingValueFlag. */
+    if(data[6] & 0x80) product->rounding |= ITSO_ROUNDING_ENABLED;
+    if(rounding & 0x80) product->rounding |= ITSO_ROUNDING_FLAG;
+    if(rounding & 0x40) product->rounding |= ITSO_ROUNDING_VALUE;
+
+    if(product->typ == ItsoTypEntitlement) {
+        /* Tables 20 and 20a: one deposit, its currency nibble ahead of the
+         * payment method rather than after the VAT as on an ID. Revision 2's
+         * EntitlementStartDate moves it along by two. */
+        const size_t d = format_rev >= 2 ? 15 : 13; /* DepositCurrencyCode, low nibble. */
+        product->deposit_mop = data[d + 1] >> 4;
+        product->deposit_vat = (uint16_t)itso_bits(data, (uint32_t)(d + 1) * 8 + 4, 12);
+        itso_decode_money(itso_int16(data + d + 3), data[d] & 0x0F, &product->deposit);
+        product->has_deposit = product->deposit.value != 0;
+    } else {
         /* Tables 22 and 22a agree up to HolderID; revision 2 then inserts the
          * two-byte EntitlementStartDate, pushing both deposits along by two. */
-        product->cpicc = (uint16_t)((data[3] << 8) | data[4]);
-        product->has_cpicc = product->cpicc != 0;
         product->language = data[11];
-        product->holder_id = itso_bits(data, 96, 32);
-        product->has_holder_id = product->holder_id != 0;
-        if(data[6] & 0x80) product->rounding |= ITSO_ROUNDING_ENABLED;
-        if(data[16] & 0x80) product->rounding |= ITSO_ROUNDING_FLAG;
-        if(data[16] & 0x40) product->rounding |= ITSO_ROUNDING_VALUE;
 
         const size_t d = format_rev >= 2 ? 20 : 18; /* DepositMethodOfPayment. */
         const uint8_t valcs = data[d + 4];
@@ -1650,6 +1713,36 @@ static void itso_parse_id_ipe(
     }
 
     itso_parse_id_optionals(product, data, len, optionals, bitmap, product->typ == ItsoTypId);
+}
+
+/**
+ * RouteCode, which revisions 2 and 3 of TYP 22 and TYP 23 put in front of the
+ * two locations under the same bitmap bit (tables 27a, 3.27, 31a and 31b).
+ *
+ * @return the offset after it, or 0 when the dataset ends first.
+ */
+static size_t itso_parse_route(ItsoTicketTerms* t, const uint8_t* data, size_t len, size_t pos) {
+    if(pos + sizeof(t->route_code) > len) return 0;
+    memcpy(t->route_code, data + pos, sizeof(t->route_code));
+    t->has_route_code = true;
+    return pos + sizeof(t->route_code);
+}
+
+/**
+ * A ticket's two LOC1 locations, into @c from and @c to.
+ *
+ * @return the offset after the second, or 0 when either does not fit - which
+ *         leaves nothing after them that could be found.
+ */
+static size_t
+    itso_parse_journey_ends(ItsoProduct* product, const uint8_t* data, size_t len, size_t pos) {
+    if(pos >= len) return 0;
+    size_t used = itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->from);
+    if(!used) return 0;
+    pos += used;
+    if(pos >= len) return 0;
+    used = itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->to);
+    return used ? pos + used : 0;
 }
 
 /**
@@ -1673,6 +1766,9 @@ static void itso_parse_period_ipe(
     if(format_rev == 0 || len < fixed) return;
 
     t->flags = (uint16_t)itso_bits(data, 40, 16);
+    product->print_defined = ITSO_PRINT_TICKET | ITSO_PRINT_RECEIPT;
+    if(t->flags & ITSO_T22_PRINT_TICKET) product->print_flags |= ITSO_PRINT_TICKET;
+    if(t->flags & ITSO_T22_PRINT_RECEIPT) product->print_flags |= ITSO_PRINT_RECEIPT;
     product->passback = (uint8_t)itso_bits(data, 58, 6);
     product->has_passback = true;
     t->issue_date = (uint16_t)itso_bits(data, 64, 14);
@@ -1761,13 +1857,24 @@ static void itso_parse_period_ipe(
         t->has_pass_duration = true;
     }
 
-    if(!(bitmap & (1 << 1))) return;
-    pos += 5; /* RouteCode. */
+    if(bitmap & (1 << 1)) {
+        pos = itso_parse_route(t, data, len, pos);
+        if(!pos) return;
+        pos = itso_parse_journey_ends(product, data, len, pos);
+        if(!pos) return;
+    }
 
-    if(pos >= len) return;
-    pos += itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->from);
-    if(pos >= len) return;
-    itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->to);
+    /* Revision 3 bit 2: the identity document the holder must carry with the
+     * ticket, after everything else (table 3.27). */
+    if(format_rev >= 3 && (bitmap & (1 << 2)) && pos < len) {
+        t->id_doc_type = (uint8_t)itso_bits(data, (uint32_t)pos * 8, 3);
+        t->id_doc_len = (uint8_t)itso_bits(data, (uint32_t)pos * 8 + 3, 5);
+        pos++;
+        if(t->id_doc_len == 0 || pos + t->id_doc_len > len) return;
+        uint8_t kept = t->id_doc_len < ITSO_ID_DOC_LEN ? t->id_doc_len : ITSO_ID_DOC_LEN;
+        memcpy(t->id_doc, data + pos, kept);
+        t->has_id_doc = true;
+    }
 }
 
 /**
@@ -1789,6 +1896,9 @@ static void itso_parse_journey_terms(
     if(format_rev == 0 || len < fixed) return;
 
     if(data[5] & 0x02) product->ticket_used = true; /* TYP23Flags UsedChecked. */
+    product->print_defined = ITSO_PRINT_TICKET | ITSO_PRINT_RECEIPT;
+    if(data[5] & 0x20) product->print_flags |= ITSO_PRINT_TICKET;
+    if(data[5] & 0x40) product->print_flags |= ITSO_PRINT_RECEIPT;
     product->passback = (uint8_t)itso_bits(data, 50, 6);
     product->has_passback = true;
     t->issue_date = (uint16_t)itso_bits(data, 58, 14);
@@ -1825,14 +1935,17 @@ static void itso_parse_journey_terms(
     if(format_rev >= 3) t->renew_quantity = data[32];
     t->valid = true;
 
-    /* Bit 3 of every revision: mode, transfer limit, time limit, ride value. */
-    if((bitmap & (1 << 3)) && fixed + (format_rev >= 3 ? 7 : 5) <= len) {
+    /* Bit 3 of every revision: mode, transfer limit, time limit, and the value
+     * of a ride in a currency of its own, the low nibble of the group's last
+     * byte - six bytes in all, eight once revision 3 widened the value. */
+    const size_t group = format_rev >= 3 ? 8 : 6;
+    if((bitmap & (1 << 3)) && fixed + group <= len) {
         t->mode = data[fixed] & 0x0F;
         t->max_transfers = data[fixed + 1];
         t->time_limit = data[fixed + 2];
         int32_t ride = format_rev >= 3 ? (int32_t)itso_bits(data, (uint32_t)(fixed + 3) * 8, 32) :
                                          itso_int16(data + fixed + 3);
-        if(ride) itso_decode_money(ride, valc, &t->ride_value);
+        if(ride) itso_decode_money(ride, data[fixed + group - 1] & 0x0F, &t->ride_value);
         t->has_mode_group = true;
     }
 }
@@ -1884,12 +1997,8 @@ static void itso_parse_journey_ipe(
     }
 
     if(!(bitmap & (1 << 1))) return;
-    pos += 5; /* RouteCode. */
-
-    if(pos >= len) return;
-    pos += itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->from);
-    if(pos >= len) return;
-    itso_parse_location(data + pos, len - pos, ItsoLocStructLoc1, &product->to);
+    pos = itso_parse_route(&product->ticket, data, len, pos);
+    if(pos) itso_parse_journey_ends(product, data, len, pos);
 }
 
 void itso_parse_ipe(ItsoProduct* product, const uint8_t* group, size_t len, uint8_t sector_size) {

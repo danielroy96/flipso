@@ -292,7 +292,10 @@ area sit.
     tickets is the station, 1-15 anticlockwise from Govan - so Flipso names it
     from the Subway station table;
   - his one-time-programmable counter (`3F`, `7F`, `FF`) is the
-    ScaledQtyBackup, a bit per ride set from the bottom of page 3 up.
+    ScaledQtyBackup, a bit per ride set from the bottom of page 3 up. Flipso
+    counts the bits left unset, times the ScalingFactor's multiplier (table
+    58b), and says whether that agrees with QtyRemaining; on all three of his
+    single and return tickets it does.
   Revision 2, multi-leg journeys, is decoded from the spec alone.
 - **TYP 28, a carnet of day passes**, is decoded from the spec alone: six
   5-bit ticks in the OTP page record the days passes were used, as days before
@@ -307,7 +310,16 @@ style for a medium this small. A few read differently from a full ticket's:
   code, a fare value or a location (tables 50, 53, 57). A fare code is the
   operator's own, so even code 0 - which every Subway ticket carries - is shown
   as "Set by the operator" with the code, not as the whole network it happens to
-  mean on the Subway. A location is identified by its LocDefType but not decoded.
+  mean on the Subway. A location is a LOC4 (TYP 27's 100 bits) or a LOC3 (TYP 28
+  and 29's 68): the nibble is LocDefType less 200, and four-byte slots follow
+  for an origin, a destination and in a LOC4 a via (TS 1000-1 clauses
+  4.2.4.2.3-4). Each slot is decoded as the LOCE a LOC2 would hold, except that
+  a fare stage's destination and via are bare stage numbers on the origin's
+  machine, and a zone map fills four bytes rather than three. A location with
+  only its first slot is shown as the area; one with more, as From, To and Via.
+- **Seq#.** Bitmap bit 4 would add a one-byte sequence number after the
+  dataset, but a CMD4 has no room for it and no anti-tear to need it
+  (TS 1000-10 table 46), so no CMD4 ticket carries one.
 - **Ends at.** ExpiryTimeFlag clear is 23:59; set, it is a time the owner
   configures in its readers, which Subway day tickets use.
 - **Events.** TYP 27 carries two EventTypeCodes, Event1 and Event2, which the
@@ -685,20 +697,20 @@ Beyond that:
 
 | Type | Decoded |
 | --- | --- |
-| TYP 2 — Stored Travel Rights | Balance, currency, journey legs and cumulative fare; ceiling, overdraft, auto-top-up threshold/amount/state and whether it draws on another purse, deposit with how it was paid and its VAT; Complex Capping extension (below) |
-| TYP 3 — Loyalty type 1 | Points balance (three bytes, so it does not fit a purse's two) |
-| TYP 4 — Charge to account 1 | Amount spent to date, credit limit, deposit, validity window |
-| TYP 5 — Charge to account 2 | Transactions used, allowance per charge period, last reset date |
-| TYP 14 — Entitlement (rev 1, 2) | Entitlement code, class, validity dates, locations, passback, ID flags |
-| TYP 16 — ITSO ID (rev 1, 2) | Holder name, date of birth, gender, companion and photo flags, entitlement, class, validity dates, locations; CPICC (the concessionary pass issuer), HolderID and SecondaryHolderID, language (annex A.24), HalfDayOfWeek, fare rounding rule, deposit and card deposit with payment, VAT and refundability |
-| TYP 22 — Period ticket (rev 1, 2, 3) | Validity start (DTS in rev 1–2, date and time in rev 3), from/to locations — or, when both are absent, that the area is the operator's to define — passes remaining, expiry of the active pass and of the unused stock, auto-renew and what it adds, stored-pass mode; days and AM/PM periods it is valid (ValidOnDayCode and TYP22Flags together), off-peak, transferable, end time, pass length and unit, party size, class, issue date, amount paid with payment and VAT, CPICC, validity and promotion codes |
-| TYP 23 — Journey ticket (rev 1, 2, 3) | Origin, destination, rides remaining, transfers made, auto-renew, used flag, stored-ride expiry (rev 3); issue date, validity start (rev 3), end time, class, party size, amount paid with payment and VAT, photocard number, CPICC, validity and promotion codes, and the mode group — how rides are counted, transfer and time limits, ride value |
-| TYP 24 — Reservation | Journeys remaining |
-| TYP 25 — Voucher | Vouchers remaining, auto-renew |
-| TYP 26 — Tolling | Rides remaining, auto-renew |
-| TYP 27 — Period ticket (space saving) | Issue date, price paid and currency, adult or child, class, passback, off-peak and weekday restrictions, expiry time, where it is valid (fare code or fare value; a specific location is identified but not yet decoded), last use, both event codes, photocard number, the expiry offset from the directory date, the InstanceID, and blocking by a zero Seal |
-| TYP 28 — Carnet of day passes (space saving) | As TYP 27 without the child flag, photocard or events; passes left (counting the expiry-day pass), the day each used pass was used, validity on the day of issue and of expiry |
-| TYP 29 — Multi-use ticket (space saving) | Revision 1: rides or coupons left, issue date, price paid, class, restrictions, area, and where it was last used and whether getting on or off (an SPT fare stage named as its Subway station). Revision 2: journeys left, when the latest journey began with the journeys begun that day and the changes made on it, the daily journey limit, the changes allowed, passback, last use. Both: expiry time, the InstanceID, and blocking by a zero Seal |
+| TYP 2 — Stored Travel Rights | Balance, currency, journey legs and cumulative fare; ceiling, overdraft, auto-top-up threshold/amount/state and whether it draws on another purse - all priced in the value record's currency code, scaling included - deposit with how it was paid and its VAT; print flags; Complex Capping extension (below) |
+| TYP 3 — Loyalty type 1 | Points balance (three bytes, so it does not fit a purse's two), the owner's two UserDefined bytes |
+| TYP 4 — Charge to account 1 | Amount spent to date, credit limit, deposit with its VAT, validity window, priority, print flags |
+| TYP 5 — Charge to account 2 | Transactions used, allowance per charge period, last reset date, the per-transaction limit in the value record's currency, deposit with its VAT, priority, print flags |
+| TYP 14 — Entitlement (rev 1, 2) | Entitlement code, class, validity dates, locations and half-day validity, passback, ID flags; CPICC, HolderID and SecondaryHolderID, fare rounding rule, deposit with payment, VAT and refundability, PrintTicket |
+| TYP 16 — ITSO ID (rev 1, 2) | Holder name, date of birth, gender, companion and photo flags, entitlement, class, validity dates, locations; CPICC (the concessionary pass issuer), HolderID and SecondaryHolderID, language (annex A.24), HalfDayOfWeek, fare rounding rule, deposit and card deposit with payment, VAT and refundability, PrintTicket; the language is marked as not in use when IDFlags bit 3 sends a POST to another application |
+| TYP 22 — Period ticket (rev 1, 2, 3) | Validity start (DTS in rev 1–2, date and time in rev 3), from/to locations — or, when both are absent, that the area is the operator's to define — passes remaining, expiry of the active pass and of the unused stock, auto-renew and what it adds, stored-pass mode; days and AM/PM periods it is valid (ValidOnDayCode and TYP22Flags together), off-peak, transferable, end time, pass length and unit, party size, class, issue date, amount paid with payment and VAT, CPICC, validity and promotion codes, RouteCode, print flags; in rev 3, what a top-up does with expired passes (TreatmentOfExpiredSP) and the identity document to carry, as a number, text or another product on the card |
+| TYP 23 — Journey ticket (rev 1, 2, 3) | Origin, destination, rides remaining, transfers made, auto-renew, used flag, stored-ride expiry (rev 3); issue date, validity start (rev 3), end time, class, party size, amount paid with payment and VAT, photocard number, CPICC, validity and promotion codes, RouteCode, print flags, and the mode group — how rides are counted (rev 3 adds return pairs), transfer and time limits, ride value in its own currency code |
+| TYP 24 — Reservation | Journeys remaining only; the dataset and the reservations extension are not decoded ([handoff](handoff/typ24-reservation.md)) |
+| TYP 25 — Voucher | Vouchers remaining and auto-renew only; the dataset is not decoded ([handoff](handoff/typ25-voucher.md)) |
+| TYP 26 — Tolling | Rides remaining and auto-renew only; the dataset is not decoded ([handoff](handoff/typ26-tolling.md)) |
+| TYP 27 — Period ticket (space saving) | Issue date, price paid and currency, adult or child, class, passback, off-peak and weekday restrictions, expiry time, where it is valid (fare code, fare value, or a LOC4 of origin, destination and via), last use, both event codes, photocard number, the expiry offset from the directory date, the InstanceID, and blocking by a zero Seal |
+| TYP 28 — Carnet of day passes (space saving) | As TYP 27 without the child flag, photocard or events, and with a LOC3 area; passes left (counting the expiry-day pass), the day each used pass was used, validity on the day of issue and of expiry |
+| TYP 29 — Multi-use ticket (space saving) | Revision 1: rides or coupons left, issue date, price paid, class, restrictions, area, and where it was last used and whether getting on or off (an SPT fare stage named as its Subway station). Revision 2: journeys left, when the latest journey began with the journeys begun that day and the changes made on it, the daily journey limit, the changes allowed, passback, last use. Both: area (fare code, fare value or LOC3), expiry time, the ScaledQtyBackup's count and whether it agrees with the ride count, the InstanceID, and blocking by a zero Seal |
 
 Every product carrying a value record also reports its common header (TS 1000-2
 table 15): what the last transaction was, when, how many times the record has
@@ -805,12 +817,16 @@ LocDefType 212 carries several stops and names the first, counting the rest.
 - CMD9 and CMD10 are decoded from the specification alone: no real card of
   either has been read. A CMD10's one-way transaction counter is not read (see
   above), so a retired CMD10 is not flagged as one.
-- Space Saving IPEs: an area given as a specific location, rather than as a
-  fare code or a fare value, is identified but not decoded;
-  the ScaledQtyBackup is not used to check QtyRemaining; and the TYP 29
-  subtypes are shown as numbers - SPT's appear to be 0 adult single, 2 adult
-  return and 7 child single, but that is inferred from prices, not stated
-  anywhere.
+- TYP 24 (reservations), TYP 25 (vouchers) and TYP 26 (tolling) are reported
+  from their directory entry and value record alone; their datasets, and TYP
+  24's reservations extension (VGXRef 3), are not decoded. Briefs for each are
+  in [docs/handoff](handoff/README.md).
+- A revision 3 period ticket's IdentityDocumentID keeps its first 16 bytes of
+  up to 31, and says how many more there are.
+- Space Saving IPEs: the TYP 29 subtypes are shown as numbers - SPT's appear to
+  be 0 adult single, 2 adult return and 7 child single, but that is inferred
+  from prices, not stated anywhere. An area given as a location has been
+  decoded from the spec alone: every real ticket seen carries a fare code.
 - Oyster cards are recognised and described, but the data is encrypted
 - MIFARE Classic and non-Type A cards are reported as unsupported
 - Seals are not verified, so Flipso cannot tell you whether a card has been

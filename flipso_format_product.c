@@ -24,10 +24,79 @@ static void flipso_cat_deposit(
 }
 
 /**
+ * Owner-defined bytes: as text when they are printable ASCII, which a rail
+ * RouteCode is, else as hex. Zero padding after text is the spec's, and all
+ * zeros is its "not used" (TS 1000-5 tables 27a and 31a).
+ */
+static void flipso_cat_code_bytes(FuriString* out, const uint8_t* data, size_t len) {
+    size_t text = 0;
+    while(text < len && data[text] >= 0x20 && data[text] <= 0x7E) {
+        text++;
+    }
+    size_t end = text;
+    while(end < len && data[end] == 0) {
+        end++;
+    }
+    if(text == 0 && end == len) {
+        furi_string_cat(out, "None");
+    } else if(text > 0 && end == len) {
+        for(size_t i = 0; i < text; i++) {
+            furi_string_push_back(out, (char)data[i]);
+        }
+    } else {
+        for(size_t i = 0; i < len; i++) {
+            furi_string_cat_printf(out, "%02X", data[i]);
+        }
+    }
+}
+
+/**
+ * A revision 3 period ticket's IdentityDocumentID: the ID the holder must show
+ * with it - a number, some text, or another product on the card, such as a
+ * railcard (TS 1000-5 table 3.27).
+ */
+static void
+    flipso_cat_id_document(FuriString* out, const ItsoCard* card, const ItsoTicketTerms* t) {
+    if(!t->has_id_doc) return;
+    const uint8_t kept = t->id_doc_len < ITSO_ID_DOC_LEN ? t->id_doc_len : ITSO_ID_DOC_LEN;
+
+    /* A pointer to entry 0 names nothing, and falls through to its bytes. */
+    if(t->id_doc_type == ItsoIdDocEntry && t->id_doc[0]) {
+        flipso_cat_product_ref(out, card, "", "Carry with it", t->id_doc[0]);
+        return;
+    }
+
+    furi_string_cat(out, "Carry with it: ID ");
+    if(t->id_doc_type == ItsoIdDocHex && kept <= 4) {
+        uint32_t number = 0;
+        for(uint8_t i = 0; i < kept; i++) {
+            number = (number << 8) | t->id_doc[i];
+        }
+        furi_string_cat_printf(out, "%lu", (unsigned long)number);
+    } else if(t->id_doc_type == ItsoIdDocAscii) {
+        flipso_cat_code_bytes(out, t->id_doc, kept);
+    } else {
+        /* A number too long for 32 bits, or a coding that is RFU: its bytes. */
+        for(uint8_t i = 0; i < kept; i++) {
+            furi_string_cat_printf(out, "%02X", t->id_doc[i]);
+        }
+    }
+    if(t->id_doc_len > kept) {
+        furi_string_cat_printf(out, " and %u more bytes", t->id_doc_len - kept);
+    }
+    furi_string_push_back(out, '\n');
+    /* Types other than a number, text or a product are RFU. */
+    if(t->id_doc_type < ItsoIdDocHex || t->id_doc_type > ItsoIdDocEntry) {
+        furi_string_cat_printf(out, "  Coding: Type %u\n", t->id_doc_type);
+    }
+}
+
+/**
  * The terms a period or journey ticket was sold on: the days and times it is
  * good for, how long each pass lasts, who it covers, and what was paid for it.
  */
-static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product) {
+static void
+    flipso_cat_ticket_terms(FuriString* out, const ItsoCard* card, const ItsoProduct* product) {
     const ItsoTicketTerms* t = &product->ticket;
     if(!t->valid) return;
 
@@ -44,19 +113,29 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
     }
 
     /* TYP 23's mode group: how rides are counted, and what joins legs into one
-     * journey (TS 1000-5 table 35a) - one ride used per leg, one per journey
-     * however many changes it takes within the limits below, or none at all
-     * for an ordinary single ticket. */
+     * journey (TS 1000-5 tables 35a and 35b) - one ride used per leg, one per
+     * journey however many changes it takes within the limits below, none at
+     * all for an ordinary single ticket, or from revision 3 journeys taken in
+     * outward and return pairs under the same limits. */
     if(t->has_mode_group) {
         static const char* const modes[] = {
-            "One ride per leg", "One ride per journey, changes included", "As a single ticket"};
+            "One ride per leg",
+            "One ride per journey, changes included",
+            "As a single ticket",
+            "Return, journeys in pairs"};
+        const size_t defined = product->format_rev >= 3 ? 4 : 3;
         furi_string_cat_printf(
-            out, "Ticket use: %s\n", t->mode < COUNT_OF(modes) ? modes[t->mode] : "Other");
-        if(t->mode == ItsoJourneyModeStoredJourneys) {
+            out, "Ticket use: %s\n", t->mode < defined ? modes[t->mode] : "Other");
+        if(t->mode == ItsoJourneyModeStoredJourneys ||
+           (t->mode == ItsoJourneyModeReturn && defined == 4)) {
             /* TimeLimit counts 30 second steps between the start of one leg
              * and the next. */
             furi_string_cat_printf(out, "  Changes allowed: %u\n", t->max_transfers);
-            furi_string_cat_printf(out, "  Time between legs: %u min\n", t->time_limit / 2);
+            furi_string_cat_printf(
+                out,
+                "  Time between legs: %u min%s\n",
+                t->time_limit / 2,
+                (t->time_limit & 1) ? " 30 s" : "");
         }
         flipso_cat_money(out, "", "Value of a ride", &t->ride_value);
     }
@@ -100,6 +179,14 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
     if(product->auto_renew && t->has_stock_duration && t->stock_duration) {
         furi_string_cat_printf(out, "  Unused passes last: %u more days\n", t->stock_duration);
     }
+    /* Revision 3's TreatmentOfExpiredSP: what a top-up does with passes whose
+     * stock has expired (rule 8 of TS 1000-5 clause 2.9.3.4). */
+    if(product->typ == ItsoTypPeriodTicket && product->format_rev >= 3) {
+        furi_string_cat_printf(
+            out,
+            "Expired passes at top-up: %s\n",
+            (t->flags & ITSO_T22_KEEP_EXPIRED) ? "Kept" : "Written off");
+    }
 
     if(t->adults || t->children || t->concessions) {
         furi_string_cat(out, "Travellers:");
@@ -128,6 +215,7 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
     if(t->photocard) {
         furi_string_cat_printf(out, "Photocard number: %lu\n", (unsigned long)t->photocard);
     }
+    flipso_cat_id_document(out, card, t);
 
     if(t->issue_date) flipso_cat_date_line(out, "", "Issued", t->issue_date);
     if(t->amount_paid.valid) {
@@ -144,7 +232,7 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
  * what the operator decided - even code 0, which SPT's whole-network Subway
  * tickets carry but another scheme may give its innermost zone.
  */
-static void flipso_cat_space_area(FuriString* out, const ItsoCard* card) {
+static void flipso_cat_space_area(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
     const ItsoSpaceSaving* ss = &card->space;
     switch((ItsoAreaKind)ss->area_kind) {
     case ItsoAreaFareCode:
@@ -159,10 +247,45 @@ static void flipso_cat_space_area(FuriString* out, const ItsoCard* card) {
         break;
     }
     case ItsoAreaLocation:
-        furi_string_cat(out, "Area: A location, not decoded\n");
-        furi_string_cat_printf(out, "  Location type: %lu\n", (unsigned long)ss->area_value);
+        /* A LOC3 or LOC4 names a journey's two ends and perhaps a via; a zone
+         * map or a single place fills only the first, and then it is the area
+         * the ticket is good in rather than where a journey starts. */
+        if(!ss->area[1].valid && !ss->area[2].valid) {
+            if(ss->area[0].valid) {
+                flipso_cat_location(out, f, "", "Area", &ss->area[0]);
+            } else {
+                furi_string_cat(out, "Area: Not recorded\n");
+                furi_string_cat_printf(
+                    out, "  Location type: %lu\n", (unsigned long)ss->area_value);
+            }
+        } else {
+            flipso_cat_location(out, f, "", "From", &ss->area[0]);
+            flipso_cat_location(out, f, "", "To", &ss->area[1]);
+            flipso_cat_location(out, f, "", "Via", &ss->area[2]);
+        }
         break;
     }
+}
+
+/**
+ * What TYP 29's one-time-programmable backup says is left, and whether it
+ * agrees with the count above it (TS 1000-5 table 58b). Each bit set is m used,
+ * so the count it gives is a ceiling m wide: the true count agrees when it
+ * falls within that band. A mismatch is a torn write or a misread.
+ */
+static void
+    flipso_cat_space_backup(FuriString* out, const ItsoCard* card, const ItsoProduct* product) {
+    const ItsoSpaceSaving* ss = &card->space;
+    if(!product->space_saving || !ss->has_backup) return;
+    if(ss->backup_step == 1) {
+        furi_string_cat_printf(out, "  Backup count: %u\n", ss->backup_count);
+    } else {
+        furi_string_cat_printf(out, "  Backup count: Up to %u\n", ss->backup_count);
+        furi_string_cat_printf(out, "  Backup step: %u\n", ss->backup_step);
+    }
+    const bool agrees = product->count <= ss->backup_count &&
+                        product->count + ss->backup_step > ss->backup_count;
+    flipso_cat_flag(out, "  ", "Agrees", agrees);
 }
 
 void flipso_cat_last_use(
@@ -263,11 +386,13 @@ static void flipso_cat_space_saving(
 }
 
 /**
- * The parts of an ITSO ID beyond name and entitlement: issuer and holder
- * numbers, language, valid periods, fare rounding and deposits.
+ * The parts of an ITSO ID or entitlement beyond name and entitlement: issuer
+ * and holder numbers, language, valid periods, fare rounding and deposits. An
+ * entitlement (TYP 14) carries all of these but the language and the card
+ * deposit.
  */
 static void flipso_cat_id_details(FuriString* out, const ItsoProduct* product) {
-    if(product->typ != ItsoTypId || !product->body_parsed) return;
+    if(!flipso_product_is_identity(product) || !product->body_parsed) return;
 
     /* On an English, Scottish or Welsh concessionary pass this is the pass
      * issuer - the council - by the schemes' own numbering, which is not
@@ -290,6 +415,9 @@ static void flipso_cat_id_details(FuriString* out, const ItsoProduct* product) {
             /* ISO 639-1, upper cased so it reads as a code rather than a word. */
             furi_string_cat_printf(out, "Language: %c%c\n", code[0] - 32, code[1] - 32);
         }
+        /* IDFlags bit 3 points a POST at another application on the card, and
+         * then Language "shall be ignored" (TS 1000-5 table 22). */
+        if(product->id_flags & 0x08) furi_string_cat(out, "  In use: No\n");
     }
 
     /* HalfDayOfWeek: two network-defined periods per day (annex A.10). A zero
@@ -317,7 +445,8 @@ static void flipso_cat_id_details(FuriString* out, const ItsoProduct* product) {
             (product->rounding & ITSO_ROUNDING_VALUE) ? "5p" : "1p");
     }
 
-    /* IDFlags bits 3, 6 and 7 (TS 1000-5 table 24). */
+    /* IDFlags bits 3, 6 and 7 (TS 1000-5 table 24); bit 5 is shown with the
+     * other print flags, under Technical. */
     if(product->has_id_flags && (product->id_flags & 0x08)) {
         furi_string_cat(out, "More details: In another app on the card\n");
     }
@@ -404,7 +533,8 @@ static bool flipso_decode_capping(
     size_t len = 0;
     const uint8_t* group = flipso_capture_product_group(f->capture, product->dir_index, &len);
     if(!group) return false;
-    uint8_t valc = product->balance.valid ? product->balance.currency : 0;
+    /* The whole ValueCurrencyCode, scaling bits and all, as the balance has. */
+    uint8_t valc = product->value_parsed ? product->value_valc : 0;
     return itso_parse_capping(group, len, card->sector_size, valc, cap);
 }
 
@@ -571,6 +701,7 @@ static void flipso_cat_product_details(
     const char* count_label = itso_count_name(product->count_kind);
     if(count_label) {
         furi_string_cat_printf(out, "%s: %lu\n", count_label, (unsigned long)product->count);
+        flipso_cat_space_backup(out, card, product);
     }
     if(product->count_kind == ItsoCountTransactions && product->has_charge_period) {
         furi_string_cat_printf(
@@ -658,7 +789,7 @@ static void flipso_cat_product_details(
      * was last used in @c from - not the start of a journey, so
      * flipso_cat_space_saving() labels it with the other facts of its use. */
     if(product->space_saving) {
-        flipso_cat_space_area(out, card);
+        flipso_cat_space_area(out, f, card);
     } else {
         flipso_cat_location(out, f, "", identity ? "Valid in" : "From", &product->from);
         flipso_cat_location(out, f, "", identity ? "Also valid in" : "To", &product->to);
@@ -723,7 +854,7 @@ static void flipso_cat_product_details(
     }
 
     /* --- The terms behind it, then what has happened to it. --- */
-    flipso_cat_ticket_terms(out, product);
+    flipso_cat_ticket_terms(out, card, product);
     flipso_cat_space_saving(out, f, card, product);
     flipso_cat_id_details(out, product);
     flipso_cat_last_transaction(out, product);
@@ -835,7 +966,7 @@ void flipso_format_product(
     /* Owner-defined codes: meaningless without the scheme's own tables, but they
      * are what tells two otherwise identical tickets apart. An ID's CPICC is its
      * issuer and is shown with the holder details. */
-    if(product->has_cpicc && product->typ != ItsoTypId) {
+    if(product->has_cpicc && !flipso_product_is_identity(product)) {
         furi_string_cat_printf(out, "Issuer code: %u\n", product->cpicc);
     }
     if(product->ticket.validity_code) {
@@ -843,6 +974,23 @@ void flipso_format_product(
     }
     if(product->ticket.promotion_code) {
         furi_string_cat_printf(out, "Promotion code: %u\n", product->ticket.promotion_code);
+    }
+    if(product->ticket.has_route_code) {
+        furi_string_cat(out, "Route code: ");
+        flipso_cat_code_bytes(out, product->ticket.route_code, sizeof(product->ticket.route_code));
+        furi_string_push_back(out, '\n');
+    }
+    /* TYP 3's UserDefined: the loyalty scheme's own two bytes. */
+    if(product->has_owner_data) {
+        furi_string_cat_printf(out, "Owner data: %u\n", product->owner_data);
+    }
+    /* Instructions to the machine rather than facts about the product, so
+     * shown here, and only those the type defines. */
+    if(product->print_defined & ITSO_PRINT_TICKET) {
+        flipso_cat_flag(out, "", "Print ticket", product->print_flags & ITSO_PRINT_TICKET);
+    }
+    if(product->print_defined & ITSO_PRINT_RECEIPT) {
+        flipso_cat_flag(out, "", "Print receipt", product->print_flags & ITSO_PRINT_RECEIPT);
     }
     if(product->has_iin) {
         const char* network = itso_iin_name(product->iin);

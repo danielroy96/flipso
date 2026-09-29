@@ -339,6 +339,162 @@ static void demo_type2_full(const FlipsoFormat* f, const ItsoCard* card, bool nt
     furi_string_free(text);
 }
 
+/** Render one product decoded from @p group as its product screen. */
+static void product_screen(
+    FuriString* text,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    ItsoProduct* p,
+    uint8_t typ,
+    bool vgp,
+    const uint8_t* group,
+    size_t len) {
+    memset(p, 0, sizeof(*p));
+    p->present = p->on_card = true;
+    p->typ = typ;
+    p->value_group = vgp;
+    p->dir_index = 9;
+    itso_parse_ipe(p, group, len, 64);
+    furi_string_reset(text);
+    flipso_format_product(text, f, card, p);
+    house_style("review product", text);
+}
+
+/*
+ * The lines the TS 1000-5 review (2026-09-29) added: elements that were on a
+ * card and not shown, and ones that were shown wrong.
+ */
+static void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
+    FuriString* text = furi_string_alloc();
+    static ItsoProduct p;
+
+    furi_string_reset(text);
+    flipso_format_product(text, f, card, &card->products[0]);
+    check(
+        "a purse's print flags are under Technical",
+        shows(text, "Print ticket: Yes\nPrint receipt: Yes\n"));
+    furi_string_reset(text);
+    flipso_format_product(text, f, card, &card->products[1]);
+    check(
+        "an ID has PrintTicket and no PrintReceipt",
+        shows(text, "Print ticket: No\n") && !shows(text, "Print receipt: "));
+    furi_string_reset(text);
+    flipso_format_product(text, f, card, &card->products[3]);
+    check("a rail RouteCode reads as text", shows(text, "Route code: 00000\n"));
+    furi_string_reset(text);
+    flipso_format_product(text, f, card, &card->products[4]);
+    check("loyalty has its owner's data", shows(text, "Owner data: 4660\n"));
+
+    product_screen(
+        text,
+        f,
+        card,
+        &p,
+        ItsoTypStoredTravelRights,
+        true,
+        purse_scaled_group,
+        sizeof(purse_scaled_group));
+    check(
+        "a scaled purse's limit scales with its balance",
+        shows(
+            text,
+            "Balance limit: \xC2\xA3"
+            "900.00\n"));
+
+    product_screen(
+        text, f, card, &p, ItsoTypChargeToAccount1, true, charge1_group, sizeof(charge1_group));
+    check(
+        "a TYP 4 deposit has its VAT",
+        shows(
+            text,
+            "Deposit: \xC2\xA3"
+            "15.00\n  Paid by: Card\n  VAT: 17.50%\n"));
+
+    product_screen(
+        text, f, card, &p, ItsoTypChargeToAccount2, true, charge2_group, sizeof(charge2_group));
+    check(
+        "MaxValue5 in the value record's currency",
+        shows(
+            text,
+            "Spending limit: \xE2\x82\xAC"
+            "250.00\n"));
+    check("a TYP 5 is used first", shows(text, "Used first: Yes\n"));
+    check("and has a receipt printed", shows(text, "Print ticket: No\nPrint receipt: Yes\n"));
+
+    product_screen(
+        text,
+        f,
+        card,
+        &p,
+        ItsoTypEntitlement,
+        false,
+        entitlement_rev2_group,
+        sizeof(entitlement_rev2_group));
+    check("an entitlement names its pass issuer", shows(text, "Pass issuer code: 1620\n"));
+    check("and its holder", shows(text, "Holder number: 11259375\n"));
+    check("and how fares round", shows(text, "Fare rounding: Down to 5p\n"));
+    check(
+        "and its deposit",
+        shows(
+            text,
+            "Deposit: \xC2\xA3"
+            "10.00\n  Paid by: Card\n  VAT: 20.00%\n  Refundable: Yes\n"));
+    check("and not as an Issuer code under Technical", !shows(text, "Issuer code: "));
+
+    product_screen(
+        text,
+        f,
+        card,
+        &p,
+        ItsoTypJourneyTicket,
+        false,
+        journey_rev3_group,
+        sizeof(journey_rev3_group));
+    check(
+        "a revision 3 return and its limits",
+        shows(
+            text,
+            "Ticket use: Return, journeys in pairs\n  Changes allowed: 1\n"
+            "  Time between legs: 45 min 30 s\n"));
+    check(
+        "a ride's value in its own currency",
+        shows(
+            text,
+            "Value of a ride: \xE2\x82\xAC"
+            "60.00\n"));
+
+    product_screen(
+        text,
+        f,
+        card,
+        &p,
+        ItsoTypPeriodTicket,
+        false,
+        period_rev3_id_group,
+        sizeof(period_rev3_id_group));
+    check("a period ticket's identity document", shows(text, "Carry with it: ID RC123456\n"));
+    check(
+        "what a top-up does with expired passes", shows(text, "Expired passes at top-up: Kept\n"));
+
+    product_screen(
+        text,
+        f,
+        card,
+        &p,
+        ItsoTypPeriodTicket,
+        false,
+        period_rev3_long_id_group,
+        sizeof(period_rev3_long_id_group));
+    check(
+        "a long identity number is hex, with what is not kept counted",
+        shows(text, "Carry with it: ID 0102030405060708090A0B0C0D0E0F10 and 4 more bytes\n"));
+    check(
+        "a revision 3 period ticket's default",
+        shows(text, "Expired passes at top-up: Written off\n"));
+
+    furi_string_free(text);
+}
+
 /* Wording pinned against the demo card that carries every product type. */
 static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     FuriString* text = furi_string_alloc();
@@ -355,6 +511,21 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         "a reader names its machine, then its operator",
         shows(text, "  Tap-in reader: 01020304\n    Operator: "));
     check("passback is called passback", shows(text, "Passback timeout: 20 min\n"));
+
+    /* An identity document that is another product names it, and a loyalty
+     * scheme's own bytes are shown as they stand. */
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        const ItsoProduct* p = &card->products[i];
+        if(p->typ != ItsoTypPeriodTicket && p->typ != ItsoTypLoyalty1) continue;
+        furi_string_reset(text);
+        flipso_format_product(text, f, card, p);
+        if(p->typ == ItsoTypPeriodTicket) {
+            check(
+                "a period ticket names the ID it needs", shows(text, "Carry with it: ITSO ID\n"));
+        } else {
+            check("loyalty shows its owner's data", shows(text, "Owner data: 321\n"));
+        }
+    }
 
     /* Its reserved journey is in use as far as the card's chain says, and out
      * of date as far as its expiry, 31/03/2026, says: the second is the one to
@@ -418,6 +589,7 @@ int main(int argc, char** argv) {
         "the photo flag is capitalised",
         shows(text, "Photo on card: Yes") || shows(text, "Photo on card: No"));
     check("an entitlement's area is not a journey's end", !shows(text, "\nFrom: "));
+    spec_review(&f, &card);
 
     furi_string_reset(text);
     flipso_format_card(text, &f, &card, NULL, 0);
@@ -469,7 +641,7 @@ int main(int argc, char** argv) {
             {"TYP 29 return",
              cmd4_return,
              sizeof(cmd4_return),
-             {"Rides left: 1\n",
+             {"Rides left: 1\n  Backup count: 1\n  Agrees: Yes\n",
               "Last got off: Hillhead\n",
               "Price paid: \xC2\xA3"
               "3.30\n",
@@ -507,10 +679,35 @@ int main(int argc, char** argv) {
             {"TYP 27 by location",
              cmd4_location,
              sizeof(cmd4_location),
-             {"Area: A location, not decoded\n  Location type: 201\n",
+             {"Area: Zones 1,2,3\n",
               "Photocard number: None\n",
               "Last used: Never\n",
               "Event 1: Other\n",
+              "Issued: "}},
+            {"TYP 28 between stations",
+             cmd4_journey_area,
+             sizeof(cmd4_journey_area),
+             {"From: London Waterloo\n",
+              "To: Station 1444\n",
+              "Passes left: 6\n",
+              "Valid on day of issue: No\n",
+              "Ends at: 23:59 on the expiry date\n"}},
+            {"TYP 29 scaled backup",
+             cmd4_backup_scaled,
+             sizeof(cmd4_backup_scaled),
+             {"Rides left: 10\n  Backup count: Up to 12\n  Backup step: 4\n  Agrees: Yes\n",
+              "Price paid: \xC2\xA3"
+              "15.00\n",
+              "Last used: Never\n",
+              "Area: Set by the operator\n",
+              "Class: Standard\n"}},
+            {"TYP 29 torn backup",
+             cmd4_backup_torn,
+             sizeof(cmd4_backup_torn),
+             {"Rides left: 1\n  Backup count: 3\n  Agrees: No\n",
+              "Last used: Never\n",
+              "Weekdays only: No\n",
+              "Area: Set by the operator\n",
               "Issued: "}},
         };
         for(size_t i = 0; i < COUNT_OF(tickets); i++) {
@@ -525,10 +722,13 @@ int main(int argc, char** argv) {
                 check(what, shows(text, tickets[i].expect[e]));
             }
             /* The place a ticket was last used is not the start of a journey,
-             * and a product with no Sector Chain Table claims no status. */
+             * and a product with no Sector Chain Table claims no status. Only
+             * an area recorded as a journey's two ends has a From line. */
             char what[160];
-            snprintf(what, sizeof(what), "%s has no From line", tickets[i].name);
-            check(what, !shows(text, "From: "));
+            if(!t2.space.area[1].valid) {
+                snprintf(what, sizeof(what), "%s has no From line", tickets[i].name);
+                check(what, !shows(text, "From: "));
+            }
             snprintf(what, sizeof(what), "%s claims no status", tickets[i].name);
             check(what, !shows(text, "Status: "));
         }
@@ -759,7 +959,7 @@ int main(int argc, char** argv) {
             }
             f.media = &demo_media;
             every_screen(entry->d_name, &f, &demo_card);
-            if(strncmp(entry->d_name, "Demo 1", 6) == 0) demo_one(&f, &demo_card);
+            if(strncmp(entry->d_name, "Demo 1 ", 7) == 0) demo_one(&f, &demo_card);
             if(strncmp(entry->d_name, "Demo 8", 6) == 0) demo_type2_full(&f, &demo_card, true);
             if(strncmp(entry->d_name, "Demo 9", 6) == 0) demo_type2_full(&f, &demo_card, false);
             if(strncmp(entry->d_name, "Demo 7", 6) == 0) {
@@ -777,7 +977,7 @@ int main(int argc, char** argv) {
             cards++;
         }
         if(dir) closedir(dir);
-        check("all nine demo cards were rendered", cards == 9);
+        check("all ten demo cards were rendered", cards == 10);
         check("and a saved chip block was among them", chips > 0);
     }
 

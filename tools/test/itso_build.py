@@ -165,11 +165,13 @@ def compact_shell():
 
 def typ27_dataset(issue_date, amount, child=False, euro=False, passback=0, mop=0,
                   flags=0, geo=0, event1=0, event2=0, last_use=0, photocard=0,
-                  expiry_offset=0, area_type=0, fare_value=False):
+                  expiry_offset=0, area_type=0, fare_value=False, area_slots=b""):
     """The 28-byte logical TYP 27 (Period, space-saving) dataset (TS 1000-5 table 48).
 
     One contiguous field sequence, before it is scattered across the card's
-    static, dynamic and OTP page regions by type2_page_memory().
+    static, dynamic and OTP page regions by type2_page_memory(). A location
+    area is a LOC4: @p area_type is its LocDefType less 200, and @p
+    area_slots its origin, destination and via, four bytes each.
     """
     d = Bits(28)
     d.put(0, 6, 7)          # IPELength = 7 blocks
@@ -189,12 +191,25 @@ def typ27_dataset(issue_date, amount, child=False, euro=False, passback=0, mop=0
     d.put(60, 4, area_type)
     d.put(64, 1, 1 if fare_value else 0)
     d.put(128, 32, geo)
+    _put_area_slots(d, area_slots, 12)
     d.put(160, 4, event1)   # Event1
     d.put(164, 4, event2)   # Event2
     d.put(168, 24, last_use)  # LastUseDTS
     d.put(192, 24, photocard)  # PhotocardNumber (OTP)
     d.put(216, 8, expiry_offset)  # TYP27ExpiryDate: days before the directory expiry
     return bytes(d.buf)
+
+
+def _put_area_slots(d, slots, room):
+    """A LOC3 or LOC4's four-byte slots, from byte 8 where the half-byte
+    LocDefType before them ends (TS 1000-1 clauses 4.2.4.2.3-4)."""
+    assert len(slots) <= room, f"{len(slots)} bytes of slots, room for {room}"
+    if slots:
+        d.putb(8, slots)
+
+
+# ScalingFactor code -> multiplier m (TS 1000-5 table 58b).
+SCALING_STEP = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 32, 64, 128, 256]
 
 
 def _otp_backup(set_bits):
@@ -209,7 +224,8 @@ def _otp_backup(set_bits):
 
 
 def typ28_dataset(issue_date, amount, passback=0, mop=0, flags=0, last_use=0,
-                  ticks=(0, 0, 0, 0, 0, 0), issue_day=False, expiry_day=False):
+                  ticks=(0, 0, 0, 0, 0, 0), issue_day=False, expiry_day=False,
+                  area_type=0, area_slots=b""):
     """The 28-byte logical TYP 28 (Carnet of day passes) dataset (TS 1000-5 table 51).
 
     @p ticks are the six ExpiryTicks: days before the directory expiry that a pass
@@ -224,6 +240,8 @@ def typ28_dataset(issue_date, amount, passback=0, mop=0, flags=0, last_use=0,
     d.put(36, 4, mop)
     d.put(40, 16, amount)
     d.put(56, 4, flags)     # TYP28PassFlags
+    d.put(60, 4, area_type) # AreaValidity: a LOC3 of LocDefType 200 + this
+    _put_area_slots(d, area_slots, 8)
     d.put(168, 24, last_use)
     for i, tick in enumerate(ticks):
         d.put(192 + i * 5, 5, tick)
@@ -235,13 +253,16 @@ def typ28_dataset(issue_date, amount, passback=0, mop=0, flags=0, last_use=0,
 def typ29_dataset(issue_date, rides_left, amount=0, mop=0, coupons=False,
                   flags=0, usage_code=0, usage=b"\0\0\0\0", last_use=0, rev=1,
                   passback=0, max_daily=0, max_transfers=0, journey_start=0,
-                  transfers=0, daily=0):
+                  transfers=0, daily=0, scaling=1, backup_left=None, area_type=0,
+                  area_slots=b""):
     """The 28-byte logical TYP 29 (Multi-Use) dataset (TS 1000-5 tables 55, 55a).
 
     Revision 1 is a carnet of single tickets or coupons, the SPT Subway single and
     return; revision 2 is multi-leg journeys. QtyRemaining counts up from 8191 (or
-    255) minus the number bought, and the ScaledQtyBackup in page 3 keeps a bit per
-    ride at a scaling factor of 1.
+    255) minus the number bought. The ScaledQtyBackup in page 3 has a bit set for
+    every @p scaling rides used (table 58b), so it says @p backup_left - by
+    default the rides left - to within that many; a different @p backup_left
+    makes a backup that disagrees, as a torn write would.
     """
     d = Bits(28)
     d.put(0, 6, 7)
@@ -249,9 +270,11 @@ def typ29_dataset(issue_date, rides_left, amount=0, mop=0, coupons=False,
     d.put(12, 4, rev)
     d.put(16, 14, issue_date)
     d.put(56, 4, flags)     # TYP29PassFlags
+    d.put(60, 4, area_type) # AreaValidity: a LOC3 of LocDefType 200 + this
+    _put_area_slots(d, area_slots, 8)
     if rev == 1:
         d.put(31, 1, 1 if coupons else 0)
-        d.put(32, 4, 1)     # ScalingFactor 1: one backup bit per ride
+        d.put(32, 4, scaling)  # ScalingFactor
         d.put(36, 4, mop)
         d.put(40, 16, amount)
         d.put(144, 3, usage_code)            # TYP29UsageRecCode
@@ -261,13 +284,15 @@ def typ29_dataset(issue_date, rides_left, amount=0, mop=0, coupons=False,
         d.put(32, 4, passback)
         d.put(36, 4, max_daily)
         d.put(40, 4, max_transfers)
-        d.put(44, 4, 1)     # ScalingFactor 1
+        d.put(44, 4, scaling)  # ScalingFactor
         d.put(128, 24, journey_start)        # JnyComDTS
         d.put(152, 8, 255 - rides_left)      # QtyRemaining
         d.put(160, 4, transfers)
         d.put(164, 4, daily)
         d.put(168, 24, last_use)
-    d.put(192, 32, _otp_backup(32 - rides_left))
+    left = rides_left if backup_left is None else backup_left
+    step = SCALING_STEP[scaling]
+    d.put(192, 32, _otp_backup(32 - (left + step - 1) // step))
     return bytes(d.buf)
 
 
@@ -548,20 +573,25 @@ def period_tail(passes, flags, stored_expiry, current_expiry):
     return bytes(t.buf)
 
 
-def loyalty_tail(points):
+def loyalty_tail(points, user=0):
     """TYP 3 table 9: LoyaltyPoints is three bytes wide, so a points balance
-    does not fit the two-byte slot a purse balance uses."""
+    does not fit the two-byte slot a purse balance uses; the owner's two
+    UserDefined bytes follow it."""
     t = Bits(5)
     t.put(0, 24, points)
+    t.put(24, 16, user)
     return bytes(t.buf)
 
 
-def charge_tail(transactions, last_reset, legs=0):
-    """TYP 5 table 17: transactions used this charge period, and the date the
-    count was last cleared."""
+def charge_tail(transactions, last_reset, legs=0, valc=0, flags=0):
+    """TYP 5 table 17: transactions used this charge period, the date the count
+    was last cleared, the ValueCurrencyCode that prices MaxValue5, and
+    TYP5ValueFlags (bit 1 IPEPriorityOverride)."""
     t = Bits(5)
     t.put(0, 8, transactions)
     t.put(10, 14, last_reset)
+    t.put(24, 4, valc)
+    t.put(28, 4, flags)
     t.put(36, 4, legs)
     return bytes(t.buf)
 
