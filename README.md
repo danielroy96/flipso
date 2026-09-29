@@ -34,22 +34,35 @@ your hand.
 An ITSO card packs a surprising amount into its 4 KB, all laid out by the ITSO
 TS 1000 specification. Flipso decodes as much of it as it can:
 
-* **Tickets** — journey, period and carnet products, with operator, validity and the stations they cover
-* **Pay as you go** — balance, owning operator and purse, and the most recent transactions
-* **Cardholder** — name, date of birth, concession and entitlements
-* **Journeys** — recent taps and completed journeys, with origin, destination, fare and whether you were inside the gates
-* **Paper tickets** — ITSO's compact paper tickets, such as the Glasgow Subway's singles, returns and day tickets: rides left, price, when and at which station they were last used
-* **NFC tag tickets** — ITSO cards on NTAG215/216 and MIFARE Ultralight EV1 tags (CMD9 and CMD10), read like a smartcard, with the chip's lock bits and, on an NTAG, how many uses it has left
+- **Tickets** — journey, period and carnet products, with operator, validity and the stations they cover
+- **Pay as you go** — balance, owning operator and purse, and the most recent transactions
+- **Cardholder** — name, date of birth, concession and entitlements
+- **Journeys** — recent taps and completed journeys, with origin, destination, fare and whether you were inside the gates
+- **Paper tickets** — ITSO's compact paper tickets, such as the Glasgow Subway's singles, returns and day tickets: rides left, price, when and at which station they were last used
+- **NFC tag tickets** — ITSO cards on NTAG215/216 and MIFARE Ultralight EV1 tags (CMD9 and CMD10), read like a smartcard, with the chip's lock bits and, on an NTAG, how many uses it has left
 
 Station and operator names are resolved on the device from bundled reference
 data, so a card that stores nothing but a code still shows a place you
 recognise.
 
-| <img src="docs/screenshots/card.png" width="250" alt="Card number 633597 0289 0100 0016 and expiry"> | <img src="docs/screenshots/id.png" width="250" alt="ITSO ID: name, date of birth, gender and operator"> |
-| :---: | :---: |
-| **Card**<br><sub>The 18-digit ISRN, its issuer and expiry, validated on the device</sub> | **ID &amp; entitlement**<br><sub>Holder identity, concession and entitlement, validity and companion rules</sub> |
-| <img src="docs/screenshots/products.png" width="250" alt="Products list with a per-type icon on each row"> | <img src="docs/screenshots/product-detail.png" width="250" alt="Period ticket: passes left, operator, status and expiry"> |
-| **Products**<br><sub>Every ticket on the card - the purse and ID have rows of their own - each with an icon for its type and a flag for expired, blocked or unused</sub> | **Product detail**<br><sub>Operator, status, validity window, remaining passes and the stations a ticket covers</sub> |
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/screenshots/card.png" width="250" alt="Card number 633597 0289 0100 0016 and expiry"></td>
+    <td width="50%" align="center" valign="top"><img src="docs/screenshots/id.png" width="250" alt="ITSO ID: name, date of birth, gender and operator"></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><b>Card</b><br><sub>The 18-digit ISRN, its issuer and expiry, validated on the device</sub></td>
+    <td width="50%" align="center" valign="top"><b>ID &amp; entitlement</b><br><sub>Holder identity, concession and entitlement, validity and companion rules</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><img src="docs/screenshots/products.png" width="250" alt="Products list with a per-type icon on each row"></td>
+    <td width="50%" align="center" valign="top"><img src="docs/screenshots/product-detail.png" width="250" alt="Period ticket: passes left, operator, status and expiry"></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top"><b>Products</b><br><sub>Every ticket on the card, each with an icon for its type and a flag for expired, blocked or unused. The purse and ID have rows of their own.</sub></td>
+    <td width="50%" align="center" valign="top"><b>Product detail</b><br><sub>Operator, status, validity window, remaining passes and the stations a ticket covers</sub></td>
+  </tr>
+</table>
 
 ## Getting started
 
@@ -92,7 +105,7 @@ and helps keep token usage down.
 Claude has been carefully housetrained to develop responsibly according to
 my guidance and desire for unit tests. A good starting point is to scan your
 card for Claude. If you're building a large new feature Claude will benefit
-from synthesizing cards so he can test them on the device without needing 
+from synthesizing cards so he can test them on the device without needing
 you around to tap them.
 
 ## Licensing
