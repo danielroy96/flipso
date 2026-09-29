@@ -555,6 +555,9 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         if(p->typ == ItsoTypPeriodTicket) {
             check(
                 "a period ticket names the ID it needs", shows(text, "Carry with it: ITSO ID\n"));
+            check(
+                "its passback is an instruction to the gate, under Technical",
+                technical(text, "Passback timeout: Set by the operator\n"));
         } else {
             check("loyalty shows its owner's data", shows(text, "Owner data: 321\n"));
         }

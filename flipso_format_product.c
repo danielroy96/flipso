@@ -811,18 +811,6 @@ static void flipso_cat_product_details(
         if(identity)
             flipso_cat_flag(out, "", "Photo on card", itso_id_personalised(product->id_flags));
     }
-    /* PassbackTime: how long a gate refuses the same pass after it has been
-     * used, so it cannot be handed back through for a second person. Zero is
-     * not "no wait" but "the reader's own rule" (TS 1000-5, every IPE that
-     * carries it), so it is shown as that rather than left out. */
-    if(product->has_passback) {
-        if(product->passback) {
-            furi_string_cat_printf(out, "Passback timeout: %u min\n", product->passback);
-        } else {
-            furi_string_cat(out, "Passback timeout: Set by the operator\n");
-        }
-    }
-
     /* --- Its state. --- */
     if(product->ticket_used) flipso_cat_flag(out, "", "Used", true);
     if(product->auto_renew) furi_string_cat(out, "Auto-renew: On\n");
@@ -946,6 +934,18 @@ static void flipso_cat_product_technical(
     }
     if(product->print_defined & ITSO_PRINT_RECEIPT) {
         flipso_cat_flag(out, "", "Print receipt", product->print_flags & ITSO_PRINT_RECEIPT);
+    }
+    /* PassbackTime: how long a gate refuses the same pass after it has been
+     * used, so it cannot be handed back through for a second person - an
+     * instruction to the gate like the two above. Zero is not "no wait" but
+     * "the reader's own rule" (TS 1000-5, every IPE that carries it), so it is
+     * shown as that rather than left out. */
+    if(product->has_passback) {
+        if(product->passback) {
+            furi_string_cat_printf(out, "Passback timeout: %u min\n", product->passback);
+        } else {
+            furi_string_cat(out, "Passback timeout: Set by the operator\n");
+        }
     }
     if(product->has_iin) {
         const char* network = itso_iin_name(product->iin);
