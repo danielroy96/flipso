@@ -1,9 +1,9 @@
 # Demo cards
 
-Ten synthetic ITSO cards, written as saved-card files and copied to the
+Eleven synthetic ITSO cards, written as saved-card files and copied to the
 Flipper, so that Flipso can be seen without owning the cards that carry the
 features. Nobody has a wallet with a loyalty IPE, a charge-to-account product,
-a blocked shell and a revision 1 period ticket in it; between them these ten
+a blocked shell and a revision 1 period ticket in it; between them these
 have all of it.
 
 A saved card is the raw blocks a read produced, not the decoded fields, so a
@@ -24,7 +24,7 @@ a card that was tapped, and nor would anyone reading the screen.
 | Card | What it covers |
 | --- | --- |
 | **Demo 01 The Key Kent** | A Tunbridge Wells commuter's Southeastern card, with eleven products - every full-shell IPE type, plus the three states the list flags: blocked, expired and never read. Shell with an MCRN. A monthly season to London Bridge (revision 3, naming the ITSO ID the holder must carry and keeping expired passes at a top-up), a book of Highspeed journeys from Ashford International, a purse with a journey in progress, loyalty with owner data, a charge-to-account marked to be used first, a voucher, a Disabled Persons Railcard (holder number, rounding down to 5p), a partner's loyalty scheme in the extended OID range, blocked, an expired seat reservation and a hypothetical Dartford Crossing toll pass. A log with both tap record revisions, a season journey via Sevenoaks, and a gate that flagged the season as not valid and charged the purse. |
-| **Demo 02 Freedom Pass** | A shell its issuer has stopped, which retitles the menu and banners the Card screen. The revision 1 ID (its language set aside by the URI flag), entitlement (with issuer, holder, rounding and deposit) and period ticket layouts. A revision 3 journey ticket in the return mode that revision adds, across two sectors. A purse spent past zero. A log entry written in basic mode, so the card knows its last tap and has no journey record of it. |
+| **Demo 02 Freedom Pass** | A London pensioner's pass that London Councils has stopped, which retitles the menu and banners the Card screen. What a real Freedom Pass carries: the revision 1 ID (its language set aside by the URI flag), the Greater London entitlement (issuer, holder, rounding and deposit) and a purse nobody has topped up. A log entry written in basic mode, so the card knows its last tap and has no journey record of it. |
 | **Demo 03 Subway card** | The other customer media: 80-byte sectors, 64 of them, 16 directory entries and a six-bit Sector Chain Table. A purse with no expiry date and a value record that has never been written. |
 | **Demo 04 SWR Touch** | What only a saved card holds: journeys and transactions that have rolled off the card, and four products the card no longer lists. Twelve taps, which is as many as the decoder keeps. |
 | **Demo 05 Subway day** | An NFC Type 2 tag (CMD4): a compact shell and one TYP 27 day ticket at fixed page offsets, in the shape of a real SPT paper ticket. |
@@ -33,6 +33,7 @@ a card that was tapped, and nor would anyone reading the screen.
 | **Demo 08 Reading Buses** | A full ITSO shell on an NFC Type 2 tag (CMD9, NTAG215): 64-byte sectors at fixed pages, the chip pages saved as a Tag block, an Abacus with ten uses left, and a journey ticket whose value records alternate between two anti-tear copies of the group - its history is only whole with both. |
 | **Demo 09 MyXplore** | The same layout on an Ultralight EV1 (CMD10): 128-byte sectors, a shell carrying an MCRN (so the rotated first byte is 0x20), a period ticket with value records in both copies, and a log whose Record Offset makes the first slot the newer. |
 | **Demo 10 SPT coupons** | A paper book of coupons (TYP 29 in coupon form) whose area is a location - a LOC3 zone map - rather than a fare code, and whose backup counts four coupons a bit, so it can only say "up to". Hypothetical: no real ticket of this shape has been seen. |
+| **Demo 11 The Key Sussex** | A Brighton commuter's Southern Key, issued under Southern's own OID. A revision 1 season Brighton - London Victoria that Southern has blocked, a revision 3 Gatwick Express return in the return mode that revision adds, across two sectors, a purse spent past zero, and a business travel account by value (TYP 4), which no other card carries. |
 
 ## Adding one
 

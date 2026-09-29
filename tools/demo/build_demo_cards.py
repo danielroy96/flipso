@@ -400,13 +400,15 @@ def card_the_key():
 
 
 # ====================================================================
-# Card 2 - a concessionary pass the issuer has stopped
+# Card 2 - a Freedom Pass the issuer has stopped
 #
-# The blocking indicator is the headline fact about a card, and it changes four
+# A London pensioner's pass, reported lost and blocked by London Councils. The
+# blocking indicator is the headline fact about a card, and it changes four
 # things at once: the menu title and its icon, the banner on the Card screen,
 # the missing Active line, and the tone the scan ends on. The products under it
-# are the revision 1 layouts - an ID and an entitlement written to the older
-# tables, which the other cards do not exercise - plus a purse in overdraft.
+# are what a real Freedom Pass carries - an ITSO ID, the Greater London
+# entitlement and a purse that has never been topped up - in the revision 1
+# layouts of the ID and the entitlement, which the other cards do not exercise.
 # ====================================================================
 def card_blocked():
     B, S, E, SCTL = 64, 16, 8, 7
@@ -458,8 +460,8 @@ def card_blocked():
     ent.buf[18] = 2                              # EntitlementCode: limited free ride
     ent.buf[19] = 4                              # ConcessionaryClass: pensioner
 
-    # ---- E3: a purse that has been spent past zero, which is what the
-    # overdraft in the dataset is for.
+    # ---- E3: the purse a Freedom Pass is issued with and nobody tops up: one
+    # record, written when the pass was made, with nothing in it.
     purse = Bits(24)
     purse.put(0, 6, 6)
     purse.put(6, 6, 0)
@@ -467,76 +469,23 @@ def card_blocked():
     purse.buf[2] = 255
     purse.putb(3, (226).to_bytes(2, "big"))
     purse.putb(10, (5000).to_bytes(2, "big"))    # MaxValue2: GBP 50
-    purse.putb(12, (200).to_bytes(2, "big"))     # MaximumNegativeAmount: GBP 2
     purse_values = value_group([
-        value_record(7, 88, dts(2026, 8, 30, 8, 20), purse_tail(65)),
-        value_record(7, 89, dts(2026, 9, 2, 8, 19), purse_tail(-120 & 0xFFFF)),
+        value_record(1, 1, dts(2024, 3, 18, 10, 41), purse_tail(0)),
     ], format_rev=1)
-
-    # ---- E4: a compact period pass, expired
-    compact = Bits(16)
-    compact.put(0, 6, 4)
-    compact.put(12, 4, 1)
-    compact.buf[2] = 255
-    compact.putb(3, (226).to_bytes(2, "big"))
-
-    # ---- E5: period ticket, revision 1 - the only revision that flags its two
-    # locations independently rather than behind RouteCode.
-    period = Bits(40)
-    period.put(0, 6, 10)
-    period.put(6, 6, 0b000110)                   # bit 2 origin, bit 1 destination
-    period.put(12, 4, 1)
-    period.buf[2] = 255
-    period.putb(3, (143).to_bytes(2, "big"))     # sold by Southern
-    period.putb(26, loc1(203, b"5416"))          # Gatwick Airport
-    period.putb(32, loc1(203, b"5148"))          # London Bridge
-    period_values = value_group([
-        value_record(1, 3, dts(2026, 4, 2, 9, 0),
-                     period_tail(2, 0b00, date_stamp(2026, 11, 30), date_stamp(2026, 5, 1))),
-        value_record(13, 4, dts(2026, 5, 2, 8, 55),
-                     period_tail(1, 0b00, date_stamp(2026, 11, 30), date_stamp(2026, 6, 1))),
-    ], format_rev=1)
-
-    # ---- E6: journey ticket, revision 3 (table 31b): a return, mode 3, whose
-    # legs may be joined by one change within 45 minutes 30 seconds. Sixty
-    # bytes of dataset, so it runs into a second sector.
-    ret = Bits(60)
-    ret.put(0, 6, 15)
-    ret.put(6, 6, 0b001010)                      # mode group, route and locations
-    ret.put(12, 4, 3)
-    ret.buf[2] = 7
-    ret.putb(3, (143).to_bytes(2, "big"))
-    ret.buf[5] = 0b01100000                      # TYP23Flags: print ticket and receipt
-    ret.put(58, 14, date_stamp(2026, 9, 1))      # IssueDate
-    ret.put(72, 24, dts(2026, 9, 2, 6, 0))       # ValidityStartDTS
-    ret.put(101, 11, 1440 + 180)                 # ExpiryTime: 03:00 the day after
-    ret.put(117, 3, 2)                           # Class: standard
-    ret.buf[15] = 1                              # PartySizeAdult
-    ret.putb(19, (2140).to_bytes(4, "big"))      # AmountPaid: GBP 21.40
-    ret.put(23 * 8, 4, 1)                        # AmountPaidMethodOfPayment: cash
-    ret.put(33 * 8 + 4, 4, 3)                    # TYP23Mode: return
-    ret.buf[34] = 1                              # MaxTransfers
-    ret.buf[35] = 91                             # TimeLimit: 91 x 30 s
-    ret.putb(36, (1070).to_bytes(4, "big"))      # ValueOfRideJourney: GBP 10.70
-    ret.putb(41, b"00000")                       # RouteCode: any permitted
-    ret.putb(46, loc1(203, b"5416"))             # Gatwick Airport
-    ret.putb(52, loc1(203, b"5148"))             # London Bridge
 
     entries = [
         dir_entry(226, 16, 0, False, EXP),                          # E1 ITSO ID
         dir_entry(96, 14, 0, False, EXP),                           # E2 entitlement
         dir_entry(226, 2, 0, True, EXP),                            # E3 purse
-        dir_entry(226, 27, 0, False, date_stamp(2026, 6, 30)),      # E4 expired
-        dir_entry(143, 22, 1, True, date_stamp(2026, 11, 30)),      # E5 blocked
-        dir_entry(143, 23, 7, False, date_stamp(2026, 9, 30)),      # E6 return
-        bytes(5),                                                   # E7 unused
+        bytes(5), bytes(5), bytes(5), bytes(5),                     # E4-E7 unused
         # Basic mode: the POST updates the log entry and writes no journey
-        # record, so the card has a last tap and no log to show for it.
-        log_entry(ptr=3, eei=0, when=dts(2026, 9, 2, 8, 19), record_offset=0,
-                  passback=0, normal_mode=False),
+        # record, so the card has a last tap and no log to show for it - which
+        # is what a real Freedom Pass read on 2026-09-25 showed, down to the
+        # two-minute passback and the ID as the product used.
+        log_entry(ptr=1, eei=0, when=dts(2026, 9, 2, 10, 19), record_offset=0,
+                  passback=2, normal_mode=False),
     ]
-    chain = {1: ACTIVE, 2: ACTIVE, 3: 9, 9: ACTIVE, 4: ACTIVE, 5: 11, 11: BLOCKED,
-             6: 7, 7: ACTIVE}
+    chain = {1: ACTIVE, 2: ACTIVE, 3: 4, 4: ACTIVE}
 
     return "Demo 02 Freedom Pass", unix(2026, 9, 21, 19, 20), [
         ("Shell", bytes(shell.buf)),
@@ -544,9 +493,6 @@ def card_blocked():
         ("Product 1", group(ident, B)),
         ("Product 2", group(ent, B)),
         ("Product 3", group(purse, B, purse_values)),
-        ("Product 4", group(compact, B)),
-        ("Product 5", group(period, B, period_values)),
-        ("Product 6", group(ret, B)),
     ]
 
 
@@ -1240,9 +1186,138 @@ def card_ultralight_ev1():
     ]
 
 
+# ====================================================================
+# Card 11 - a Brighton commuter's Southern "The Key"
+#
+# The Key is Go-Ahead's scheme, and Southern issues it under an OID of its own
+# (143) where Southeastern's is 289. This one carries the older layouts: a
+# revision 1 season ticket - the only revision that flags its two locations
+# independently rather than behind RouteCode - which Southern has stopped
+# after a refund, a revision 3 Gatwick Express return, a purse run into its
+# overdraft, and a business travel account (TYP 4, charge to account by value),
+# which no other card has.
+# ====================================================================
+def card_key_sussex():
+    B, S, E, SCTL = 64, 16, 8, 7
+    ACTIVE, BLOCKED = S - 1, S - 2
+    OID = "0143"                                 # Southern, brand "The Key"
+    EXP = date_stamp(2031, 5, 31)
+
+    shell = shell_dataset(IIN, OID, "1100011", fvc=7, ksc=4, kvc=1, expiry=EXP,
+                          b=B, s=S, e=E, sctl=SCTL)
+
+    # ---- E1: pay as you go, spent past zero - which is what the overdraft in
+    # the dataset is for.
+    purse = Bits(24)
+    purse.put(0, 6, 6)
+    purse.put(6, 6, 0)
+    purse.put(12, 4, 1)
+    purse.buf[2] = 255
+    purse.putb(3, (143).to_bytes(2, "big"))
+    purse.putb(10, (5000).to_bytes(2, "big"))    # MaxValue2: GBP 50
+    purse.putb(12, (200).to_bytes(2, "big"))     # MaximumNegativeAmount: GBP 2
+    purse_values = value_group([
+        value_record(7, 88, dts(2026, 8, 30, 8, 20), purse_tail(65)),
+        value_record(7, 89, dts(2026, 9, 2, 8, 19), purse_tail(-120 & 0xFFFF)),
+    ], format_rev=1)
+
+    # ---- E2: period ticket, revision 1 - the only revision that flags its two
+    # locations independently rather than behind RouteCode. Brighton to London
+    # Victoria, stopped after the holder asked for a refund.
+    period = Bits(40)
+    period.put(0, 6, 10)
+    period.put(6, 6, 0b000110)                   # bit 2 origin, bit 1 destination
+    period.put(12, 4, 1)
+    period.buf[2] = 255
+    period.putb(3, (143).to_bytes(2, "big"))     # sold by Southern
+    period.putb(26, loc1(203, b"5268"))          # Brighton
+    period.putb(32, loc1(203, b"5426"))          # London Victoria
+    period_values = value_group([
+        value_record(1, 3, dts(2026, 4, 2, 9, 0),
+                     period_tail(2, 0b00, date_stamp(2026, 11, 30), date_stamp(2026, 5, 1))),
+        value_record(13, 4, dts(2026, 5, 2, 8, 55),
+                     period_tail(1, 0b00, date_stamp(2026, 11, 30), date_stamp(2026, 6, 1))),
+    ], format_rev=1)
+
+    # ---- E3: journey ticket, revision 3 (table 31b): a Gatwick Express return,
+    # mode 3, whose legs may be joined by one change within 45 minutes 30
+    # seconds. Sixty bytes of dataset, so it runs into a second sector.
+    ret = Bits(60)
+    ret.put(0, 6, 15)
+    ret.put(6, 6, 0b001010)                      # mode group, route and locations
+    ret.put(12, 4, 3)
+    ret.buf[2] = 7
+    ret.putb(3, (143).to_bytes(2, "big"))
+    ret.buf[5] = 0b01100000                      # TYP23Flags: print ticket and receipt
+    ret.put(58, 14, date_stamp(2026, 9, 5))      # IssueDate
+    ret.put(72, 24, dts(2026, 9, 6, 6, 0))       # ValidityStartDTS
+    ret.put(101, 11, 1440 + 180)                 # ExpiryTime: 03:00 the day after
+    ret.put(117, 3, 2)                           # Class: standard
+    ret.buf[15] = 1                              # PartySizeAdult
+    ret.putb(19, (4090).to_bytes(4, "big"))      # AmountPaid: GBP 40.90
+    ret.put(23 * 8, 4, 1)                        # AmountPaidMethodOfPayment: cash
+    ret.put(33 * 8 + 4, 4, 3)                    # TYP23Mode: return
+    ret.buf[34] = 1                              # MaxTransfers
+    ret.buf[35] = 91                             # TimeLimit: 91 x 30 s
+    ret.putb(36, (2045).to_bytes(4, "big"))      # ValueOfRideJourney: GBP 20.45
+    ret.putb(41, b"00000")                       # RouteCode: any permitted
+    ret.putb(46, loc1(203, b"5416"))             # Gatwick Airport
+    ret.putb(52, loc1(203, b"5426"))             # London Victoria
+
+    # ---- E4: charge to account by value, TYP 4 (TS 1000-5 table 11): an
+    # employer's travel account, spent against a monthly limit and billed.
+    account = Bits(20)
+    account.put(0, 6, 5)
+    account.put(6, 6, 0)
+    account.put(12, 4, 1)
+    account.buf[2] = 255
+    account.putb(3, (143).to_bytes(2, "big"))
+    account.buf[5] = 0b01000000                  # TYP4Flags: print a receipt
+    account.putb(6, (40000).to_bytes(2, "big"))  # MaxValue4: GBP 400 a month
+    account.put(80, 14, date_stamp(2026, 4, 1))  # StartDateCTA
+    account.put(94, 14, date_stamp(2027, 3, 31)) # EndDate
+    account_values = value_group([
+        value_record(7, 17, dts(2026, 9, 1, 7, 58), purse_tail(2310)),
+        value_record(7, 18, dts(2026, 9, 3, 18, 2), purse_tail(4620)),
+    ], format_rev=1)
+
+    entries = [
+        dir_entry(143, 2, 0, True, EXP),                            # E1 purse
+        dir_entry(143, 22, 1, True, date_stamp(2026, 11, 30)),      # E2 blocked
+        dir_entry(143, 23, 7, False, date_stamp(2026, 9, 30)),      # E3 return
+        dir_entry(143, 4, 0, True, date_stamp(2027, 3, 31)),        # E4 account
+        bytes(5), bytes(5), bytes(5),                               # E5-E7 unused
+        log_entry(ptr=3, eei=0, when=dts(2026, 9, 6, 14, 38), record_offset=3,
+                  passback=5),
+    ]
+    chain = {1: 9, 9: ACTIVE, 2: 10, 10: BLOCKED, 3: 5, 5: ACTIVE, 4: 12, 12: ACTIVE}
+
+    # The season's last journey before it was stopped, then the outward half
+    # of the return: in at Gatwick Airport, out at Victoria half an hour later.
+    log = b"".join([
+        tt_record(12, dts(2026, 5, 1, 8, 51), 0,
+                  origin=loc2(203, b"5268"), dest=loc2(203, b"5426"), ipe_ptr=2),
+        tt_record(11, dts(2026, 9, 6, 14, 5), 0,
+                  origin=loc2(203, b"5416"), dest=None, ipe_ptr=3),
+        tt_record(12, dts(2026, 9, 6, 14, 38), 0,
+                  origin=loc2(203, b"5416"), dest=loc2(203, b"5426"), ipe_ptr=3),
+        bytes(48),
+    ])
+
+    return "Demo 11 The Key Sussex", unix(2026, 9, 21, 20, 30), [
+        ("Shell", bytes(shell.buf)),
+        ("Directory", directory(entries, chain, S, E, SCTL, 0x2C)),
+        ("Product 1", group(purse, B, purse_values)),
+        ("Product 2", group(period, B, period_values)),
+        ("Product 3", group(ret, B)),
+        ("Product 4", group(account, B, account_values)),
+        ("Log", log),
+    ]
+
+
 CARDS = [card_the_key, card_blocked, card_cmd2, card_history, card_subway_paper,
          card_subway_return, card_gwr_touch, card_ntag, card_ultralight_ev1,
-         card_zonal_coupons]
+         card_zonal_coupons, card_key_sussex]
 
 
 def main():
