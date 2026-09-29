@@ -937,7 +937,8 @@ int main(int argc, char** argv) {
             "a named stop keeps the count of the others", shows(text, "High Street and 2 more\n"));
     }
 
-    /* A GWR season ticket keeps its product one day past expiry. */
+    /* A GWR season ticket keeps its product one day past expiry; RemoveDate
+     * says how long any machine must wait, or that none may. */
     {
         ItsoProduct ticket = card.products[0];
         ticket.has_remove_date = true;
@@ -949,6 +950,16 @@ int main(int argc, char** argv) {
         furi_string_reset(text);
         flipso_format_product(text, &f, &card, &ticket);
         check("but thirty are", shows(text, "Removable: 30 days after expiry\n"));
+        ticket.remove_date = 0;
+        furi_string_reset(text);
+        flipso_format_product(text, &f, &card, &ticket);
+        check("and none is on expiry", shows(text, "Removable: Once expired\n"));
+        ticket.remove_date = 255;
+        furi_string_reset(text);
+        flipso_format_product(text, &f, &card, &ticket);
+        check(
+            "255 is the operator's to remove, not the holder's",
+            shows(text, "Removable: Only by the operator\n"));
     }
 
     /* The card details screen for a DESFire Flipso cannot decode, which is

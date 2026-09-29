@@ -907,9 +907,14 @@ static void flipso_cat_product_technical(
      * first thing you need when a field is missing unexpectedly. */
     furi_string_cat_printf(out, "Optional fields: 0x%02X\n", product->bitmap);
     if(product->has_remove_date) {
-        /* 255 is the documented "only the product owner may remove this". */
+        /* Any machine may delete the product this many days after it expires,
+         * but 255 means only the product owner may (TS 1000-5, RemoveDate in
+         * every IPE). The owner is the operator named above - "owner" alone
+         * reads as the holder, who is the one person it does not mean. */
         if(product->remove_date == 255) {
-            furi_string_cat(out, "Removable: By the owner only\n");
+            furi_string_cat(out, "Removable: Only by the operator\n");
+        } else if(product->remove_date == 0) {
+            furi_string_cat(out, "Removable: Once expired\n");
         } else {
             furi_string_cat_printf(
                 out,
