@@ -1175,14 +1175,19 @@ def card_ultralight_ev1():
                   passback=10),
     ]
     chain = {1: 5, 5: 6, 6: 8, 2: 3}
-    # Record Offset 1: T0 was written last, and T1 is the older journey.
+    # Record Offset 1: T0 was written last, and T1 is the older journey. Both
+    # on Xplore Dundee's 22 (Ninewells - city centre - Hilltown - Craigowl), by
+    # the stops' NaptanCodes: home from the Caird Hall to Craigowl on Friday
+    # evening, and back into town from Gorrie Terrace on Saturday morning, a
+    # boarding with no alighting stop recorded.
     log = b"".join([
-        tt_record(12, dts(2026, 9, 19, 8, 2), 0,
-                  origin=loc2(209, bus_stage(162, "22", 5)), dest=None, ipe_ptr=1,
-                  mop=8),
+        tt_record(11, dts(2026, 9, 19, 8, 2), 0,
+                  origin=loc2(206, naptan("36325462")), dest=None, ipe_ptr=1,
+                  mop=8),                                  # Gorrie Terrace
         tt_record(12, dts(2026, 9, 18, 17, 31), 0,
-                  origin=loc2(209, bus_stage(162, "22", 11)),
-                  dest=loc2(209, bus_stage(162, "22", 5)), ipe_ptr=1, mop=8),
+                  origin=loc2(206, naptan("36325363")),    # Caird Hall
+                  dest=loc2(206, naptan("36323956")),      # St Martins Avenue
+                  ipe_ptr=1, mop=8),
     ])
 
     return "Demo 09 MyXplore", unix(2026, 9, 21, 20, 25), [
