@@ -1,6 +1,10 @@
 /**
  * @file flipso_scene_products.c
- * @brief List of every product on the card, and of any the card has dropped.
+ * @brief List of the products on the card, and of any the card has dropped.
+ *
+ * The purse, the ID and the entitlement are left out while the card holds
+ * them: each has a row of its own on the card menu, and listing them here too
+ * made two ways to one screen (flipso_product_listed()).
  *
  * A saved card can know about products the card itself has forgotten - an
  * expired ticket whose directory entry has since been freed - so the list has
@@ -26,7 +30,8 @@ static void flipso_scene_products_callback(void* context, uint32_t index) {
 static bool flipso_scene_products_shares_name(const ItsoCard* card, uint8_t index) {
     const char* title = flipso_product_title(&card->products[index]);
     for(uint8_t i = 0; i < card->product_count; i++) {
-        if(i != index && strcmp(flipso_product_title(&card->products[i]), title) == 0) return true;
+        if(i == index || !flipso_product_listed(&card->products[i])) continue;
+        if(strcmp(flipso_product_title(&card->products[i]), title) == 0) return true;
     }
     return false;
 }
@@ -44,6 +49,7 @@ void flipso_scene_products_on_enter(void* context) {
     FuriString* tag = furi_string_alloc();
     for(uint8_t i = 0; i < app->card.product_count; i++) {
         const ItsoProduct* product = &app->card.products[i];
+        if(!flipso_product_listed(product)) continue;
 
         /* Expired, blocked and dropped products are flagged in the list so
          * the user does not have to open each one to find the live ticket.
@@ -78,6 +84,7 @@ bool flipso_scene_products_on_event(void* context, SceneManagerEvent event) {
 
     if(event.type != SceneManagerEventTypeCustom) return false;
     if(event.event >= app->card.product_count) return false;
+    if(!flipso_product_listed(&app->card.products[event.event])) return false;
 
     app->selected_product = (uint8_t)event.event;
     scene_manager_set_scene_state(app->scene_manager, FlipsoSceneProducts, event.event);

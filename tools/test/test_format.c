@@ -512,6 +512,30 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         shows(text, "  Tap-in reader: 01020304\n    Operator: "));
     check("passback is called passback", shows(text, "Passback timeout: 20 min\n"));
 
+    /* The purse and the ID have menu rows of their own, so the product list
+     * leaves them out - and their own screens carry the Technical section the
+     * list's detail screen would have. */
+    uint8_t listed = 0;
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        if(flipso_product_listed(&card->products[i])) listed++;
+    }
+    check(
+        "the product list leaves out the purse, the ID and the entitlement",
+        listed == card->product_count - 3);
+    ItsoProduct dropped = card->products[0];
+    dropped.on_card = false;
+    check("but lists a purse the card has dropped", flipso_product_listed(&dropped));
+    furi_string_reset(text);
+    flipso_format_payg(text, f, card);
+    check(
+        "the purse screen has its technical details",
+        shows(text, "\e#Technical\nType code: 2.0\n"));
+    furi_string_reset(text);
+    flipso_format_id(text, f, card);
+    check(
+        "the ID screen has technical details for each product",
+        shows(text, "Type code: 16.1\n") && shows(text, "Type code: 14.0\n"));
+
     /* An identity document that is another product names it, and a loyalty
      * scheme's own bytes are shown as they stand. */
     for(uint8_t i = 0; i < card->product_count; i++) {

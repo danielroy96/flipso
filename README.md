@@ -49,7 +49,7 @@ recognise.
 | :---: | :---: |
 | **Card**<br><sub>The 18-digit ISRN, its issuer and expiry, validated on the device</sub> | **ID &amp; entitlement**<br><sub>Holder identity, concession and entitlement, validity and companion rules</sub> |
 | <img src="docs/screenshots/products.png" width="250" alt="Products list with a per-type icon on each row"> | <img src="docs/screenshots/product-detail.png" width="250" alt="Period ticket: passes left, operator, status and expiry"> |
-| **Products**<br><sub>Every product on the card, each with an icon for its type and a flag for expired, blocked or unused</sub> | **Product detail**<br><sub>Operator, status, validity window, remaining passes and the stations a ticket covers</sub> |
+| **Products**<br><sub>Every ticket on the card - the purse and ID have rows of their own - each with an icon for its type and a flag for expired, blocked or unused</sub> | **Product detail**<br><sub>Operator, status, validity window, remaining passes and the stations a ticket covers</sub> |
 
 ## Getting started
 

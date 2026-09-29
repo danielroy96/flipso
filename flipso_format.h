@@ -171,6 +171,12 @@ const char* flipso_product_tag(const ItsoProduct* product, uint32_t now);
 /** First product of the given IPE type still on the card, or NULL. */
 const ItsoProduct* flipso_find_product(const ItsoCard* card, uint8_t typ);
 
+/**
+ * True when the product list has a row for @p product: everything but a purse,
+ * ID or entitlement the card still holds, which the card menu reaches directly.
+ */
+bool flipso_product_listed(const ItsoProduct* product);
+
 #ifdef __cplusplus
 }
 #endif

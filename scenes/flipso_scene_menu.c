@@ -144,17 +144,23 @@ void flipso_scene_menu_on_enter(void* context) {
             menu, "Journeys", count, &I_taps_10px, FlipsoMenuItemTaps);
     }
 
-    if(app->card.product_count && !ticket) {
-        /* Counted apart, because the two numbers answer different questions:
-         * how many products are on the card, and how many rows the list has. A
-         * saved card can remember products the card has since dropped, and
-         * folding those into one figure would overstate the card. */
-        uint8_t on_card = 0;
-        for(uint8_t i = 0; i < app->card.product_count; i++) {
-            if(app->card.products[i].on_card) on_card++;
+    /* Counted apart, because the two numbers answer different questions: how
+     * many products are on the card, and how many rows the list has. A saved
+     * card can remember products the card has since dropped, and folding those
+     * into one figure would overstate the card. Only what the list shows is
+     * counted - the purse and the ID have rows of their own above - and a card
+     * holding nothing else has no list to open. */
+    uint8_t on_card = 0, past = 0;
+    for(uint8_t i = 0; i < app->card.product_count && !ticket; i++) {
+        const ItsoProduct* product = &app->card.products[i];
+        if(!flipso_product_listed(product)) continue;
+        if(product->on_card) {
+            on_card++;
+        } else {
+            past++;
         }
-        uint8_t past = (uint8_t)(app->card.product_count - on_card);
-
+    }
+    if(on_card || past) {
         /* "Off card" is what the product list tags each of those rows, so the
          * count says it in the same words. A card that has dropped everything
          * says only that, rather than "0 + 3". */

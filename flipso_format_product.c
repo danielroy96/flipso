@@ -872,62 +872,16 @@ static void flipso_cat_product_details(
     flipso_cat_value_history(out, product);
 }
 
-void flipso_format_payg(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
-    uint8_t found = 0;
-    for(uint8_t i = 0; i < card->product_count; i++) {
-        const ItsoProduct* product = &card->products[i];
-        /* What the card holds now; a product it has dropped is the product
-         * list's to show. */
-        if(!product->on_card || product->typ != ItsoTypStoredTravelRights) continue;
-        if(found++) furi_string_cat(out, "\n");
-        flipso_cat_heading(out, FlipsoIconPurse, "Pay as you go");
-        flipso_cat_product_details(out, f, card, product);
-    }
-    if(!found) {
-        flipso_cat_heading(out, FlipsoIconPurse, "Pay as you go");
-        furi_string_cat(out, "No purse on this card.\n");
-    }
-}
-
-void flipso_format_id(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
-    uint8_t found = 0;
-    for(uint8_t i = 0; i < card->product_count; i++) {
-        const ItsoProduct* product = &card->products[i];
-        if(!product->on_card || !flipso_product_is_identity(product)) continue;
-        if(found++) furi_string_cat(out, "\n");
-        flipso_cat_heading(out, FlipsoIconId, flipso_product_title(product));
-        flipso_cat_product_details(out, f, card, product);
-    }
-    if(!found) {
-        flipso_cat_heading(out, FlipsoIconId, "ID");
-        furi_string_cat(out, "No identity product on this card.\n");
-    }
-}
-
-void flipso_format_product(
+/**
+ * The Technical section under a product: the codes and machine numbers behind
+ * it, which mean nothing without the scheme's own tables but are what tells two
+ * otherwise identical products apart.
+ */
+static void flipso_cat_product_technical(
     FuriString* out,
     const FlipsoFormat* f,
     const ItsoCard* card,
     const ItsoProduct* product) {
-    flipso_cat_heading(
-        out,
-        product->on_card ? flipso_product_icon(product) : FlipsoIconPast,
-        flipso_product_title(product));
-
-    /* Before anything the product says about itself, because everything below
-     * is written in the present tense and for this one it is not true any more:
-     * the card listed it when the record was saved and does not list it now. */
-    if(!product->on_card) {
-        furi_string_cat(out, "On card: No longer\n");
-        if(product->last_seen) {
-            furi_string_cat(out, "  Last seen: ");
-            flipso_cat_time(out, product->last_seen);
-            furi_string_push_back(out, '\n');
-        }
-    }
-
-    flipso_cat_product_details(out, f, card, product);
-
     furi_string_cat(out, "\n");
     flipso_cat_heading(out, FlipsoIconNone, "Technical");
     furi_string_cat_printf(out, "Type code: %u.%u\n", product->typ, product->ptyp);
@@ -1035,4 +989,66 @@ void flipso_format_product(
         furi_string_cat_printf(out, "Capping rules: %u\n", cap->strategy);
     }
     free(cap);
+}
+
+void flipso_format_payg(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
+    uint8_t found = 0;
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        const ItsoProduct* product = &card->products[i];
+        /* What the card holds now; a product it has dropped is the product
+         * list's to show. */
+        if(!product->on_card || product->typ != ItsoTypStoredTravelRights) continue;
+        if(found++) furi_string_cat(out, "\n");
+        flipso_cat_heading(out, FlipsoIconPurse, "Pay as you go");
+        flipso_cat_product_details(out, f, card, product);
+        /* The product list leaves these out, so this is the only screen with
+         * room for the rest of what the card says about them. */
+        flipso_cat_product_technical(out, f, card, product);
+    }
+    if(!found) {
+        flipso_cat_heading(out, FlipsoIconPurse, "Pay as you go");
+        furi_string_cat(out, "No purse on this card.\n");
+    }
+}
+
+void flipso_format_id(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
+    uint8_t found = 0;
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        const ItsoProduct* product = &card->products[i];
+        if(!product->on_card || !flipso_product_is_identity(product)) continue;
+        if(found++) furi_string_cat(out, "\n");
+        flipso_cat_heading(out, FlipsoIconId, flipso_product_title(product));
+        flipso_cat_product_details(out, f, card, product);
+        flipso_cat_product_technical(out, f, card, product);
+    }
+    if(!found) {
+        flipso_cat_heading(out, FlipsoIconId, "ID");
+        furi_string_cat(out, "No identity product on this card.\n");
+    }
+}
+
+void flipso_format_product(
+    FuriString* out,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    const ItsoProduct* product) {
+    flipso_cat_heading(
+        out,
+        product->on_card ? flipso_product_icon(product) : FlipsoIconPast,
+        flipso_product_title(product));
+
+    /* Before anything the product says about itself, because everything below
+     * is written in the present tense and for this one it is not true any more:
+     * the card listed it when the record was saved and does not list it now. */
+    if(!product->on_card) {
+        furi_string_cat(out, "On card: No longer\n");
+        if(product->last_seen) {
+            furi_string_cat(out, "  Last seen: ");
+            flipso_cat_time(out, product->last_seen);
+            furi_string_push_back(out, '\n');
+        }
+    }
+
+    flipso_cat_product_details(out, f, card, product);
+    flipso_cat_product_technical(out, f, card, product);
 }

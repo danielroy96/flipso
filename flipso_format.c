@@ -293,6 +293,15 @@ const ItsoProduct* flipso_find_product(const ItsoCard* card, uint8_t typ) {
     return NULL;
 }
 
+bool flipso_product_listed(const ItsoProduct* product) {
+    /* The Pay as you go and ID screens show every one of these the card holds,
+     * so a row here would be a second way to the same screen. One the card has
+     * dropped is on neither, and the list is the only place it can be seen. */
+    if(!product->on_card) return true;
+    return product->typ != ItsoTypStoredTravelRights && product->typ != ItsoTypId &&
+           product->typ != ItsoTypEntitlement;
+}
+
 /** "Label: Pay as you go", naming the product in directory entry @p dir_index. */
 void flipso_cat_product_ref(
     FuriString* out,
