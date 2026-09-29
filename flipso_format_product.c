@@ -4,6 +4,8 @@
  */
 #include "flipso_format_i.h"
 
+#include <ctype.h>
+
 static bool flipso_product_is_identity(const ItsoProduct* product) {
     return product->typ == ItsoTypId || product->typ == ItsoTypEntitlement;
 }
@@ -236,8 +238,9 @@ static void flipso_cat_space_area(FuriString* out, const FlipsoFormat* f, const 
     const ItsoSpaceSaving* ss = &card->space;
     switch((ItsoAreaKind)ss->area_kind) {
     case ItsoAreaFareCode:
+        /* The code itself is under Technical: the owner's own number, which
+         * nothing here can name. */
         furi_string_cat(out, "Area: Set by the operator\n");
-        furi_string_cat_printf(out, "  Fare code: %lu\n", (unsigned long)ss->area_value);
         break;
     case ItsoAreaFareValue: {
         furi_string_cat(out, "Area: Set by fare value\n");
@@ -255,8 +258,6 @@ static void flipso_cat_space_area(FuriString* out, const FlipsoFormat* f, const 
                 flipso_cat_location(out, f, "", "Area", &ss->area[0]);
             } else {
                 furi_string_cat(out, "Area: Not recorded\n");
-                furi_string_cat_printf(
-                    out, "  Location type: %lu\n", (unsigned long)ss->area_value);
             }
         } else {
             flipso_cat_location(out, f, "", "From", &ss->area[0]);
@@ -268,24 +269,47 @@ static void flipso_cat_space_area(FuriString* out, const FlipsoFormat* f, const 
 }
 
 /**
+ * The codes behind a Space Saving IPE's area, where it has one, for the
+ * Technical section: an owner's fare code, or the location type of an area the
+ * ticket does not fill in.
+ */
+static void flipso_cat_space_codes(FuriString* out, const ItsoCard* card) {
+    const ItsoSpaceSaving* ss = &card->space;
+    if(ss->area_kind == ItsoAreaFareCode) {
+        furi_string_cat_printf(out, "Fare code: %lu\n", (unsigned long)ss->area_value);
+    } else if(
+        ss->area_kind == ItsoAreaLocation && !ss->area[0].valid && !ss->area[1].valid &&
+        !ss->area[2].valid) {
+        furi_string_cat_printf(out, "Location type: %lu\n", (unsigned long)ss->area_value);
+    }
+}
+
+/**
  * What TYP 29's one-time-programmable backup says is left, and whether it
- * agrees with the count above it (TS 1000-5 table 58b). Each bit set is m used,
- * so the count it gives is a ceiling m wide: the true count agrees when it
- * falls within that band. A mismatch is a torn write or a misread.
+ * agrees with the count on the screen above (TS 1000-5 table 58b). Each bit set
+ * is m used, so the count it gives is a ceiling m wide: the true count agrees
+ * when it falls within that band. A mismatch is a torn write or a misread.
  */
 static void
     flipso_cat_space_backup(FuriString* out, const ItsoCard* card, const ItsoProduct* product) {
     const ItsoSpaceSaving* ss = &card->space;
-    if(!product->space_saving || !ss->has_backup) return;
+    const char* count = itso_count_name(product->count_kind);
+    if(!product->space_saving || !ss->has_backup || !count) return;
     if(ss->backup_step == 1) {
-        furi_string_cat_printf(out, "  Backup count: %u\n", ss->backup_count);
+        furi_string_cat_printf(out, "Backup count: %u\n", ss->backup_count);
     } else {
-        furi_string_cat_printf(out, "  Backup count: Up to %u\n", ss->backup_count);
-        furi_string_cat_printf(out, "  Backup step: %u\n", ss->backup_step);
+        furi_string_cat_printf(out, "Backup count: Up to %u\n", ss->backup_count);
+        furi_string_cat_printf(out, "  Step: %u\n", ss->backup_step);
     }
     const bool agrees = product->count <= ss->backup_count &&
                         product->count + ss->backup_step > ss->backup_count;
-    flipso_cat_flag(out, "  ", "Agrees", agrees);
+    /* "Rides left" as the middle of a label: "Agrees with rides left". */
+    furi_string_cat_printf(
+        out,
+        "  Agrees with %c%s: %s\n",
+        tolower((unsigned char)count[0]),
+        count + 1,
+        agrees ? "Yes" : "No");
 }
 
 void flipso_cat_last_use(
@@ -689,7 +713,6 @@ static void flipso_cat_product_details(
     const char* count_label = itso_count_name(product->count_kind);
     if(count_label) {
         furi_string_cat_printf(out, "%s: %lu\n", count_label, (unsigned long)product->count);
-        flipso_cat_space_backup(out, card, product);
     }
     if(product->count_kind == ItsoCountTransactions && product->has_charge_period) {
         furi_string_cat_printf(
@@ -978,6 +1001,10 @@ static void flipso_cat_product_technical(
     /* A paper period ticket's two EventTypeCodes (TYP 27). The spec neither
      * orders nor explains them, so they are shown as numbered on the card - and
      * here rather than above, as what they are: raw codes. */
+    if(product->space_saving) {
+        flipso_cat_space_codes(out, card);
+        flipso_cat_space_backup(out, card, product);
+    }
     if(product->space_saving && card->space.has_events) {
         furi_string_cat_printf(out, "Event 1: %s\n", itso_transaction_name(card->space.event1));
         furi_string_cat_printf(out, "Event 2: %s\n", itso_transaction_name(card->space.event2));

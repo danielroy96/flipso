@@ -669,7 +669,7 @@ int main(int argc, char** argv) {
             {"TYP 27 day ticket",
              cmd4_pages,
              sizeof(cmd4_pages),
-             {"Area: Set by the operator\n  Fare code: 0\n",
+             {"Fare code: 0\n",
               "Ends at: Set by the operator\n",
               "Off-peak only: No\n",
               "Event 2: Tap out\n",
@@ -677,7 +677,7 @@ int main(int argc, char** argv) {
             {"TYP 29 return",
              cmd4_return,
              sizeof(cmd4_return),
-             {"Rides left: 1\n  Backup count: 1\n  Agrees: Yes\n",
+             {"Backup count: 1\n  Agrees with rides left: Yes\n",
               "Last got off: Hillhead\n",
               "Price paid: \xC2\xA3"
               "3.30\n",
@@ -731,7 +731,7 @@ int main(int argc, char** argv) {
             {"TYP 29 scaled backup",
              cmd4_backup_scaled,
              sizeof(cmd4_backup_scaled),
-             {"Rides left: 10\n  Backup count: Up to 12\n  Backup step: 4\n  Agrees: Yes\n",
+             {"Backup count: Up to 12\n  Step: 4\n  Agrees with rides left: Yes\n",
               "Price paid: \xC2\xA3"
               "15.00\n",
               "Last used: Never\n",
@@ -740,7 +740,7 @@ int main(int argc, char** argv) {
             {"TYP 29 torn backup",
              cmd4_backup_torn,
              sizeof(cmd4_backup_torn),
-             {"Rides left: 1\n  Backup count: 3\n  Agrees: No\n",
+             {"Backup count: 3\n  Agrees with rides left: No\n",
               "Last used: Never\n",
               "Weekdays only: No\n",
               "Area: Set by the operator\n",
@@ -756,6 +756,17 @@ int main(int argc, char** argv) {
                 char what[160];
                 snprintf(what, sizeof(what), "%s shows %s", tickets[i].name, tickets[i].expect[e]);
                 check(what, shows(text, tickets[i].expect[e]));
+            }
+            /* The owner's codes and the backup's cross-check are there for
+             * whoever is debugging the ticket, not for its holder. */
+            {
+                char what[160];
+                snprintf(
+                    what, sizeof(what), "%s keeps its codes under Technical", tickets[i].name);
+                check(
+                    what,
+                    (!shows(text, "Fare code: ") || technical(text, "Fare code: ")) &&
+                        (!shows(text, "Backup count: ") || technical(text, "Backup count: ")));
             }
             /* The place a ticket was last used is not the start of a journey,
              * and a product with no Sector Chain Table claims no status. Only
