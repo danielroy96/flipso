@@ -291,10 +291,8 @@ void flipso_format_card(
             "even where the products on it are still in date.\n\n");
     }
 
-    /* A compact shell stores no number: the one it has is implied by the CMD
-     * (TS 1000-10 table 42), so every paper ticket of its kind shows the same
-     * one. It is not the ticket's identity - the chip serial is - so it is not
-     * the headline; it goes with the chip, said for what it is. */
+    /* A compact shell stores no number, so a paper ticket has no headline one:
+     * the number it implies is under Technical, said for what it is. */
     if(!card->shell_compact) {
         flipso_cat_heading(out, FlipsoIconCard, "Card number");
         flipso_cat_isrn(out, card);
@@ -330,29 +328,13 @@ void flipso_format_card(
     furi_string_cat(out, "\n");
     flipso_cat_heading(out, FlipsoIconNone, "Issuer");
     /* The shell owner is the operator that issued the card and so the one that
-     * brands it. Its number is shown whether or not it has a name, because the
-     * number is what a user needs to add their card to the operators file - on
-     * a line of its own for a named one, and in the "Unknown (1234)" that
-     * stands in for the name otherwise. */
+     * brands it. An unnamed one shows its number in the "Unknown (1234)" that
+     * stands in for the name, because the number is what a user needs to add
+     * their card to the operators file; a named one's is under Technical. */
     const uint16_t issuer = itso_card_issuer_oid(card);
     flipso_cat_operator(out, f, "", "Operator", issuer);
-    if(flipso_operators_name(f->operators, issuer)) {
-        furi_string_cat_printf(out, "Operator number: %u\n", issuer);
-    }
-    /* A compact shell's own OID is the generic one every compact shell carries,
-     * so the operator above comes from the ticket's product instead. Saying so
-     * explains why the card number has a different operator number in it. */
-    if(card->shell_compact) {
-        furi_string_cat_printf(out, "  Shell operator: %u (compact)\n", card->oid);
-    }
     if(card->mcrn_present && card->mcrn[0]) {
         furi_string_cat_printf(out, "Card reference: %s\n", card->mcrn);
-    }
-    /* The directory is rewritten by every transaction, so the machine that
-     * last sealed it is the last one to change anything on the card
-     * (TS 1000-2 table 8, annex B). */
-    if(card->dir_instance_valid) {
-        flipso_cat_machine(out, f, "", "Last updated by machine", card->dir_isam);
     }
 
     /* What the chip says about itself, which only a live DESFire read asks. */
@@ -371,11 +353,6 @@ void flipso_format_card(
         furi_string_cat(out, "UID: ");
         flipso_cat_hex(out, card->chip_uid, sizeof(card->chip_uid));
         furi_string_push_back(out, '\n');
-        if(card->shell_compact) {
-            furi_string_cat(out, "Card number: ");
-            flipso_cat_isrn(out, card);
-            furi_string_cat(out, "\n(Compact ITSO Shell Ticket)\n");
-        }
         /* The first byte of a 7-byte UID is the maker's ISO/IEC 7816-6 code. */
         const char* maker = flipso_chip_maker(card->chip_uid[0]);
         if(maker) {
@@ -454,6 +431,7 @@ void flipso_format_card(
         furi_string_cat_printf(out, "Card type: CMD%u\n", card->fvc);
         break;
     }
+    furi_string_cat_printf(out, "Operator number: %u\n", issuer);
     /* Every ITSO shell carries ITSO's own issuer number, so this only earns a
      * line when it is something else. */
     if(!itso_iin_name(card->iin)) {
@@ -481,6 +459,16 @@ void flipso_format_card(
      * report, and it has no directory sequence to count. */
     if(card->shell_compact) {
         furi_string_cat(out, "Layout: Compact shell\n");
+        /* A compact shell stores no number: the one it has is implied by the
+         * CMD (TS 1000-10 table 42), so every paper ticket of its kind shows
+         * the same one, and it is not the ticket's identity - the chip's UID
+         * is. Its OID is the generic one every compact shell carries, which is
+         * why the operator above, taken from the ticket's product, has a
+         * different number from the one in the card number. */
+        furi_string_cat(out, "  Implied card number: ");
+        flipso_cat_isrn(out, card);
+        furi_string_push_back(out, '\n');
+        furi_string_cat_printf(out, "  Shell operator number: %u\n", card->oid);
     } else {
         furi_string_cat_printf(out, "Key set: %u, version %u\n", card->ksc, card->kvc);
         furi_string_cat_printf(
@@ -501,6 +489,12 @@ void flipso_format_card(
             /* INS#: bumped to bring a stopped card back into use. */
             furi_string_cat_printf(out, "Times reinstated: %u\n", card->shell_iteration);
         }
+    }
+    /* The directory is rewritten by every transaction, so the machine that
+     * last sealed it is the last one to change anything on the card
+     * (TS 1000-2 table 8, annex B). */
+    if(card->dir_instance_valid) {
+        flipso_cat_machine(out, f, "", "Last updated by machine", card->dir_isam);
     }
 
     /* Where this came from, for a card opened off the SD card. The read time

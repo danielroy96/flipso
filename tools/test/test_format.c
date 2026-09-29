@@ -269,7 +269,7 @@ static void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
     flipso_format_card(text, f, card, NULL, 0);
     check(
         "the directory's last writer is decoded from an extended ISAM",
-        shows(text, "Last updated by machine: 004E30F3\n  Operator: Unknown (24585)\n"));
+        technical(text, "Last updated by machine: 004E30F3\n  Operator: Unknown (24585)\n"));
     check("160-byte sectors are the layout", shows(text, "Layout: 16 sectors of 160 bytes\n"));
 
     furi_string_reset(text);
@@ -797,8 +797,14 @@ int main(int argc, char** argv) {
         furi_string_reset(text);
         flipso_format_card(text, &f, &t2, NULL, 0);
         check(
-            "a paper ticket's number is with its chip, for what it is",
-            shows(text, "Card number: 633597 8189 0000 0003\n(Compact ITSO Shell Ticket)\n"));
+            "a paper ticket's number is under Technical, for what it is",
+            technical(
+                text,
+                "Layout: Compact shell\n  Implied card number: 633597 8189 0000 0003\n"
+                "  Shell operator number: 8189\n"));
+        check(
+            "and its issuer's number is with them",
+            technical(text, "Operator number: 8323\n") && !shows(text, "(compact)"));
         check("and is not the screen's headline", !shows(text, "Card number\n"));
         check("a paper ticket shows its UID", shows(text, "UID: 04A2B3C4D5E6F7\n"));
         check("and its chip maker", shows(text, "Maker: NXP\n"));
