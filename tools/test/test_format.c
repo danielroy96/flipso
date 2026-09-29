@@ -834,7 +834,9 @@ int main(int argc, char** argv) {
         check("an expired paper ticket says so", shows(text, "Status: Expired "));
         furi_string_reset(text);
         flipso_format_summary(text, &later, &t2);
-        check("and its summary says so, of a ticket", shows(text, "Ticket: Expired "));
+        check(
+            "and its summary says so once, of its ticket",
+            shows(text, "\nPaper period ticket: Expired ") && !shows(text, "Ticket: Expired "));
         check("with no card expiry line", !shows(text, "Card expires"));
 
         /* A paper ticket's Summary answers what its holder asks: is it good,
@@ -911,7 +913,9 @@ int main(int argc, char** argv) {
         every_screen("blocked paper ticket", &f, &t2);
         furi_string_reset(text);
         flipso_format_summary(text, &f, &t2);
-        check("a zero-Seal ticket is blocked", shows(text, "Ticket: Blocked\n"));
+        check(
+            "a zero-Seal ticket is blocked, said once",
+            shows(text, "ticket: Blocked\n") && !shows(text, "\nTicket: Blocked\n"));
     }
     furi_string_reset(text);
     flipso_format_summary(text, &later, &card);

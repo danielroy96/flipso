@@ -368,6 +368,16 @@ void flipso_cat_ticket_state(
     }
 }
 
+/**
+ * True when a product's summary line leads with its state - blocked, or
+ * expired with the date - as flipso_summary_product() writes it.
+ */
+static bool flipso_summary_states(const ItsoProduct* product, uint32_t now) {
+    if(product->status == ItsoProductStatusBlocked) return true;
+    if(product->balance.valid || product->has_entitlement) return false;
+    return !itso_date_open(product->expiry) && itso_date_expired(product->expiry, now);
+}
+
 /** One product as a summary line: "Period ticket: Until 31/03/2027". */
 static void flipso_summary_product(FuriString* out, const ItsoProduct* product, uint32_t now) {
     const char* title = flipso_product_title(product);
@@ -419,8 +429,13 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
      * whatever its products say. */
     const bool expired = !itso_date_open(card->expiry) && itso_date_expired(card->expiry, f->now);
     if(card->shell_compact) {
-        /* A paper ticket, not a card: its state is its one product's. */
-        flipso_cat_ticket_state(out, "Ticket", card, f->now);
+        /* A paper ticket, not a card: its state is its one product's. Where the
+         * product's own line below leads with it - "Blocked", "Expired
+         * 21/09/2026" - saying it here too put the same words on two lines in
+         * a row; the line earns its place for what that one cannot say. */
+        if(!card->product_count || !flipso_summary_states(&card->products[0], f->now)) {
+            flipso_cat_ticket_state(out, "Ticket", card, f->now);
+        }
     } else if(card->shell_blocked) {
         furi_string_cat(out, "Card: Blocked by its issuer\n");
     } else if(itso_card_retired(card)) {
