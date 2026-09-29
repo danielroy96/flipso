@@ -1079,7 +1079,7 @@ int main(int argc, char** argv) {
             cards++;
         }
         if(dir) closedir(dir);
-        check("all thirteen demo cards were rendered", cards == 13);
+        check("all fourteen demo cards were rendered", cards == 14);
         check("and a saved chip block was among them", chips > 0);
     }
 

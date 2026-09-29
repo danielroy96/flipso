@@ -35,7 +35,7 @@ from itso_build import (  # noqa: E402
     instance_and_seal, isrn, journey_tail, loc1, loc2, log_entry, loyalty_tail,
     naptan, pad_sector, period_tail, purse_tail, shell_dataset, sncode, sncode2,
     tt_record, tt_record_rev4, type2_full_page_memory, type2_page_memory, typ27_dataset,
-    typ29_dataset, value_group, value_record, voucher_tail)
+    typ28_dataset, typ29_dataset, value_group, value_record, voucher_tail)
 
 IIN = "633597"
 
@@ -1533,10 +1533,37 @@ def card_mcard():
     ]
 
 
+# ====================================================================
+# Card 14 - a paper book of Glasgow Subway day passes
+#
+# A Carnet of day passes (TYP 28), the one Space Saving IPE no other demo card
+# carries: six passes, each spent on the day it is first used, recorded as a
+# tick counting back from the ticket's expiry (TS 1000-5 table 51). The shape is
+# the Subway day ticket's (Demo 05) - SPT's product OID, the whole network by
+# fare code 0, a seven-minute passback - but hypothetical: SPT sells no book of
+# day passes, on paper or otherwise. Two passes used, on 12 and 20 September;
+# the other four still to use. Good on the day of issue; the day of expiry
+# would be a seventh pass, and this book has six.
+# ====================================================================
+def card_subway_carnet():
+    expiry = date_stamp(2026, 10, 10)
+    pages = type2_page_memory(
+        bytes([0x04, 0x7E, 0x21, 0x9B, 0x3A, 0x5C, 0x11]),
+        dir_entry(131, 28, 0, False, expiry, extended=True),
+        typ28_dataset(
+            issue_date=date_stamp(2026, 9, 10), amount=2200, passback=7, mop=3,
+            flags=0b1000,  # ExpiryTimeFlag: the operator's own end-of-service time
+            last_use=dts(2026, 9, 20, 8, 5),
+            ticks=(28, 20, 0, 0, 0, 0), issue_day=True))
+    return "Demo 14 Subway carnet", unix(2026, 9, 21, 21, 0), [
+        ("Type 2", pages),
+    ]
+
+
 CARDS = [card_the_key, card_blocked, card_cmd2, card_history, card_subway_paper,
          card_subway_return, card_gwr_touch, card_ntag, card_ultralight_ev1,
          card_zonal_coupons, card_key_sussex, card_bee,
-         card_mcard]
+         card_mcard, card_subway_carnet]
 
 
 def main():
