@@ -11,7 +11,7 @@
  * builder's smallest useful output is a whole ATCO area. A real table is checked
  * at the end if one has been built into this directory.
  */
-#include "flipso_naptan.h"
+#include "lookup/flipso_naptan.h"
 
 #include <stdint.h>
 #include <stdio.h>

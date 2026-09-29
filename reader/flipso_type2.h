@@ -17,9 +17,9 @@
  */
 #pragma once
 
-#include "flipso_capture.h"
+#include "../cards/flipso_capture.h"
 #include "flipso_reader.h"
-#include "itso/itso.h"
+#include "../itso/itso.h"
 
 #include <nfc/protocols/iso14443_3a/iso14443_3a_poller.h>
 

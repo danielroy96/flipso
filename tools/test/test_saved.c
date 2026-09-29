@@ -7,7 +7,7 @@
  * that half-succeeds or a read of somebody else's file is a test failure here
  * rather than a puzzle on the device.
  */
-#include "flipso_saved.h"
+#include "cards/flipso_saved.h"
 #include "card_data.h"
 
 #include <dialogs/dialogs.h>

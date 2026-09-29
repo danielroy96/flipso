@@ -26,7 +26,7 @@ Fare paid
 
 ## Where the code is
 
-- `flipso_format_product.c`: `flipso_cat_value_record()` renders one record,
+- `format/flipso_format_product.c`: `flipso_cat_value_record()` renders one record,
   `flipso_cat_value_history()` walks them (newest first, split into
   "Earlier on card" and "Off card" sections). The live record is
   `product->value_history[0]` and is shown as the headline balance, not in the

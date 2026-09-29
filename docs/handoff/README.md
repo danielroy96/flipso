@@ -11,7 +11,7 @@ with:
 Every brief assumes the working rules in `CLAUDE.md` — in particular:
 
 - Screen text is built in `flipso_format*.c`, never in a scene, and follows the
-  house style in `flipso_format.h` (`Label: Value`, capitalised values, indented
+  house style in `format/flipso_format.h` (`Label: Value`, capitalised values, indented
   details that are themselves labelled, money as `£`). `tools/test/test_format.c`
   enforces it on every screen of every demo card.
 - Every decoder change needs a case in `tools/test/`, usually a synthetic

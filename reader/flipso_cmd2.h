@@ -13,7 +13,7 @@
 #pragma once
 
 #include "flipso_reader.h"
-#include "itso/itso.h"
+#include "../itso/itso.h"
 
 #include <nfc/protocols/iso14443_4a/iso14443_4a_poller.h>
 

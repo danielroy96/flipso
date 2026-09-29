@@ -99,12 +99,12 @@ in the record, and the result looks plausible rather than obviously broken.
   product owner (`itso_card_issuer_oid()`), not the shell's generic OID 8189.
 - **Never start an ISO 14443-4 poller on a Type 2 tag.** It sends a RATS the tag
   cannot answer and polls for ever. The detect stage routes Type A cards that do
-  not speak -4 straight to the Type 2 transport (`flipso_scan_session_next_transport()` in `flipso_scan_session.c`).
+  not speak -4 straight to the Type 2 transport (`flipso_scan_session_next_transport()` in `reader/flipso_scan_session.c`).
 - **A Type 2 read shorter than 64 bytes is a failed read**, not a small card:
   `itso_type2_kind()` calls it incomplete, so it is retried instead of being
   shown - or saved over a good copy - half decoded.
 - **Oyster is deliberately unsupported.** It is DESFire but runs a proprietary
-  application; `flipso_media.c` detects it and explains rather than failing.
+  application; `reader/flipso_media.c` detects it and explains rather than failing.
 - **Operator ids are scheme-specific.** The published ENCTS list names the local
   authorities that administer concessionary bus passes; rail operators are
   numbered separately. Do not resolve one from the other's table.

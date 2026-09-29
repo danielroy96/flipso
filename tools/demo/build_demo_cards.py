@@ -86,7 +86,7 @@ def history_block(last_seen, entry_index, entry, ipe_group):
 
 def chip_block(uid, free_bytes):
     """What a DESFire EV1 with 4K of storage answers to GetVersion, then
-    GetFreeMemory: the Chip block a live read saves (flipso_media.h)."""
+    GetFreeMemory: the Chip block a live read saves (reader/flipso_media.h)."""
     hardware = bytes([0x04, 0x01, 0x01, 0x01, 0x00, 0x18, 0x05])
     software = bytes([0x04, 0x01, 0x01, 0x01, 0x04, 0x18, 0x05])
     batch = bytes([0xBA, 0x44, 0x9C, 0x30, 0x10])
@@ -852,7 +852,7 @@ def card_subway_paper():
     # flag set), an adult all-day ticket valid across the whole network, bought
     # and last tapped on the one day it is good for. The chip serial is invented;
     # it is the card's identity, since a compact shell's number is the same on
-    # every ticket, so Flipso keys a saved Type 2 card on it (flipso_capture.c).
+    # every ticket, so Flipso keys a saved Type 2 card on it (cards/flipso_capture.c).
     day = date_stamp(2026, 9, 21)
     pages = type2_page_memory(
         bytes([0x04, 0xA2, 0xB3, 0xC4, 0xD5, 0xE6, 0xF7]),

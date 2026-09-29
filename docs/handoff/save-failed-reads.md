@@ -5,12 +5,12 @@
 The cards most worth a saved file are the ones Flipso could not decode — a file
 is exactly what a bug report needs — yet they are the ones that cannot be saved:
 
-- `flipso_capture_valid()` (`flipso_capture.c`) requires a Shell or Type 2
+- `flipso_capture_valid()` (`cards/flipso_capture.c`) requires a Shell or Type 2
   block, and a shell is only added to the capture **after** it parses
-  (`flipso_read_shell()` in `flipso_reader.c`, and the CMD2 path in
-  `flipso_cmd2.c`). A "Card not readable" (bad shell) read captures nothing.
+  (`flipso_read_shell()` in `reader/flipso_reader.c`, and the CMD2 path in
+  `reader/flipso_cmd2.c`). A "Card not readable" (bad shell) read captures nothing.
 - The error scene (`scenes/flipso_scene_error.c`) has one button, and no save.
-- The CMD9/CMD10 "Unsupported" path in `flipso_type2.c` decodes the shell but
+- The CMD9/CMD10 "Unsupported" path in `reader/flipso_type2.c` decodes the shell but
   does not add the page block to the capture.
 - A non-ITSO DESFire (Oyster, other) has a Chip block but no shell.
 

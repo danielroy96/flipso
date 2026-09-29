@@ -3,7 +3,7 @@
  * tries the same one again, and what it concludes. Each case is the sequence of
  * reports a real card produces, fed through as the reader would feed them.
  */
-#include "flipso_scan_session.h"
+#include "reader/flipso_scan_session.h"
 
 #include <stdio.h>
 

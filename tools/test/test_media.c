@@ -13,8 +13,8 @@
  * and does hand over file contents, which exercises the branches the Oyster
  * never reaches.
  */
-#include "flipso_format.h"
-#include "flipso_media.h"
+#include "format/flipso_format.h"
+#include "reader/flipso_media.h"
 
 #include <stdio.h>
 

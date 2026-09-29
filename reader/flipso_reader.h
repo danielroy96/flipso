@@ -19,10 +19,10 @@
  */
 #pragma once
 
-#include "flipso_capture.h"
+#include "../cards/flipso_capture.h"
 #include "flipso_media.h"
 #include "flipso_scan_session.h"
-#include "itso/itso.h"
+#include "../itso/itso.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -6,7 +6,7 @@
  * rather than searched. Built under ASan/UBSan, so an off-the-end read from a
  * corrupt header is a test failure rather than a subtle one on the device.
  */
-#include "flipso_stations.h"
+#include "lookup/flipso_stations.h"
 
 #include <stdio.h>
 #include <stdlib.h>

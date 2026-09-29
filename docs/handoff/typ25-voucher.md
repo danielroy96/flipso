@@ -60,7 +60,7 @@ TYP25ValueFlags bit 0 (auto-renew) is record byte 11. Nothing to change there.
   `ItsoCountRides`, so it shows as "Rides left". Add an `ItsoCountUses`
   ("Uses left") and use it for TYP 25. Check the Summary and product list
   still read naturally.
-- `flipso_format_product.c`: `flipso_cat_ticket_terms()` shows the terms once
+- `format/flipso_format_product.c`: `flipso_cat_ticket_terms()` shows the terms once
   `t->valid` is set. Its "Renewal adds" line picks passes or days. A voucher
   adds uses, so give it a third wording. MaxValue25 fits the "Spending limit"
   line in `flipso_cat_purse_terms()`, or a line of its own ("Worth up to").
@@ -69,7 +69,7 @@ TYP25ValueFlags bit 0 (auto-renew) is record byte 11. Nothing to change there.
 
 ## Design notes
 
-- House style as `flipso_format.h` sets it out: `Label: Value`, values
+- House style as `format/flipso_format.h` sets it out: `Label: Value`, values
   capitalised, details indented and labelled, money as `£`. Show every element
   the dataset holds, defaults included (see the "show default values" rule).
   PassbackTime 0 is "Set by the operator", as for every other type.

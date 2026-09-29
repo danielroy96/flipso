@@ -1,7 +1,7 @@
 # Stop table format
 
 `naptan.dat` maps a bus stop code to a stop name. It is written by
-`build_naptan.py` and read by `flipso_naptan.c`.
+`build_naptan.py` and read by `lookup/flipso_naptan.c`.
 
 It is the station table's design applied to a table a hundred times the size,
 and for the same reason: a Flipper has 256 KB of RAM and a `.fap` is loaded into

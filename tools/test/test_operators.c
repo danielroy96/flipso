@@ -7,7 +7,7 @@
  * issues. Built under ASan/UBSan, so a line that runs off the end of a field
  * buffer is a test failure rather than a subtle one on the device.
  */
-#include "flipso_operators.h"
+#include "lookup/flipso_operators.h"
 #include "itso/itso_operators.h"
 
 #include <furi.h>

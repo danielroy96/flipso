@@ -7,7 +7,7 @@
  * company, users can drop a text file on the card and have it picked up here.
  */
 #include "flipso_operators.h"
-#include "itso/itso_operators.h"
+#include "../itso/itso_operators.h"
 
 #include <furi.h>
 #include <storage/storage.h>

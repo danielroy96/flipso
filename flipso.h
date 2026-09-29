@@ -4,13 +4,13 @@
  */
 #pragma once
 
-#include "flipso_reader.h"
-#include "flipso_capture.h"
-#include "flipso_saved.h"
-#include "flipso_operators.h"
-#include "flipso_stations.h"
-#include "flipso_naptan.h"
-#include "flipso_format.h"
+#include "reader/flipso_reader.h"
+#include "cards/flipso_capture.h"
+#include "cards/flipso_saved.h"
+#include "lookup/flipso_operators.h"
+#include "lookup/flipso_stations.h"
+#include "lookup/flipso_naptan.h"
+#include "format/flipso_format.h"
 #include "itso/itso.h"
 #include "views/flipso_menu_view.h"
 #include "views/flipso_scan_view.h"

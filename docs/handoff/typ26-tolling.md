@@ -48,7 +48,7 @@ record byte 10 and TYP26ValueFlags bit 0 (auto-renew) is record byte 11.
   as `flipso_decode_capping()` does for the capping extension. The second
   costs no memory, and is the better choice unless the bytes turn out to
   matter.
-- `flipso_format_product.c`: the class as "Vehicle class: 3" under the terms,
+- `format/flipso_format_product.c`: the class as "Vehicle class: 3" under the terms,
   and UserDefined under Technical through `flipso_cat_code_bytes()` (text if
   printable, else hex). "Renewal adds: N rides" already works once
   `renew_quantity` is set, and `product->auto_renew` comes from the value

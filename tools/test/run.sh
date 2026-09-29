@@ -19,7 +19,7 @@ echo "Scan session"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT" \
-  test_scan_session.c "$ROOT/flipso_scan_session.c" \
+  test_scan_session.c "$ROOT/reader/flipso_scan_session.c" \
   -o test_scan_session
 ./test_scan_session
 
@@ -30,7 +30,7 @@ echo "Saved cards"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT" -I"$ROOT/itso" -I. \
-  test_capture.c "$ROOT/flipso_capture.c" \
+  test_capture.c "$ROOT/cards/flipso_capture.c" \
   "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
   -o test_capture
 ./test_capture
@@ -41,7 +41,7 @@ echo "Saved card files"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT" -I"$ROOT/itso" -Istub -I. \
-  test_saved.c "$ROOT/flipso_saved.c" "$ROOT/flipso_capture.c" \
+  test_saved.c "$ROOT/cards/flipso_saved.c" "$ROOT/cards/flipso_capture.c" \
   "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
   -o test_saved
 ./test_saved
@@ -51,7 +51,7 @@ echo "Station table"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT" -Istub \
-  test_stations.c "$ROOT/flipso_stations.c" \
+  test_stations.c "$ROOT/lookup/flipso_stations.c" \
   -o test_stations
 ./test_stations
 
@@ -60,7 +60,7 @@ echo "Stop table"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT" -Istub \
-  test_naptan.c "$ROOT/flipso_naptan.c" \
+  test_naptan.c "$ROOT/lookup/flipso_naptan.c" \
   -o test_naptan
 ./test_naptan
 
@@ -81,7 +81,7 @@ echo "Operator names and branding"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT" -Istub \
-  test_operators.c "$ROOT/flipso_operators.c" "$ROOT/itso/itso_operators.c" \
+  test_operators.c "$ROOT/lookup/flipso_operators.c" "$ROOT/itso/itso_operators.c" \
   -o test_operators
 ./test_operators
 
@@ -94,8 +94,8 @@ python3 "$ROOT/tools/demo/build_demo_cards.py" "$DEMO" >/dev/null
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT" -I"$ROOT/itso" -I. -Istub \
-  test_format.c "$ROOT/flipso_format.c" "$ROOT/flipso_format_product.c" \
-  "$ROOT/flipso_format_card.c" "$ROOT/flipso_format_journeys.c" "$ROOT/flipso_capture.c" "$ROOT/flipso_media.c" \
+  test_format.c "$ROOT/format/flipso_format.c" "$ROOT/format/flipso_format_product.c" \
+  "$ROOT/format/flipso_format_card.c" "$ROOT/format/flipso_format_journeys.c" "$ROOT/cards/flipso_capture.c" "$ROOT/reader/flipso_media.c" \
   "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
   "$ROOT/itso/itso_operators.c" \
   -o test_format
@@ -132,8 +132,8 @@ echo "Card media"
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT" -I"$ROOT/itso" -I. -Istub \
-  test_media.c "$ROOT/flipso_media.c" "$ROOT/flipso_format.c" "$ROOT/flipso_format_product.c" \
-  "$ROOT/flipso_format_card.c" "$ROOT/flipso_format_journeys.c" "$ROOT/flipso_capture.c" \
+  test_media.c "$ROOT/reader/flipso_media.c" "$ROOT/format/flipso_format.c" "$ROOT/format/flipso_format_product.c" \
+  "$ROOT/format/flipso_format_card.c" "$ROOT/format/flipso_format_journeys.c" "$ROOT/cards/flipso_capture.c" \
   "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
   "$ROOT/itso/itso_operators.c" \
   -o test_media

@@ -11,7 +11,7 @@ Users can name unknown operators (and brand their cards) with
 - `operators.example.txt` (repo root) documents it well, but only
   `docs/PROTOCOL.md` points at it.
 - Only the first 48 entries are read (`FLIPSO_OPERATORS_MAX` in
-  `flipso_operators.c`); extra lines are dropped silently, and About reports the
+  `lookup/flipso_operators.c`); extra lines are dropped silently, and About reports the
   count as if it were complete.
 
 ## What to do
@@ -19,7 +19,7 @@ Users can name unknown operators (and brand their cards) with
 1. **README**: a short "Operator names" section under Getting started — what the
    file is for, where it goes, the one-line format `<number>,<name>[,<brand>]`,
    and a link to `operators.example.txt`.
-2. **About screen** (`flipso_format_about()` in `flipso_format.c`): add the
+2. **About screen** (`flipso_format_about()` in `format/flipso_format.c`): add the
    format, e.g. `One per line: number,name`. Keep lines short; the text view
    wraps, but a long unbroken example reads badly on 128 px.
 3. **Truncation**: have `flipso_operators_alloc()` record that it stopped at

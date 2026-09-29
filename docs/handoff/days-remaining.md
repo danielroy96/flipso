@@ -14,11 +14,11 @@ the current pass — rather than the whole product's expiry.
 
 ## Where the code is
 
-- `flipso_format.c`: `flipso_cat_expiry()` writes every expiry line (label, a
+- `format/flipso_format.c`: `flipso_cat_expiry()` writes every expiry line (label, a
   past-tense label once expired, and "No expiry" for the open dates —
   `itso_date_open()`). `FlipsoFormat.now` is the Unix time to measure from.
 - `itso_date_to_unix()` / `itso_date_expired()` in `itso/itso_util.c`.
-- Summary: `flipso_summary_product()` in `flipso_format.c`. Period tickets
+- Summary: `flipso_summary_product()` in `format/flipso_format.c`. Period tickets
   (TYP 22) carry `product->has_current_expiry` / `current_expiry` (the pass in
   use) and `stored_expiry` (the unused stock).
 

@@ -24,7 +24,7 @@ CLOSE = re.compile(r"(storage_file_close|storage_dir_close|file_stream_close|"
 EXIT = re.compile(r"\b(return|continue|break|goto)\b")
 
 problems = []
-sources = [p for p in ROOT.glob("*.c")] + list(ROOT.glob("scenes/*.c")) + list(ROOT.glob("views/*.c"))
+sources = [p for d in ("", "reader", "cards", "lookup", "format") for p in ROOT.glob(d + "/*.c" if d else "*.c")] + list(ROOT.glob("scenes/*.c")) + list(ROOT.glob("views/*.c"))
 for path in sources:
     text = path.read_text()
     for m in OPEN.finditer(text):

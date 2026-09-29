@@ -21,12 +21,12 @@
  */
 #pragma once
 
-#include "flipso_capture.h"
-#include "flipso_media.h"
-#include "flipso_naptan.h"
-#include "flipso_operators.h"
-#include "flipso_stations.h"
-#include "itso/itso.h"
+#include "../cards/flipso_capture.h"
+#include "../reader/flipso_media.h"
+#include "../lookup/flipso_naptan.h"
+#include "../lookup/flipso_operators.h"
+#include "../lookup/flipso_stations.h"
+#include "../itso/itso.h"
 
 #include <furi.h>
 

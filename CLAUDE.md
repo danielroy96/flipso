@@ -50,21 +50,28 @@ behaviours is there because a past session lost time to it.
 ## Layout
 
 ```
-flipso.c              app entry, the icon table, the name validator
-flipso_format*.c      the text of every screen, one file per screen group, sharing
-                      flipso_format_i.h; host-tested by test_format.c
-flipso_reader.c       card reading: DESFire (CMD7/CMD12), and the pollers
-flipso_scan_session.c which transport next, retries and the verdict; pure C,
-                      host-tested by test_scan_session.c
-flipso_cmd2.c         ISO 7816 transport for CMD2 media
-flipso_type2.c        NFC Type 2 tag transport: CMD4 (SPT paper tickets), and
-                      CMD9/CMD10 (a full shell on an NTAG or Ultralight EV1)
-flipso_media.c        what a DESFire says about itself (incl. Oyster); the text is flipso_format.c's
-flipso_capture.c      the raw blocks a read produced; saved cards decode from these
-flipso_saved.c        those blocks on the SD card: write, read, browse, match, rename, delete
-flipso_operators.c    operator id -> name, built-in table plus the user's file
-flipso_stations.c     NLC -> station name, binary search over the SD card table
-flipso_naptan.c       NaptanCode/AtcoCode -> bus stop name, same design
+flipso.c/.h           app entry, the icon table, the name validator
+format/               the text of every screen (flipso_format*.c), one file per
+                      screen group, sharing flipso_format_i.h; host-tested by
+                      test_format.c
+reader/               getting a card off the reader:
+                        flipso_reader.c        DESFire (CMD7/CMD12), and the pollers
+                        flipso_scan_session.c  which transport next, retries and the
+                                               verdict; pure C, host-tested by
+                                               test_scan_session.c
+                        flipso_cmd2.c          ISO 7816 transport for CMD2 media
+                        flipso_type2.c         NFC Type 2 tag transport: CMD4 (SPT paper
+                                               tickets), and CMD9/CMD10 (a full shell on
+                                               an NTAG or Ultralight EV1)
+                        flipso_media.c         what a DESFire says about itself (incl.
+                                               Oyster); the text is format/'s
+cards/                flipso_capture.c: the raw blocks a read produced; saved cards
+                      decode from these. flipso_saved.c: those blocks on the SD card -
+                      write, read, browse, match, rename, delete
+lookup/               flipso_operators.c operator id -> name, built-in table plus the
+                      user's file; flipso_stations.c NLC -> station name, binary search
+                      over the SD card table; flipso_naptan.c NaptanCode/AtcoCode ->
+                      bus stop name, same design
 itso/                 the decoder: pure C, no firmware dependency, host-testable
 scenes/               one file per scene; every scrolling text screen is the one
                       text scene (flipso_open_text()); list in flipso_scene_config.h
@@ -88,7 +95,7 @@ tools/icons/          pixel art the images/ icons are generated from
 
 `itso/` must stay free of firmware headers. That is what lets `tools/test/run.sh`
 and `tools/test/replay.py` build it on the host, which is the fast loop.
-`flipso_capture.c` is held to the same rule for the same reason: the save and
+`cards/flipso_capture.c` is held to the same rule for the same reason: the save and
 load path, including the file parser, is tested on the host by
 `tools/test/test_capture.c`.
 
@@ -142,7 +149,7 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
   one (`TS 1000-2 table 11`). Do not narrate what the code already says.
 - New sources must be listed explicitly in `application.fam`. A bare `*.c` is
   matched recursively and would pull in the host-side tests under `tools/`.
-- Screen text is built in `flipso_format*.c`, never in a scene, and follows the
+- Screen text is built in `format/flipso_format*.c`, never in a scene, and follows the
   house style its header sets out: `Label: Value` with the value capitalised, a
   detail indented two spaces and itself labelled, money as `£`. `test_format.c`
   holds every screen of every demo card to that, so a line that breaks it fails

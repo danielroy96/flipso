@@ -31,9 +31,9 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 
 SOURCES = [
     "tools/test/screens.c",
-    "flipso_format.c", "flipso_format_product.c", "flipso_format_card.c",
-    "flipso_format_journeys.c", "flipso_capture.c", "flipso_media.c",
-    "flipso_stations.c", "flipso_naptan.c",
+    "format/flipso_format.c", "format/flipso_format_product.c", "format/flipso_format_card.c",
+    "format/flipso_format_journeys.c", "cards/flipso_capture.c", "reader/flipso_media.c",
+    "lookup/flipso_stations.c", "lookup/flipso_naptan.c",
     "itso/itso_parse.c", "itso/itso_util.c", "itso/itso_names.c",
     "itso/itso_operators.c",
 ]

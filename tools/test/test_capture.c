@@ -8,7 +8,7 @@
  * checkable here with itso_card_equal(), which compares every field and the
  * products themselves.
  */
-#include "flipso_capture.h"
+#include "cards/flipso_capture.h"
 #include "itso.h"
 #include "card_data.h"
 

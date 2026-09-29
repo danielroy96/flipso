@@ -9,8 +9,8 @@
 #pragma once
 
 #include "flipso_format.h"
-#include "itso/itso_operators.h"
-#include "views/flipso_text_view.h"
+#include "../itso/itso_operators.h"
+#include "../views/flipso_text_view.h"
 
 #include <datetime/datetime.h>
 #include <locale/locale.h>

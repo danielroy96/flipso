@@ -15,7 +15,7 @@
  *
  *     test_format <directory of demo .flipso files>
  */
-#include "flipso_format.h"
+#include "format/flipso_format.h"
 #include "itso/itso_operators.h"
 #include "card_data.h"
 #include "itso_i.h"

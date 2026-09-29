@@ -20,7 +20,7 @@
  */
 #pragma once
 
-#include "itso/itso.h"
+#include "../itso/itso.h"
 
 #include <stdbool.h>
 #include <stddef.h>

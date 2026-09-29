@@ -23,7 +23,7 @@
 #include "flipso_reader.h"
 #include "flipso_cmd2.h"
 #include "flipso_type2.h"
-#include "itso/itso_operators.h"
+#include "../itso/itso_operators.h"
 
 #include <furi.h>
 #include <nfc/nfc.h>

@@ -1,7 +1,7 @@
 # Station table format
 
 `stations.dat` maps a four-digit National Location Code to a station name. It is
-written by `build_stations.py` and read by `flipso_stations.c`.
+written by `build_stations.py` and read by `lookup/flipso_stations.c`.
 
 The shape is dictated by where it has to live. A Flipper has 256 KB of RAM and a
 `.fap` is loaded into it whole, so the table cannot be a C array: 2,500-odd names

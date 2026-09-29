@@ -15,9 +15,9 @@
  *
  *     screens <card.flipso> <now, unix seconds>
  */
-#include "flipso_format.h"
-#include "flipso_naptan.h"
-#include "flipso_stations.h"
+#include "format/flipso_format.h"
+#include "lookup/flipso_naptan.h"
+#include "lookup/flipso_stations.h"
 #include "itso/itso_operators.h"
 #include "itso_i.h"
 

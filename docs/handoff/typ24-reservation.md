@@ -149,7 +149,7 @@ wheelchair; UD), TogetherFlag 1 bit, RFU 7 bits.
 - **Memory.** Do not put the optional groups, the passenger name or the
   reservations in `ItsoProduct`: it is 652 bytes on the device and paid for
   per product. Decode them when the product screen is drawn, from the capture,
-  the way `flipso_decode_capping()` in `flipso_format_product.c` calls
+  the way `flipso_decode_capping()` in `format/flipso_format_product.c` calls
   `itso_parse_capping()`. That means an `ItsoReservation` struct, a
   `itso_parse_reservations()` in `itso/itso_i.h`, and an allocate/free around
   the screen. Keep in `ItsoProduct` only what the Summary and product list
@@ -158,7 +158,7 @@ wheelchair; UD), TogetherFlag 1 bit, RFU 7 bits.
 - `itso/itso_names.c`: the product title is "Reserved journey"; the counter
   label for JourneysRemaining is "Rides left" (`ItsoCountRides`). "Journeys
   left" is closer to the spec's wording, if a new `ItsoCountKind` is justified.
-- `flipso_format_product.c`: a `flipso_cat_reservation()` alongside
+- `format/flipso_format_product.c`: a `flipso_cat_reservation()` alongside
   `flipso_cat_ticket_terms()` for the fixed part, and a "Reservations" heading
   section, like "Fare capping", listing each leg: departure, service, from, to,
   coach and seat. The flags that describe the ticket (duplicate, replacement,
