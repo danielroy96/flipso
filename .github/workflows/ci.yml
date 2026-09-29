@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   test:
-    name: Host tests (ASan + UBSan)
+    name: 🧪 Host tests (ASan/UBSan)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
 
   # The firmware's clang-format style, via .clang-format. `ufbt format` fixes it.
   lint:
-    name: ufbt lint
+    name: 🚨 Source lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +38,7 @@ jobs:
           sdk-channel: release
 
   build:
-    name: Build .fap
+    name: 🔧 Build .fap
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +58,7 @@ jobs:
   # The Apps Catalog's own bundler over this commit: the build, icon,
   # screenshots and markdown checks a catalog submission has to pass.
   catalog:
-    name: Apps Catalog validator
+    name: 🏁 Flipper app catalog validator
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
