@@ -4,17 +4,22 @@
  */
 #include "flipso_format_i.h"
 
-/** One Transient Ticket Record. */
-static void flipso_cat_tap(
-    FuriString* out,
-    const FlipsoFormat* f,
-    const ItsoCard* card,
-    const ItsoTap* tap) {
+/** "Tap out (latest)": what a record was, which heads its lines. */
+static void flipso_cat_tap_title(FuriString* out, const ItsoTap* tap) {
     furi_string_cat_printf(
         out,
         "%s%s\n",
         itso_transaction_name(tap->transaction_type),
         tap->latest ? " (latest)" : "");
+}
+
+/** One Transient Ticket Record, less its reader numbers: see flipso_cat_tap_technical(). */
+static void flipso_cat_tap(
+    FuriString* out,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    const ItsoTap* tap) {
+    flipso_cat_tap_title(out, tap);
     /* A tap-out record carries the tap-in it closes, copied forward so the
      * record stands on its own - so a tap out has two times, and says which is
      * which, and how long the journey took between them. Any other record has
@@ -39,10 +44,6 @@ static void flipso_cat_tap(
         }
     }
     if(tap->has_entry_oid) flipso_cat_operator(out, f, "  ", "Tapped in with", tap->entry_oid);
-    if(tap->has_entry_oid && tap->entry_iin_index) {
-        furi_string_cat(out, "  Tapped in on: Another network\n");
-    }
-    if(tap->has_entry) flipso_cat_machine(out, f, "  ", "Tap-in reader", tap->entry_isam);
 
     flipso_cat_location(out, f, "  ", "From", &tap->origin);
     flipso_cat_location(out, f, "  ", "Via", &tap->route);
@@ -60,15 +61,6 @@ static void flipso_cat_tap(
 
     if(tap->has_ipe_pointer) flipso_cat_product_ref(out, card, "  ", "Product", tap->ipe_pointer);
 
-    /* The network the machine that wrote it belongs to, where that is not
-     * ITSO's own. */
-    if(tap->has_iin && !itso_iin_name(tap->iin)) {
-        furi_string_cat_printf(
-            out, "  Reader network: Outside ITSO (%06lu)\n", (unsigned long)tap->iin);
-    }
-    /* The record's own InstanceID: whose reader wrote this tap. */
-    if(tap->has_writer) flipso_cat_machine(out, f, "  ", "Reader", tap->writer_isam);
-
     /* Flags an inspector or a gate set against this journey. */
     if(tap->invalid_travel) furi_string_cat(out, "  Invalid travel: Flagged\n");
     if(tap->inspected) flipso_cat_flag(out, "  ", "Ticket inspected", true);
@@ -84,6 +76,37 @@ static void flipso_cat_tap(
             sep = ", ";
         }
         if(sep[0] == ',') furi_string_push_back(out, '\n');
+    }
+}
+
+/** True when a tap has anything for the Technical section. */
+static bool flipso_tap_has_technical(const ItsoTap* tap) {
+    return (tap->has_entry_oid && tap->entry_iin_index) || (tap->has_entry && tap->entry_isam) ||
+           (tap->has_iin && !itso_iin_name(tap->iin)) || tap->has_writer;
+}
+
+/**
+ * The numbers behind one tap: the machines that wrote it and the networks they
+ * belong to. Nothing names a machine, so these are for whoever is working out
+ * which gate did what, and would crowd a log the holder reads for where and
+ * when. Headed by the record's name and time, as the log above has it, so each
+ * can be matched to its journey.
+ */
+static void flipso_cat_tap_technical(FuriString* out, const FlipsoFormat* f, const ItsoTap* tap) {
+    flipso_cat_tap_title(out, tap);
+    flipso_cat_datetime_line(out, "  ", "When", tap->dts);
+    /* The entry operator's own network, where it is not the card's. */
+    if(tap->has_entry_oid && tap->entry_iin_index) {
+        furi_string_cat(out, "  Tapped in on: Another network\n");
+    }
+    if(tap->has_entry) flipso_cat_machine(out, f, "  ", "Tap-in reader", tap->entry_isam);
+    /* The record's own InstanceID: whose reader wrote this tap. */
+    if(tap->has_writer) flipso_cat_machine(out, f, "  ", "Reader", tap->writer_isam);
+    /* The network the machine that wrote it belongs to, where that is not
+     * ITSO's own. */
+    if(tap->has_iin && !itso_iin_name(tap->iin)) {
+        furi_string_cat_printf(
+            out, "  Reader network: Outside ITSO (%06lu)\n", (unsigned long)tap->iin);
     }
 }
 
@@ -129,6 +152,21 @@ void flipso_format_taps(FuriString* out, const FlipsoFormat* f, const ItsoCard* 
             if(!first) furi_string_push_back(out, '\n');
             first = false;
             flipso_cat_tap(out, f, card, tap);
+        }
+    }
+
+    /* In the order the log above lists them: the card's own, then the file's. */
+    bool headed = false;
+    for(uint8_t section = 0; section < 2; section++) {
+        for(uint8_t i = 0; i < card->tap_count; i++) {
+            const ItsoTap* tap = &card->taps[i];
+            if(tap->on_card != (section == 0) || !flipso_tap_has_technical(tap)) continue;
+            furi_string_push_back(out, '\n');
+            if(!headed) {
+                flipso_cat_heading(out, FlipsoIconNone, "Technical");
+                headed = true;
+            }
+            flipso_cat_tap_technical(out, f, tap);
         }
     }
 

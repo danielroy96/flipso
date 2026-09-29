@@ -261,7 +261,9 @@ static void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
         "a check-out with no amount is still a journey",
         shows(text, "Tap out (latest)\n  When: 18/09/2026 18:49\n  From: ") &&
             shows(text, "  To: ") && !shows(text, "  Fare: "));
-    check("each record names the reader that wrote it", shows(text, "  Reader: FF00A3C7\n"));
+    check(
+        "each record names the reader that wrote it, under Technical",
+        technical(text, "Tap out (latest)\n  When: 18/09/2026 18:49\n  Reader: FF00A3C7\n"));
 
     furi_string_reset(text);
     flipso_format_card(text, f, card, NULL, 0);
@@ -517,8 +519,12 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         "the products a gate checked are one line",
         shows(text, "  Products checked: Journey ticket, Pay as you go, Period ticket\n"));
     check(
-        "a reader names its machine, then its operator",
-        shows(text, "  Tap-in reader: 01020304\n    Operator: "));
+        "a reader names its machine, then its operator, under Technical",
+        technical(text, "  Tap-in reader: 01020304\n    Operator: "));
+    check(
+        "and the journey it belongs to keeps only where and when",
+        !shows(
+            text, "  Journey time: 1 hr 1 min\n  Tapped in with: Southeastern\n  Tapped in on: "));
     check("passback is called passback", shows(text, "Passback timeout: 20 min\n"));
 
     /* The purse and the ID have menu rows of their own, so the product list
