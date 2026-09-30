@@ -1,6 +1,6 @@
 /**
  * @file flipso_scene_text.c
- * @brief Every scrolling text screen: a card's details, and the About screen.
+ * @brief Every scrolling text screen: a card's details, and About Flipso.
  *
  * They differ only in which builder in flipso_format.h writes the text, so they
  * are one scene, and the scene state says which screen it is. Open one with
@@ -39,6 +39,7 @@ void flipso_scene_text_on_enter(void* context) {
             &f,
             &app->card,
             name ? furi_string_get_cstr(name) : NULL,
+            flipso_saved_is_demo(furi_string_get_cstr(app->loaded_path)),
             flipso_capture_time(app->capture));
         if(name) furi_string_free(name);
         break;

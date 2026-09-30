@@ -278,6 +278,7 @@ void flipso_format_card(
     const FlipsoFormat* f,
     const ItsoCard* card,
     const char* saved_name,
+    bool demo,
     uint32_t read_at) {
     /* The blocking indicator is a property of the whole shell, so it comes
      * before anything else on the screen: once it is set a machine rejects the
@@ -502,7 +503,10 @@ void flipso_format_card(
      * wrote it, and a saved card carries no hint of its own age otherwise. */
     if(saved_name) {
         furi_string_cat(out, "\n");
-        flipso_cat_heading(out, FlipsoIconSave, "Saved card");
+        /* A demo card is a saved-card file too, but calling it saved would
+         * say the user kept it. */
+        flipso_cat_heading(
+            out, demo ? FlipsoIconCard : FlipsoIconSave, demo ? "Demo card" : "Saved card");
         furi_string_cat_printf(out, "Name: %s\n", saved_name);
         if(read_at) {
             furi_string_cat(out, "Read: ");

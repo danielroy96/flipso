@@ -32,9 +32,10 @@ App(
         "scenes/*.c",
         "views/*.c",
     ],
-    # The station table, bundled into the .fap as a non-loadable section and
-    # unpacked by the firmware to /ext/apps_assets/flipso/. It never reaches
-    # RAM: see tools/stations/FORMAT.md. The stop table is deliberately NOT here
+    # The station table and the demo cards, bundled into the .fap as a
+    # non-loadable section and unpacked by the firmware to
+    # /ext/apps_assets/flipso/. Neither reaches RAM: see tools/stations/FORMAT.md
+    # and tools/demo/README.md. The stop table is deliberately NOT here
     # - at 21 MB it would be re-uploaded on every install - and ships in data/
     # for copying to the card instead; see data/README.md.
     fap_file_assets="assets",

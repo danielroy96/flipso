@@ -31,7 +31,7 @@ static void flipso_scene_scan_saved_callback(void* context) {
     view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventOpenSaved);
 }
 
-/* And Right, for the About screen. */
+/* And Right, for the About menu, which is also where the demo cards are. */
 static void flipso_scene_scan_about_callback(void* context) {
     Flipso* app = context;
     view_dispatcher_send_custom_event(app->view_dispatcher, FlipsoCustomEventOpenAbout);
@@ -101,7 +101,7 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
 
     if(event.event == FlipsoCustomEventOpenAbout) {
         if(state == FlipsoScanStateScanning) return true;
-        flipso_open_text(app, FlipsoTextAbout);
+        scene_manager_next_scene(app->scene_manager, FlipsoSceneAbout);
         return true;
     }
 

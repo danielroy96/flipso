@@ -15,9 +15,10 @@
  * card for, because "Freedom Pass" is what is printed on the card in the user's
  * hand and "ITSO card" is a fact about the standard behind it.
  *
- * The last row is where the card came from and where it can go: a card just
- * read can be saved, and a card opened from the SD card can be deleted. They
- * are mutually exclusive, so the list never grows by more than one row.
+ * The last rows are where the card came from and where it can go: a card just
+ * read can be saved, and a card opened from the SD card can be renamed or
+ * deleted. A demo card can be none of those - it is part of the app, and saving
+ * one would put a card nobody owns among the user's own.
  */
 #include "../flipso.h"
 #include "flipso_icons.h"
@@ -177,7 +178,7 @@ void flipso_scene_menu_on_enter(void* context) {
         if(flipso_capture_valid(app->capture)) {
             flipso_menu_view_add_item(menu, "Save card", &I_save_10px, FlipsoMenuItemSave);
         }
-    } else {
+    } else if(!flipso_saved_is_demo(furi_string_get_cstr(app->loaded_path))) {
         /* The name is the only part of a saved card that is the user's rather
          * than the card's, so it is the only part there is anything to change. */
         flipso_menu_view_add_item(menu, "Rename card", &I_rename_10px, FlipsoMenuItemRename);

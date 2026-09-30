@@ -85,6 +85,7 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
  * The card itself: number, expiry, issuer, chip and layout.
  *
  * @param saved_name the saved card's name, or NULL for a card just read.
+ * @param demo       the file is one of the app's demo cards, not the user's.
  * @param read_at    when a saved card was read; 0 when not known.
  */
 void flipso_format_card(
@@ -92,6 +93,7 @@ void flipso_format_card(
     const FlipsoFormat* f,
     const ItsoCard* card,
     const char* saved_name,
+    bool demo,
     uint32_t read_at);
 
 /** Every purse the card holds now. */

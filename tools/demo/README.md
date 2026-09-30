@@ -1,7 +1,7 @@
 # Demo cards
 
-Fourteen synthetic ITSO cards, written as saved-card files and copied to the
-Flipper, so that Flipso can be seen without owning the cards that carry the
+Fourteen synthetic ITSO cards, written as saved-card files and packaged with
+the app, so that Flipso can be seen without owning the cards that carry the
 features. Nobody has a wallet with a loyalty IPE, a charge-to-account product,
 a blocked shell and a revision 1 period ticket in it; between them these
 have all of it.
@@ -11,13 +11,22 @@ file built here goes through the same parsers a tap does. That is what makes
 this honest: a demo card is not a mock-up of the screens, it is card bytes, and
 what appears on the device is the decoder's reading of them.
 
-    tools/demo/build_demo_cards.py <outdir>
-    tools/flipper/flipctl push "<outdir>/Demo 01 The Key Kent.flipso" \
-        "/ext/apps_data/flipso/cards/Demo 01 The Key Kent.flipso"
+    tools/demo/build_demo_cards.py
 
-They then appear under **Saved cards** alongside real ones, which is the reason
-each name starts with "Demo": the app has no way to tell a synthetic card from
-a card that was tapped, and nor would anyone reading the screen.
+writes them to `assets/demo/`, which `application.fam` packages as file assets:
+the firmware unpacks them to `apps_assets/flipso/demo` on the SD card when the
+app is installed, and **About → Demo cards** lists that folder. They cost the
+heap nothing until one is opened. `tools/test/run.sh` rebuilds them and fails
+if the packaged copies differ, so rerun the script and commit its output
+whenever a card changes. A demo card offers no Save, Rename or Delete: it is
+part of the app, not one of the user's cards.
+
+Each name starts with "Demo" because a demo card can also be pushed into
+**Saved cards**, where nothing else would tell it from a card that was tapped -
+which is still the way to test the saved-card screens against one:
+
+    tools/flipper/flipctl push "assets/demo/Demo 01 The Key Kent.flipso" \
+        "/ext/apps_data/flipso/cards/Demo 01 The Key Kent.flipso"
 
 ## What each one is for
 
