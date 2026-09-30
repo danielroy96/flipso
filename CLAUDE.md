@@ -85,8 +85,10 @@ tools/spec/           itso_spec.py: fetch and search the TS 1000 parts
 tools/debug/          opt-in card-dump instrumentation
 tools/catalog/        the Apps Catalog manifest, and validate.sh to run the
                       catalog's own bundler over HEAD
-tools/demo/           synthetic demo cards for the device, as saved-card files;
+tools/demo/           the builder for the synthetic demo cards the About menu opens;
                       new_encodings.py says what a real card has that they lack
+assets/demo/          those demo cards, generated - rerun the builder, never edit;
+                      run.sh fails when they are stale
 tools/stations/       station table builder and its data provenance
 data/                 reference data shipped but not packaged; see its README
 tools/naptan/         stop table builder; data/naptan.dat is its output
@@ -116,9 +118,9 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-about 72 KB of the 223 KB file as of 2026-09-28, because the 79 KB station
-table lives in `.fapassets`, which the firmware unpacks to the SD card and never
-maps. Anything added as a `const` array *does* reach RAM. With the app at its
+about 76 KB of the 258 KB file as of 2026-09-30, because the 79 KB station
+table and the 26 KB of demo cards live in `.fapassets`, which the firmware
+unpacks to the SD card and never maps. Anything added as a `const` array *does* reach RAM. With the app at its
 idle scan screen about 40 KB of the heap is free (measured 2026-09-29). A card
 on screen costs what it holds: `ItsoCard` allocates its products (652 bytes
 each on the device since 2026-09-29, 620 before) and journeys (204 bytes each)

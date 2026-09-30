@@ -131,6 +131,45 @@ bool flipso_saved_rename(const char* from, const char* to);
  */
 void flipso_saved_recover(void);
 
+/* ------------------------------------------------------------------ */
+/* Demo cards                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The synthetic cards tools/demo/build_demo_cards.py writes, packaged in the
+ * .fap as file assets. The firmware unpacks them to the SD card on install, so
+ * they cost the heap nothing until one is opened - as a const table they would
+ * cost 26 KB of it from launch. They are saved-card files like any other, and
+ * open through flipso_saved_read().
+ */
+#define FLIPSO_DEMO_FOLDER APP_ASSETS_PATH("demo")
+
+/** More than the fourteen there are, and no more than a menu can list. */
+#define FLIPSO_DEMO_MAX 20
+
+typedef struct {
+    uint8_t count;
+    /** File names less the extension, in order: "Demo 01 The Key Kent". */
+    char names[FLIPSO_DEMO_MAX][FLIPSO_SAVED_NAME_LEN];
+} FlipsoDemos;
+
+/**
+ * List the demo cards, sorted by name, which is the order they are numbered in.
+ *
+ * Read from the folder rather than from a list compiled in, so a card added to
+ * the builder reaches the menu with nothing else to change.
+ *
+ * @param demos filled in; NULL to only count them.
+ * @return how many there are, 0 when the assets have not been unpacked.
+ */
+uint8_t flipso_saved_demos(FlipsoDemos* demos);
+
+/** Build the full path of the demo card named @p name. */
+void flipso_saved_demo_path(FuriString* path, const char* name);
+
+/** True when @p path is one of the demo cards rather than one the user saved. */
+bool flipso_saved_is_demo(const char* path);
+
 /**
  * Show a blocking "something went wrong" dialog with a single OK button.
  *

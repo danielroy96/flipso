@@ -153,6 +153,30 @@ void flipso_open_text(Flipso* app, FlipsoTextScreen screen) {
     scene_manager_next_scene(app->scene_manager, FlipsoSceneText);
 }
 
+bool flipso_load_card(Flipso* app, const char* path) {
+    /* Decoding here rather than at save time is the whole point of keeping the
+     * raw blocks: the card is parsed by the build that is running, so a decoder
+     * fix reaches the cards already on the SD card. */
+    if(!flipso_saved_read(app->capture, path) ||
+       !flipso_capture_decode(app->capture, &app->card)) {
+        itso_card_reset(&app->card);
+        flipso_capture_reset(app->capture);
+        return false;
+    }
+
+    furi_string_set(app->loaded_path, path);
+    flipso_reset_card_menus(app);
+    /* What the chip said when it was read, for the Card screen; a card saved
+     * before the file kept it simply has none. */
+    flipso_media_reset(&app->media);
+    size_t chip_len = 0;
+    const uint8_t* chip = flipso_capture_chip(app->capture, &chip_len);
+    if(chip) flipso_media_parse_chip(&app->media, chip, chip_len);
+    /* The detail scenes read this to decide a card was read at all. */
+    app->status = FlipsoReaderStatusSuccess;
+    return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* Lifecycle                                                           */
 /* ------------------------------------------------------------------ */

@@ -10,6 +10,9 @@ build/
 # holder's name.
 *.flipso
 dump.txt
+# Except the demo cards packaged with the app, which are synthetic: see
+# tools/demo/README.md.
+!/assets/demo/*.flipso
 
 /stations.txt
 /stations.dat

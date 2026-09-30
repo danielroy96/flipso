@@ -231,7 +231,7 @@ int main(int argc, char** argv) {
     FuriString* text = furi_string_alloc();
     flipso_format_summary(text, &f, &card);
     show("Summary", text);
-    flipso_format_card(text, &f, &card, name, 0);
+    flipso_format_card(text, &f, &card, name, false, 0);
     show("Card", text);
     flipso_format_id(text, &f, &card);
     show("ID & entitlement", text);

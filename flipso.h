@@ -56,7 +56,7 @@ typedef enum {
     FlipsoCustomEventReaderDone,
     /** Posted from the scan view when the user asks for the saved cards. */
     FlipsoCustomEventOpenSaved,
-    /** Posted from the scan view when the user asks about the app. */
+    /** Posted from the scan view when the user asks for the About menu. */
     FlipsoCustomEventOpenAbout,
     /** Posted by the saved-card scene once the file browser has closed. */
     FlipsoCustomEventSavedPicked,
@@ -146,6 +146,9 @@ typedef struct {
     /** What a card that is not an ITSO one said about itself. */
     FlipsoMedia media;
 
+    /** The demo cards the demo list offers, alive only while that list is. */
+    FlipsoDemos* demos;
+
     /** Index into card.products chosen on the product list scene. */
     uint8_t selected_product;
 } Flipso;
@@ -212,6 +215,14 @@ void flipso_show_text(Flipso* app, const FuriString* text);
 
 /** Open one of the scrolling text screens on top of the current scene. */
 void flipso_open_text(Flipso* app, FlipsoTextScreen screen);
+
+/**
+ * Make the card saved at @p path the card on screen, as a tap would have: a
+ * saved card or a demo card, which are the same kind of file.
+ *
+ * @return false, with no card held, when the file will not open or decode.
+ */
+bool flipso_load_card(Flipso* app, const char* path);
 
 #ifdef __cplusplus
 }

@@ -15,9 +15,11 @@ decodes, nearly every location renderer, and the parts of the model only a
 saved card can hold - journeys and transactions that have rolled off the card,
 and products the card no longer lists.
 
-    tools/demo/build_demo_cards.py <outdir>
-    tools/flipper/flipctl push <outdir>/<name>.flipso \\
-        /ext/apps_data/flipso/cards/<name>.flipso
+    tools/demo/build_demo_cards.py [outdir]
+
+With no argument they are written to assets/demo, where the app packages them:
+the About menu opens them, and the host tests fail if the files there are not
+what this script writes.
 
 Nothing here is a real card: the ISRNs are in ITSO's registered issuer range
 but the serials are invented, the holders are invented, and every seal is
@@ -1567,7 +1569,8 @@ CARDS = [card_the_key, card_blocked, card_cmd2, card_history, card_subway_paper,
 
 
 def main():
-    out = sys.argv[1] if len(sys.argv) > 1 else "demo-cards"
+    out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "assets", "demo")
     os.makedirs(out, exist_ok=True)
     for build in CARDS:
         name, read_at, blocks = build()

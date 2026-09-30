@@ -91,6 +91,15 @@ echo "Screen text"
 # style in flipso_format.h: capitalised values, labelled detail lines, pounds.
 DEMO=$(mktemp -d)
 python3 "$ROOT/tools/demo/build_demo_cards.py" "$DEMO" >/dev/null
+# The app packages its own copy, which the About menu opens: it has to be what
+# the builder writes now, or the device shows cards these tests never checked.
+if diff -r "$DEMO" "$ROOT/assets/demo" >/dev/null; then
+  echo "  [PASS] the packaged demo cards are the builder's"
+else
+  diff -rq "$DEMO" "$ROOT/assets/demo" || true
+  echo "  [FAIL] the packaged demo cards are stale: run tools/demo/build_demo_cards.py"
+  exit 1
+fi
 ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
   -fsanitize=address,undefined \
   -I"$ROOT" -I"$ROOT/itso" -I. -Istub \

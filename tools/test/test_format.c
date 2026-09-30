@@ -191,7 +191,7 @@ static void every_screen(const char* name, const FlipsoFormat* f, const ItsoCard
     house_style(where, text);
 
     furi_string_reset(text);
-    flipso_format_card(text, f, card, "A name", 1758400000u);
+    flipso_format_card(text, f, card, "A name", false, 1758400000u);
     snprintf(where, sizeof(where), "%s card", name);
     house_style(where, text);
 
@@ -266,7 +266,7 @@ static void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
         technical(text, "Tap out (latest)\n  When: 18/09/2026 18:49\n  Reader: FF00A3C7\n"));
 
     furi_string_reset(text);
-    flipso_format_card(text, f, card, NULL, 0);
+    flipso_format_card(text, f, card, NULL, false, 0);
     check(
         "the directory's last writer is decoded from an extended ISAM",
         technical(text, "Last updated by machine: 004E30F3\n  Operator: Unknown (24585)\n"));
@@ -309,7 +309,7 @@ static void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
 static void demo_type2_full(const FlipsoFormat* f, const ItsoCard* card, bool ntag) {
     FuriString* text = furi_string_alloc();
 
-    flipso_format_card(text, f, card, NULL, 0);
+    flipso_format_card(text, f, card, NULL, false, 0);
     check("a full-shell tag has a card number of its own", shows(text, "Card number\n633597 "));
     check("its shell pages are locked", shows(text, "Locked pages: 4-11\n  Shell locked: Yes\n"));
     if(ntag) {
@@ -326,7 +326,7 @@ static void demo_type2_full(const FlipsoFormat* f, const ItsoCard* card, bool nt
         ItsoCard retired = *card;
         retired.chip_abacus = 16;
         furi_string_reset(text);
-        flipso_format_card(text, f, &retired, NULL, 0);
+        flipso_format_card(text, f, &retired, NULL, false, 0);
         house_style("a retired CMD9's card screen", text);
         check("a retired CMD9 says so", shows(text, "Status: Retired\n"));
         check(
@@ -335,7 +335,7 @@ static void demo_type2_full(const FlipsoFormat* f, const ItsoCard* card, bool nt
         flipso_format_summary(text, f, &retired);
         check("its summary leads with it", shows(text, "Card: Retired\n"));
         furi_string_reset(text);
-        flipso_format_card(text, f, card, NULL, 0);
+        flipso_format_card(text, f, card, NULL, false, 0);
     } else {
         check("CMD10 names its chip", shows(text, "Chip: Ultralight EV1\n"));
         check("and its media", shows(text, "Card type: Ultralight EV1 (CMD10)\n"));
@@ -649,7 +649,7 @@ int main(int argc, char** argv) {
     spec_review(&f, &card);
 
     furi_string_reset(text);
-    flipso_format_card(text, &f, &card, NULL, 0);
+    flipso_format_card(text, &f, &card, NULL, false, 0);
     printf("\n%s\n", furi_string_get_cstr(text));
     check("the card number is grouped", shows(text, "633597 1234 0012 3458"));
     check("the checksum is stated", shows(text, "Checksum: Correct"));
@@ -806,7 +806,7 @@ int main(int argc, char** argv) {
         itso_card_reset(&t2);
         itso_parse_type2(&t2, cmd4_pages, sizeof(cmd4_pages));
         furi_string_reset(text);
-        flipso_format_card(text, &f, &t2, NULL, 0);
+        flipso_format_card(text, &f, &t2, NULL, false, 0);
         check(
             "a paper ticket's number is under Technical, for what it is",
             technical(
@@ -833,7 +833,7 @@ int main(int argc, char** argv) {
         check("a paper ticket shows no 2041 expiry", !shows(text, "2041"));
         check("an in-date paper ticket is active", shows(text, "Status: Active\n"));
         furi_string_reset(text);
-        flipso_format_card(text, &later, &t2, NULL, 0);
+        flipso_format_card(text, &later, &t2, NULL, false, 0);
         check("an expired paper ticket says so", shows(text, "Status: Expired "));
         furi_string_reset(text);
         flipso_format_summary(text, &later, &t2);
@@ -893,7 +893,7 @@ int main(int argc, char** argv) {
         flipso_format_summary(text, &f, &t2);
         check("a single never used says so", shows(text, "Last used: Never\n"));
         furi_string_reset(text);
-        flipso_format_card(text, &f, &t2, NULL, 0);
+        flipso_format_card(text, &f, &t2, NULL, false, 0);
         check("an Infineon chip is named", shows(text, "Maker: Infineon\n"));
         check(
             "a ticket locked short of ITSO's rule says what is still writable",
@@ -902,7 +902,7 @@ int main(int argc, char** argv) {
         itso_card_reset(&t2);
         itso_parse_type2(&t2, cmd4_fare_value, sizeof(cmd4_fare_value));
         furi_string_reset(text);
-        flipso_format_card(text, &f, &t2, NULL, 0);
+        flipso_format_card(text, &f, &t2, NULL, false, 0);
         check("frozen lock bits are listed", shows(text, "Lock bits frozen: 3-15\n"));
 
         itso_card_reset(&t2);
@@ -1053,11 +1053,20 @@ int main(int argc, char** argv) {
                 FuriString* screen = furi_string_alloc();
                 FlipsoFormat with_chip = f;
                 with_chip.media = &demo_media;
-                flipso_format_card(screen, &with_chip, &demo_card, "A name", 0);
+                flipso_format_card(screen, &with_chip, &demo_card, "A name", false, 0);
                 snprintf(what, sizeof(what), "%s shows its saved chip", entry->d_name);
                 check(what, shows(screen, "Chip: MIFARE DESFire EV1\n"));
                 furi_string_free(screen);
                 chips++;
+            }
+            if(strncmp(entry->d_name, "Demo 01", 7) == 0) {
+                /* Opened from the About menu rather than from Saved cards. */
+                FuriString* screen = furi_string_alloc();
+                flipso_format_card(screen, &f, &demo_card, "Demo 01", true, 0);
+                check(
+                    "a demo card says it is one",
+                    shows(screen, "Demo card\nName: Demo 01\n") && !shows(screen, "Saved card"));
+                furi_string_free(screen);
             }
             f.media = &demo_media;
             every_screen(entry->d_name, &f, &demo_card);
