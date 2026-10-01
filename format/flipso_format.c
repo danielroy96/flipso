@@ -551,5 +551,5 @@ void flipso_format_about(
     furi_string_cat(out, "Folder: apps_data/flipso/cards\n");
     furi_string_cat(
         out,
-        "Saved cards hold the card number and any name on the card. Take care sharing them.\n");
+        "Saved cards can contain personal information. Take care sharing them.\n");
 }

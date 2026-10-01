@@ -21,28 +21,27 @@ tickets, passes, entitlements, journeys and pay-as-you-go balance stored on it.
 ## What is Flipso?
 
 **ITSO** is the UK's national standard for interoperable public transport
-ticketing. If you carry an ENCTS or Freedom Pass, a season ticket on a bus or
-rail smartcard, or a local authority travel card, it is almost certainly an
-ITSO card.
+ticketing. If you've got an ENCTS or Freedom Pass, a season ticket on a bus or
+rail smartcard, or a local authority travel card, it's probably an ITSO card.
 
-Flips reads ITSO cards over the Flipper's NFC reader, then decodes it and
+Flipso reads ITSO cards over the Flipper's NFC reader, then decodes it and
 shows you everything that was on it.
 
 ## What it shows you
 
-An ITSO card packs a surprising amount into its 4 KB, all laid out by the ITSO
-TS 1000 specification. Flipso decodes as much of it as it can:
+ITSO cards contain a surprising amount of data in 4 KB of chip storage, all 
+laid out by the ITSO TS 1000 specification. Flipso decodes as much of it 
+as it can:
 
 - **Tickets** — journey, period and carnet products, with operator, validity and the stations they cover
 - **Pay as you go** — balance, owning operator and purse, and the most recent transactions
 - **Cardholder** — name, date of birth, concession and entitlements
-- **Journeys** — recent taps and completed journeys, with origin, destination, fare and whether you were inside the gates
-- **Paper tickets** — ITSO's compact paper tickets, such as the Glasgow Subway's singles, returns and day tickets: rides left, price, when and at which station they were last used
+- **Journeys** — recent taps and completed journeys, with origin, destination, and fare
+- **Paper tickets** — ITSO's compact paper tickets, like Glasgow Subway paper NFC singles, returns and day tickets: rides left, price, when and at which station they were last used
 - **NFC tag tickets** — ITSO cards on NTAG215/216 and MIFARE Ultralight EV1 tags (CMD9 and CMD10), read like a smartcard, with the chip's lock bits and, on an NTAG, how many uses it has left
 
 Station and operator names are resolved on the device from bundled reference
-data, so a card that stores nothing but a code still shows a place you
-recognise.
+data.
 
 <table>
   <tr>
@@ -58,7 +57,7 @@ recognise.
     <td width="50%" align="center" valign="top"><img src="docs/screenshots/product-detail.png" width="250" alt="Period ticket: passes left, operator, status and expiry"></td>
   </tr>
   <tr>
-    <td width="50%" align="center" valign="top"><b>Products</b><br><sub>Every ticket on the card, each with an icon for its type and a flag for expired, blocked or unused. The purse and ID have rows of their own.</sub></td>
+    <td width="50%" align="center" valign="top"><b>Products</b><br><sub>Every ticket on the card, each with an icon for its type and a flag for expired, blocked or unused.</sub></td>
     <td width="50%" align="center" valign="top"><b>Product detail</b><br><sub>Operator, status, validity window, remaining passes and the stations a ticket covers</sub></td>
   </tr>
 </table>
@@ -81,7 +80,7 @@ ufbt launch
 ### Bus stop names
 
 Copy `data/naptan.dat` to `apps_data/flipso/naptan.dat` on the SD card if you
-want Flipso to decode bus-stop NaPTANs. There are nearly half a million bus
+want Flipso to decode bus stop NaPTANs. There are nearly half a million bus
 stops in the UK (21 MB), so this data set is shipped alongside the app rather
 than bundled into it.
 
@@ -109,8 +108,7 @@ you around to tap them.
 
 ## Licensing
 
-Flipso is free software under the [GNU General Public License v3.0](LICENSE).
-The reference data it bundles comes under the terms below.
+Flipso is free software released under the [GNU General Public License v3.0](LICENSE).
 
 ### NLC codes
 
@@ -135,4 +133,4 @@ site. Flipso is written against:
 | [TS 1000-7](https://www.itso.org.uk/hubfs/TS_1000-7_V2_1_5_2025_03.pdf) | ITSO Security Subsystem | Cryptography Flipso can't do without an ISAM |
 | [TS 1000-10](https://www.itso.org.uk/hubfs/TS_1000-10_V2_1_5_2025_03.pdf) | Customer Media Definitions | Where the data sits on each kind of card (CMD2, CMD4, CMD7, CMD9, CMD10) |
 
-See [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the spec clauses for Flipso's fields.
+See [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for further information on Flipso's implementation.
