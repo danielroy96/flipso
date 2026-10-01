@@ -550,6 +550,5 @@ void flipso_format_about(
     flipso_cat_heading(out, FlipsoIconSave, "Saved cards");
     furi_string_cat(out, "Folder: apps_data/flipso/cards\n");
     furi_string_cat(
-        out,
-        "Saved cards can contain personal information. Take care sharing them.\n");
+        out, "Saved cards can contain personal information. Take care sharing them.\n");
 }
