@@ -772,13 +772,6 @@ def reservation_vgx(last_validation, location, booking, legs):
     return bytes(head.buf) + data[2:]
 
 
-def count_tail(remaining):
-    """TYP 24 table 139, and any other type whose tail is a bare count."""
-    t = Bits(5)
-    t.put(0, 8, remaining)
-    return bytes(t.buf)
-
-
 # ---------------------------------------------------------------- Locations
 def loc2(def_type, body):
     """A LOC2 location: the tag then a fixed six-byte body, zero padded.

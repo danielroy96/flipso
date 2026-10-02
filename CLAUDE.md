@@ -118,19 +118,34 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-about 76 KB of the 258 KB file as of 2026-09-30, because the 79 KB station
-table and the 26 KB of demo cards live in `.fapassets`, which the firmware
-unpacks to the SD card and never maps. Anything added as a `const` array *does* reach RAM. With the app at its
-idle scan screen about 40 KB of the heap is free (measured 2026-09-29). A card
-on screen costs what it holds: `ItsoCard` allocates its products (652 bytes
-each on the device since 2026-09-29, 620 before) and journeys (204 bytes each)
-to fit rather than keeping room for twenty and twelve, which held 15 KB whatever
-the card and left only 25 KB free. Demo 04, seven products and twelve journeys,
-cost 8.9 KB over idle at 620 bytes a product. The
-firmware's file browser takes 7.4 KB while the saved-card list is open, and a
-screenshot or push borrows about 12 KB for its RPC session. Read the free heap
-with the app up and compare within one boot: the desktop's own idle figure
-moves by 15 KB between boots and gives it back when an app opens, so a
+86.4 KB of the 274 KB file as of 2026-10-02 - 10.4 KB of that came with the
+TYP 24 decoder, its screen and the rail railcard and seat tables, 76 KB before
+- because the 79 KB station table and the 26 KB of demo cards live in
+`.fapassets`, which the firmware unpacks to the SD card and never maps.
+Anything added as a `const` array *does* reach RAM. With the app at its idle
+scan screen 34.1 KB of the heap is free (measured 2026-10-02). A card on
+screen costs what it holds: `ItsoCard` allocates its products (672 bytes each
+on the device since 2026-10-02, 652 before TYP 24's, 620 before 2026-09-29)
+and journeys (204 bytes each) to fit rather than keeping room for twenty and
+twelve, which held 15 KB whatever the card and left only 25 KB free. Demo 04,
+seven products and twelve journeys, cost 8.9 KB over idle at 620 bytes a
+product; Demo 01's product list leaves 23.8 KB free. A TYP 24's screen decodes
+the rest of its dataset and its reservations as it is drawn, about 750 bytes
+for Demo 01's two legs, once for the whole screen and freed before the text is
+shown. With it open, 21.0 KB is free.
+
+The text panel keeps its string at the size of the longest screen shown until
+the app exits, so a screen's text is not given back when it closes: back at
+the scan screen the heap is 1.5 KB short of idle after a period ticket and
+2.8 KB short after Demo 01's reserved journey, Flipso's longest screen. That
+is a high-water mark, not a leak - five open-and-close cycles leave the heap
+to the byte where one did (measured 2026-10-02) - so compare like with like:
+measure a leak as cycles against the same screen, not against a fresh launch.
+The firmware's file browser takes 7.4 KB while the saved-card list is open,
+and a screenshot or push borrows about 12 KB for its RPC session, which takes
+the low-water mark down to 8.4 KB on a screenshot-heavy check. Read the free
+heap with the app up and compare within one boot: the desktop's own idle
+figure moves by 15 KB between boots and gives it back when an app opens, so a
 difference against it is not the app's cost.
 
 So: no large static tables, no growing a scene's buffers without checking, and

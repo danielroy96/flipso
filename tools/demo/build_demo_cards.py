@@ -33,11 +33,13 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "test"))
 from itso_build import (  # noqa: E402
-    Bits, bcd, charge_tail, count_tail, date_stamp, dir_entry, directory, dts, isam,
+    Bits, bcd, charge_tail, date_stamp, dir_entry, directory, dts, isam,
     instance_and_seal, isrn, journey_tail, loc1, loc2, log_entry, loyalty_tail,
-    naptan, pad_sector, period_tail, purse_tail, shell_dataset, sncode, sncode2,
-    tt_record, tt_record_rev4, type2_full_page_memory, type2_page_memory, typ27_dataset,
-    typ28_dataset, typ29_dataset, value_group, value_record, voucher_tail)
+    naptan, pad_sector, period_tail, purse_tail, rail_retailer, reservation_tail,
+    reservation_vgx,
+    shell_dataset, sncode, sncode2, tt_record, tt_record_rev4, type2_full_page_memory,
+    type2_page_memory, typ24_dataset, typ27_dataset, typ28_dataset, typ29_dataset,
+    value_group, value_record, voucher_tail)
 
 IIN = "633597"
 
@@ -296,24 +298,64 @@ def card_the_key():
     ent.buf[21] = 5                              # ConcessionaryClass: disabled
 
     # ---- E9: loyalty points with a partner outside transport - an owner in
-    # the extended OID range - which the partner has stopped; and E10, a seat
-    # reservation that has expired. Neither type has a dataset parser, so their
-    # directory entries and value records are what the screens show.
+    # the extended OID range - which the partner has stopped. There is no TYP
+    # 17 dataset parser, so its directory entry is what the screens show.
     partner = Bits(16)
     partner.put(0, 6, 4)
     partner.put(12, 4, 1)
     partner.buf[2] = 255
     partner.putb(3, (289).to_bytes(2, "big"))
 
-    reserved = Bits(16)
-    reserved.put(0, 6, 4)
-    reserved.put(12, 4, 1)
-    reserved.buf[2] = 255
-    reserved.putb(3, (289).to_bytes(2, "big"))
+    # ---- E10: a reserved journey, TYP 24 revision 2 (TS 1000-5 clause 2.11),
+    # now used and expired: an Off-Peak Return from Tunbridge Wells to
+    # Edinburgh in March, via London, at the Disabled Persons Railcard's third
+    # off - the railcard in E8, which the ticket names as part of itself and
+    # whose number it carries - with a seat each way on the East Coast. Every
+    # location is a six-byte NLC LOC1, as table 136 assumes for rail; the
+    # dataset is too long for one 64-byte sector, so it chains across three,
+    # and its value group and the VGXRef 3 extension holding the two seats
+    # across two more.
+    null_loc = loc1(255, b"\0\0\0\0")
+    reserved = typ24_dataset(
+        loc1(203, b"5230"),                      # Tunbridge Wells
+        loc1(203, b"9328"),                      # Edinburgh
+        loc1(203, b"5230"),                      # sold at Tunbridge Wells
+        flags=1 << 6,                            # passenger details; rail sets no others
+        sold_as=1, journeys=2,                   # a return: two journeys, in a pair
+        ticket_number=40417733, travel_class=2,
+        out_days=0, rtn_days=30,                 # out on the day, back within a month
+        # Rail opens both portions at 00:01 (RSPS3002 3.8.3).
+        out_from=dts(2026, 3, 13, 0, 1), rtn_from=dts(2026, 3, 13, 0, 1),
+        ftot=b"SOR",                             # Off-Peak Return
+        # Rail's IdDocumentReference: ID type 1, then the last four digits of
+        # the railcard E8 holds, 8841372.
+        id_doc=(11372).to_bytes(4, "big"),
+        route=b"00000", restriction=b"OP", days=0xFF,
+        restricted_days=0xF8,                    # the off-peak hours apply on weekdays
+        # Sold at Tunbridge Wells: rail's ProductRetailer is the selling NLC.
+        mop=3, paid=10430, retailer=rail_retailer("5230"),
+        associated=[8],
+        # The Disabled Persons Railcard's third off, a status code, whole percent.
+        discounts=[(b"DIS  ", 0, 33, 1)],
+        transfers=[(2, 511, 0)],                 # break of journey allowed
+        # Not valid on a weekday morning departure before 09:30, outward only.
+        bands=[(b"\0\0", null_loc, 1, 0, 9 * 60 + 29, False, False)],
+        routes=[(loc1(203, b"1072"), 1)],        # via London
+        passenger=(b"J OKONKWO-LEE", 1), reservations=True)
     reserved_values = value_group([
-        value_record(1, 1, dts(2026, 2, 20, 16, 0), count_tail(1)),
-        value_record(2, 2, dts(2026, 3, 1, 7, 12), count_tail(0)),
-    ], format_rev=1)
+        # Both journeys taken: TransactionType 6, a return leg consumed (table 139).
+        value_record(6, 3, dts(2026, 3, 20, 18, 52),
+                     reservation_tail(0, transfers=511, reservations=2)),
+    ], format_rev=2, extension=reservation_vgx(
+        # Last through the gates at King's Cross, off the return train.
+        dts(2026, 3, 20, 18, 52), loc1(203, b"6121"), b"8KQ2TX4M", [
+            # The first six characters of each train's retail service ID, and
+            # coach and seat left-padded as rail writes them.
+            (dts(2026, 3, 13, 10, 0), b"GR0017", loc1(203, b"6121"), loc1(203, b"9328"),
+             b" K", b" 23", b"TABL", 1, 0, 0, False),
+            (dts(2026, 3, 20, 14, 0), b"GR0028", loc1(203, b"9328"), loc1(203, b"6121"),
+             b" C", b" 61", b"AISL", 2, 0, 0, False),
+        ]))
 
     entries = [
         dir_entry(289, 2, 0, True, EXP),                             # E1 purse
@@ -328,7 +370,7 @@ def card_the_key():
         dir_entry(246, 14, 0, False, date_stamp(2027, 3, 31)),       # E8 railcard
         # E9 uses the extended IPE-owner range: raw 5678 with the flag set is 13870.
         dir_entry(5678, 17, 0, False, date_stamp(2027, 5, 31), extended=True),
-        dir_entry(289, 24, 0, True, date_stamp(2026, 3, 31)),        # E10 expired
+        dir_entry(289, 24, 0, True, date_stamp(2026, 4, 12)),        # E10 expired
         # E11: a toll pass for the Dartford Crossing, which a Kent driver might
         # carry - hypothetical, as no toll is paid by ITSO card today - from an
         # operator the table does not know. It has no block at all: an entry the
@@ -340,7 +382,7 @@ def card_the_key():
     ]
     chain = {1: 13, 13: ACTIVE, 2: ACTIVE, 3: 15, 15: ACTIVE, 4: 16, 16: ACTIVE,
              5: 17, 17: ACTIVE, 6: 18, 18: ACTIVE, 7: 19, 19: ACTIVE, 8: ACTIVE,
-             9: 20, 20: BLOCKED, 10: 21, 21: ACTIVE, 11: 11}
+             9: 20, 20: BLOCKED, 10: 12, 12: 14, 14: 21, 21: 22, 22: ACTIVE, 11: 11}
 
     # The cyclic log: four slots, and Record Offset names the next one to be
     # written, so slot 3 holds the newest record and the log entry above agrees
@@ -939,7 +981,7 @@ def card_zonal_coupons():
 #     expiry is the directory entry's alone - one with CPICC (bitmap 0x12) and
 #     one without (0x02), a ValidityCode, an ExpiryTime past midnight, and a
 #     ProductRetailer in a TS 1000-2 table B2 gap, which is what the real card's
-#     retailers held
+#     retailers held: the selling station's NLC (RSPS3002 3.6.3), shown as one
 #   - revision 4 journey records in the two shapes a rail gate writes: a
 #     check-out with no amount and no entry group, and a check-in carrying the
 #     entry operator (ENTRY_OID) without the ENTRY group, each with the reader's
@@ -952,7 +994,7 @@ def card_gwr_touch():
     ACTIVE = S - 1
     OID = "0287"                                 # Great Western Railway, "GWR Touch"
     SEFT = 246                                   # owns rail season tickets
-    RETAILER = 0x9000                            # 36864: in the B2 gap, as real ones were
+    RETAILER = rail_retailer("3149")             # Reading: an NLC, in the B2 gap as real ones were
     EXP = date_stamp(2035, 3, 14)
 
     shell = shell_dataset(IIN, OID, "0700007", fvc=7, ksc=4, kvc=1, expiry=EXP,
