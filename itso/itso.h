@@ -136,11 +136,14 @@ typedef enum {
  */
 typedef enum {
     ItsoCountNone,
-    ItsoCountRides, /**< TYP 23/24/25/26: rides, journeys or tickets left. */
+    ItsoCountRides, /**< TYP 23/25/26: rides or tickets left. */
     ItsoCountPasses, /**< TYP 22: unactivated passes left. */
     ItsoCountTransactions, /**< TYP 5: charge transactions used this period. */
     ItsoCountPoints, /**< TYP 3: loyalty points held. */
     ItsoCountCoupons, /**< TYP 29 coupons: units of travel, several to a journey. */
+    /** TYP 24 JourneysRemaining: a return sold as one ticket counts two (table
+     *  139), so "rides" would undercount what the holder bought. */
+    ItsoCountJourneys,
 } ItsoCountKind;
 
 /** TYP23Mode: how a journey ticket's rides are counted (TS 1000-5 tables 35a, 35b). */
@@ -320,6 +323,27 @@ typedef enum {
 #define ITSO_T22_PUBLIC_HOLIDAY (1u << 15)
 #define ITSO_T22_DAY_MASK       0xFE00u
 
+/* TYP24Flags, numbered from the least significant of its twelve bits (TS
+ * 1000-5 table 138); 10 and 11 are RFU. */
+#define ITSO_T24_FOLLOW_ON     (1u << 0) /**< A follow-on renewal ticket. */
+#define ITSO_T24_DUPLICATE     (1u << 1)
+#define ITSO_T24_REPLACEMENT   (1u << 2)
+#define ITSO_T24_WARRANT       (1u << 3) /**< UnfulfilledWarrant. */
+#define ITSO_T24_CARNET        (1u << 4)
+/** TestOrLive: set, a test ticket, which is not valid for travel. */
+#define ITSO_T24_TEST          (1u << 5)
+#define ITSO_T24_PASSENGER     (1u << 6) /**< The dataset holds a name and gender. */
+#define ITSO_T24_SEAT_REQUIRED (1u << 7) /**< ReservationsMandatory. */
+#define ITSO_T24_COMPANION     (1u << 8) /**< CompanionPermitted. */
+#define ITSO_T24_AUTO_RENEW    (1u << 9)
+
+/** ProductTypeEncoding: how a TYP 24's NumberOfJourneysSold is spent (table 136). */
+typedef enum {
+    ItsoSoldOneWay = 0, /**< n journeys in one direction: n = 1 is a single. */
+    ItsoSoldReturns = 1, /**< n journeys, taken in outward and return pairs. */
+    ItsoSoldEitherWay = 2, /**< n journeys in either direction. */
+} ItsoSoldAs;
+
 /* DAYOFWEEK, TS 1000-5 annex A.6: Monday is the most significant bit and the
  * least significant is "special days", which schemes use for public holidays. */
 #define ITSO_DOW_MONDAY   0x80u
@@ -342,19 +366,38 @@ typedef struct {
 } ItsoMoney;
 
 /**
- * The terms a TYP 22 period ticket or TYP 23 journey ticket is sold on (TS
- * 1000-5 tables 27, 27a, 3.27, 31, 31a and 31b).
+ * The terms a TYP 22 period ticket, TYP 23 journey ticket or TYP 24 reserved
+ * journey is sold on (TS 1000-5 tables 27, 27a, 3.27, 31, 31a, 31b and 136).
  *
- * Kept apart from the rest of ItsoProduct because only the two ticket types
- * fill it. They share most of these elements, at offsets that differ between
- * the types and again between each type's three revisions.
+ * Kept apart from the rest of ItsoProduct because only the ticket types fill
+ * it. They share most of these elements, at offsets that differ between the
+ * types and again between each type's revisions.
  */
 typedef struct {
     ItsoMoney amount_paid; /**< AmountPaid; not valid when the card records none. */
     ItsoMoney ride_value; /**< TYP 23 ValueOfRideJourney: nominal value of one ride. */
     uint32_t photocard; /**< TYP 23 PhotocardNumber; 0 when not recorded. */
-    uint32_t valid_from_dts; /**< Revisions 1 and 2: ValidityStartDTS, 0 if unset. */
-    uint16_t flags; /**< TYP22Flags, ITSO_T22_*. */
+    /** Revisions 1 and 2 of TYP 22: ValidityStartDTS; TYP 24: OutPortionValidFrom.
+     *  0 if unset. */
+    uint32_t valid_from_dts;
+    /* TYP 24 (tables 136 and 139): the parts of a reserved journey its summary
+     * and list row need. The rest of its dataset, and its reservations, are
+     * decoded on demand by itso_parse_reservation() - see ItsoReservation. */
+    uint32_t return_from_dts; /**< RtnPortionValidFrom; 0 if unset. */
+    uint16_t outward_days; /**< OutPortionPeriodOfValidity: days on from valid_from_dts. */
+    uint16_t return_days; /**< RtnPortionPeriodOfValidity: days on from return_from_dts. */
+    uint16_t journeys_sold; /**< NumberOfJourneysSold, "n". */
+    /** TransfersRemaining: one 11-bit count, the total over every transfer type. */
+    uint16_t transfers_left;
+    uint8_t sold_as; /**< ProductTypeEncoding, ItsoSoldAs. */
+    /** NumberOfReservations in the live value record; 0 unless IPEBitMap bit 3. */
+    uint8_t reservations;
+    /** The first DiscountCode, which is usually the railcard the ticket is not
+     *  valid without, and so goes on the summary. */
+    bool has_discount;
+    uint8_t discount[5];
+    bool part_used; /**< JourneyPartUsedFlag: part-way through a leg. */
+    uint16_t flags; /**< TYP22Flags, ITSO_T22_*, or TYP24Flags, ITSO_T24_*. */
     uint16_t issue_date; /**< IssueDate DATE; 0 when not recorded. */
     uint16_t expiry_time; /**< ExpiryTime, minutes; 1440 and over is the next day. */
     uint16_t start_time; /**< Revision 3 ValidityStartTime, minutes. */
@@ -375,7 +418,8 @@ typedef struct {
     uint8_t max_transfers; /**< TYP 23 MaxTransfers per journey. */
     uint8_t time_limit; /**< TYP 23 TimeLimit between legs, in 30 second steps. */
     bool has_mode_group; /**< TYP 23 bitmap bit 3: the four elements above. */
-    /** RouteCode, owner-defined, zero when unused (revisions 2 and 3 of both types). */
+    /** RouteCode, owner-defined, zero when unused (revisions 2 and 3 of TYP 22 and
+     *  23), or TYP 24's Route. */
     uint8_t route_code[5];
     bool has_route_code;
     /* TYP 22 revision 3 IdentityDocumentID: the ID the holder must carry. */
@@ -426,6 +470,192 @@ typedef struct {
     uint16_t strategy; /**< CapStrategyCode: the owner's capping rule set, 0 if unused. */
     ItsoCapAccumulator acc[ITSO_CAP_ACCUMULATORS];
 } ItsoCapping;
+
+/* The most of each optional group a TYP 24 dataset can count: the first four
+ * counts are two bits wide and the other four three (TS 1000-5 table 136), and
+ * NumberOfReservations is four (table 139). */
+#define ITSO_T24_SMALL_GROUP_MAX 3
+#define ITSO_T24_LARGE_GROUP_MAX 7
+#define ITSO_T24_LEGS_MAX        15
+
+/* DiscountCodeType. TS 1000-5 leaves it to the owner; RSPS3002 section 3.8.3,
+ * National Rail's profile for ITSO, defines these three. */
+#define ITSO_DISCOUNT_STATUS      1 /**< A railcard or status code: "YNG", "DIS". */
+#define ITSO_DISCOUNT_LENNON      2 /**< A discount code from the rail settlement system. */
+#define ITSO_DISCOUNT_ENTITLEMENT 3 /**< From a TYP 14 or 16 on the card: "XXXXX". */
+
+/** One Discounts group of a TYP 24 (table 136): a railcard or promotion applied. */
+typedef struct {
+    uint8_t code[5]; /**< DiscountCode: a railcard code, three characters on rail. */
+    uint8_t type; /**< DiscountCodeType, ITSO_DISCOUNT_* on rail. */
+    /** DiscountPercentage as stored: tenths of a percent by TS 1000-5, a whole
+     *  percent by RSPS3002, which rounds 33.3% to 33. See itso_discount_tenths(). */
+    uint16_t percentage;
+    ItsoMoney amount; /**< DiscountAmount, in the ticket's currency; 0 when a percentage. */
+} ItsoDiscount;
+
+/** True for a code type RSPS3002 defines, which marks a discount as rail's. */
+static inline bool itso_discount_is_rail(const ItsoDiscount* discount) {
+    return discount->type >= ITSO_DISCOUNT_STATUS && discount->type <= ITSO_DISCOUNT_ENTITLEMENT;
+}
+
+/** A discount's percentage in tenths of a percent, read by whose rules it follows. */
+static inline uint16_t itso_discount_tenths(const ItsoDiscount* discount) {
+    return itso_discount_is_rail(discount) ? (uint16_t)(discount->percentage * 10) :
+                                             discount->percentage;
+}
+
+/* TransferEntitlementType 2, as RSPS3002 defines it: break of journey allowed,
+ * with NumberOfTransfers at its 511 maximum. Its type 1, a cross-London
+ * marker, is withdrawn in favour of the Interchange group. */
+#define ITSO_TRANSFER_BREAK_OF_JOURNEY 2
+#define ITSO_TRANSFERS_UNLIMITED       511
+
+/** A TYP 24 Transfers group: transfers of one type, and how long they outlast it. */
+typedef struct {
+    uint8_t type; /**< TransferEntitlementType: owner-coded, ITSO_TRANSFER_* on rail. */
+    uint16_t count; /**< NumberOfTransfers, 9 bits. */
+    uint8_t hours; /**< ExtendedValidityPeriod: hours past the ticket's own end. */
+} ItsoTransfer;
+
+/** A TYP 24 Interchange group: a break of journey, out at one place and in at another. */
+typedef struct {
+    ItsoLocation exit; /**< OutOfLocationInterchangeExit. */
+    ItsoLocation entry; /**< OutOfLocationInterchangeEntry; may be the exit. */
+    uint8_t minutes; /**< PermittedInterchangeTime. */
+} ItsoInterchange;
+
+/* TimeBandOnOutOrReturn. Table 136 calls it a two-bit bitmap without assigning
+ * the bits; read the way BerthUpperLower's two bits are assigned in table AD3. */
+#define ITSO_T24_BAND_OUTWARD 0x01
+#define ITSO_T24_BAND_RETURN  0x02
+
+/** A TYP 24 Restriction1 group: a time band the ticket is, or is not, good in. */
+typedef struct {
+    uint8_t operator_code[2]; /**< OperatorApplicability, UD; zero for every operator. */
+    ItsoLocation location; /**< SpecificLocationApplicability. */
+    uint8_t portion; /**< TimeBandOnOutOrReturn, ITSO_T24_BAND_*. */
+    uint16_t start; /**< TimeBandStart, minutes past midnight. */
+    uint16_t end; /**< TimeBandEnd. */
+    /* The two flags are named "XOrY", and a set bit read as X, as TYP24Flags'
+     * own TestOrLive is defined (table 138): the table does not say. */
+    bool arrival; /**< TimeBandOnArriveOrDepart: set, the band is on arrival. */
+    bool include; /**< TimeBandIncludeExcludeFlag: set, valid within the band. */
+} ItsoTimeBand;
+
+/** A TYP 24 Restriction2 group: one train the ticket is, or is not, good on. */
+typedef struct {
+    ItsoLocation departs; /**< SpecificVehicleDepartureLocation: where it starts. */
+    uint8_t service[6]; /**< SpecificServiceId, UD. */
+    uint16_t time; /**< SpecificVehicleDepartureTime, minutes, from @c departs. */
+    /** RestrictionOrEasementFlag: set, a restriction - not valid on it; clear,
+     *  an easement - valid on it though it would not otherwise be. */
+    bool restriction;
+} ItsoServiceRule;
+
+/** A TYP 24 Route group: a place the journey must, or must not, pass. */
+typedef struct {
+    ItsoLocation location; /**< RoutingLocation. */
+    uint8_t via; /**< ViaNotVia, UD: 1 via, 0 not via, as the name orders them. */
+} ItsoRoutePoint;
+
+/* SeatDirection, EN1545 SeatPositionCode in two bits, in the order table AD3
+ * lists them - "Facing, Back or Airline - or null if not used" - and as
+ * RSPS3002 section 3.8.6 assigns them, 01, 10 and 11. */
+#define ITSO_SEAT_FACING  1
+#define ITSO_SEAT_BACK    2
+#define ITSO_SEAT_AIRLINE 3
+
+/** ReservationType: UD in table AD3, and defined this way by RSPS3002 3.8.6. */
+typedef enum {
+    ItsoPlaceSeat = 0,
+    ItsoPlaceBerth = 1,
+    ItsoPlaceBike = 2,
+    ItsoPlaceNone = 3, /**< A reservation with no place: coach and seat are null. */
+    ItsoPlaceWheelchair = 4,
+} ItsoPlaceType;
+
+/** One reserved leg, from a TYP 24's VGXRef 3 extension (table AD3). */
+typedef struct {
+    uint32_t departs; /**< LegDepartureDateTime, DTS. */
+    char service[7]; /**< LegServiceId: the retail service ID. */
+    ItsoLocation from;
+    ItsoLocation to;
+    char coach[3];
+    char seat[4];
+    /** AccommodationAttribute: on rail four characters from the National
+     *  Reservation System's reference data; see itso_seat_attribute_name(). */
+    char attribute[5];
+    uint8_t direction; /**< SeatDirection, ITSO_SEAT_*; 0 not used. */
+    uint8_t berth; /**< BerthUpperLower: 1 lower, 2 upper, 0 not specified. */
+    uint8_t type; /**< ReservationType, ItsoPlaceType on rail. */
+    bool together; /**< TogetherFlag: a sleeper cabin shared. */
+} ItsoReservedLeg;
+
+/**
+ * Everything a TYP 24 reserved journey holds beyond what ItsoProduct keeps of
+ * it: the rest of its dataset, its eight optional groups, the passenger, and
+ * the reservations its Value Group Extension carries (TS 1000-5 table 136 and
+ * clause 4.1.3).
+ *
+ * Decoded on demand by itso_parse_reservation() rather than held in every
+ * product: its locations alone are more than a product costs. The groups with
+ * locations in them are allocated to fit, so a ticket costs what it carries -
+ * release one with itso_reservation_free().
+ */
+typedef struct {
+    bool valid; /**< The fixed part of the dataset, through VendorLoc, was read. */
+    uint8_t ticket_number[4]; /**< TicketNumber, UD: the ticket's reference. */
+    uint8_t operator_code[2]; /**< OperatorSpecificity, UD; zero for any operator. */
+    uint8_t ftot[3]; /**< FaresTypeOfTicket, UD: the rail FTOT code. */
+    uint8_t id_doc[4]; /**< IdDocumentReference, UD: a railcard or photocard. */
+    uint8_t restriction_code[2]; /**< RestrictionCode, UD. */
+    uint8_t valid_days; /**< DaysTravelPermitted, ITSO_DOW_*. */
+    uint8_t restricted_days; /**< DaysRestrictionApplies, ITSO_DOW_*. */
+    uint8_t renew_days; /**< AutoRenewTimeAfterExpiry, days. */
+    /** AmountPaidCurrencyCode, which the discount amounts are taken to be in:
+     *  table 136 gives them none of their own. */
+    uint8_t valc;
+    ItsoLocation alt_from; /**< AlternativeOrigin. */
+    ItsoLocation alt_to; /**< AlternativeDestination. */
+    ItsoLocation vendor; /**< VendorLoc: where it was sold. */
+
+    /* IPEBitMap bit 2: the optional groups, in table 136's order, each counted
+     * as far as the dataset holds it. */
+    bool has_options;
+    /** A group's count ran past the end of the dataset. Nothing from there on
+     *  can be found, so the groups after it are left empty. */
+    bool overrun;
+    uint8_t associated[ITSO_T24_SMALL_GROUP_MAX]; /**< Directory entries. */
+    uint8_t associated_count;
+    ItsoDiscount discounts[ITSO_T24_SMALL_GROUP_MAX];
+    uint8_t discount_count;
+    char supplements[ITSO_T24_SMALL_GROUP_MAX][4]; /**< AssociatedSupplementCode. */
+    uint8_t supplement_count;
+    ItsoInterchange* interchanges;
+    uint8_t interchange_count;
+    ItsoTransfer transfers[ITSO_T24_SMALL_GROUP_MAX];
+    uint8_t transfer_count;
+    ItsoTimeBand* time_bands;
+    uint8_t time_band_count;
+    ItsoServiceRule* services;
+    uint8_t service_count;
+    ItsoRoutePoint* routes;
+    uint8_t route_count;
+
+    /* IPEBitMap bit 1: PaxDetail. Personal data, like an ID's name. */
+    bool has_passenger;
+    char passenger[21];
+    uint8_t gender; /**< EN1545 GenderCode: 1 male, 2 female. */
+
+    /* The VGXRef 3 extension (table AD3). */
+    bool has_extension;
+    uint32_t last_validation; /**< DTSOfLastValidation; 0 never. */
+    ItsoLocation last_validation_at;
+    char booking[9]; /**< BookingReference. */
+    ItsoReservedLeg* legs;
+    uint8_t leg_count;
+} ItsoReservation;
 
 /**
  * One record of a product's Value Record Data Group.
@@ -800,7 +1030,7 @@ typedef struct {
      * dropped since a file was written - so a screen that walks the array in
      * order shows the card before it shows the card's past.
      *
-     * Allocated to fit: 652 bytes a product, and the cap is 20 while a real card
+     * Allocated to fit: 672 bytes a product, and the cap is 20 while a real card
      * carries five or six, so a fixed array spent most of the card's memory on
      * slots nothing filled. The card owns it - see itso_card_init(). */
     ItsoProduct* products;
@@ -1392,6 +1622,25 @@ bool itso_parse_capping(
     uint8_t valc,
     ItsoCapping* out);
 
+/**
+ * Decode the parts of a TYP 24 reserved journey ItsoProduct does not keep -
+ * see ItsoReservation - out of the same product group itso_parse_ipe() takes.
+ *
+ * @param reservations the live value record's NumberOfReservations, which says
+ *                     how many legs the extension holds: ItsoTicketTerms keeps it.
+ * @return false when the dataset's fixed part did not read. @p out may still
+ *         own allocations either way: release it with itso_reservation_free().
+ */
+bool itso_parse_reservation(
+    const uint8_t* group,
+    size_t len,
+    uint8_t sector_size,
+    uint8_t reservations,
+    ItsoReservation* out);
+
+/** Release what an ItsoReservation owns, leaving it empty. */
+void itso_reservation_free(ItsoReservation* res);
+
 /** HalfDayOfWeek as a ValidOnDayCode-style day mask: a day counts if either period does. */
 uint8_t itso_half_days_mask(uint16_t half_days);
 
@@ -1421,6 +1670,54 @@ void itso_format_days(uint8_t days, char* out, size_t len);
  * day at all.
  */
 void itso_format_part_days(uint8_t days, uint16_t flags, char* out, size_t len);
+
+/**
+ * A National Rail railcard's name from its code, e.g. "Disabled Persons
+ * Railcard" for "DIS": the code a ticket's DiscountCode holds (RSPS3002
+ * 3.8.3). NULL for one the table does not know. Trailing spaces are ignored.
+ *
+ * @param card set when the discount is a card the holder must carry, and clear
+ *             for one that is not, such as GroupSave. May be NULL.
+ */
+const char* itso_railcard_name(const uint8_t* code, size_t len, bool* card);
+
+/** True for the DiscountCode a discount taken from an entitlement on the card
+ *  carries: "XXXXX" (RSPS3002 3.8.3). */
+bool itso_discount_from_card(const uint8_t* code, size_t len);
+
+/**
+ * The station a rail product's ProductRetailer names, when it names one.
+ *
+ * RSPS3002 sections 3.6.3, 3.7.3 and 3.8.3: rail sets bit 15 to say the
+ * element is not an OID but a retailing NLC - the first character in bits 10
+ * to 14 ('0'-'9' then 'A'-'V'), the last three digits in the low ten bits.
+ *
+ * @return false for a retailer that is an operator, leaving @p out empty.
+ */
+bool itso_retailer_location(uint16_t retailer, ItsoLocation* out);
+
+/**
+ * The station that sold @p product, when its ProductRetailer names one rather
+ * than an operator.
+ *
+ * Bit 15 alone cannot say so: TS 1000-2 table B2 lets 57344 to 65535 be a
+ * retailer's OID. The range below that, 32768 to 57343, is a gap no OID may
+ * use, and it holds every NLC whose first character is '0' to 'N' - every
+ * numeric NLC among them - so there the element can only be rail's. It is read
+ * that way on the three types RSPS3002 gives the form to, TYP 22, 23 and 24.
+ * Above the gap it is a retailer's OID on every one of them: an NLC starting
+ * 'O' to 'V' would land there too, but the station table names only numeric
+ * NLCs, so none of those would have a name to show.
+ *
+ * @return false for a product sold by an operator, leaving @p out empty.
+ */
+bool itso_product_sold_at(const ItsoProduct* product, ItsoLocation* out);
+
+/**
+ * What a reserved seat's AccommodationAttribute says about it, e.g. "Table" -
+ * NULL for a code the table does not know, which is then shown as it stands.
+ */
+const char* itso_seat_attribute_name(const char* code);
 
 /** Label for a product counter, e.g. "Rides left". NULL for ItsoCountNone. */
 const char* itso_count_name(ItsoCountKind kind);

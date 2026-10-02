@@ -7,6 +7,8 @@
  */
 #include "itso.h"
 
+#include <string.h>
+
 const char* itso_typ_name(uint8_t typ) {
     switch(typ) {
     case 0:
@@ -257,6 +259,106 @@ const char* itso_payment_name(uint8_t code) {
     }
 }
 
+/*
+ * National Rail railcard codes, the three characters a TYP 24's DiscountCode
+ * holds (RSPS3002 section 3.8.3) and the fares data's railcard file keys on.
+ * Not from the ITSO specification: compiled on 2026-10-02 from SAP Concur's
+ * published rail discount codes (github.com/SAP-docs/preview.developer.concur.com,
+ * travel-profile v2 reference), a list of fares-data railcards
+ * (gist.github.com/maier-stefan/9a5782bf03086e376e7fe5029ca32b27), and the
+ * RailUK Fares & Ticketing Guide, section 6, for DIC. A code none of them
+ * names is shown as the code.
+ */
+static const struct {
+    char code[4];
+    const char* name;
+    bool card; /**< A card to carry, rather than a group or online offer. */
+} itso_railcards[] = {
+    {"2TR", "Two Together Railcard", true},
+    {"C50", "Club 50", true},
+    {"CRC", "Cambrian Railcard", true},
+    {"CTD", "Cotswold Line Railcard", true},
+    {"DCG", "Devon & Cornwall Gold Card", true},
+    {"DCR", "Devon & Cornwall Railcard", true},
+    {"DIC", "Disabled Child Railcard", true},
+    {"DIS", "Disabled Persons Railcard", true},
+    {"DRD", "Dales Railcard", true},
+    {"EVC", "Esk Valley Railcard", true},
+    {"FAM", "Family & Friends Railcard", true},
+    {"GS3", "GroupSave", false},
+    {"HMF", "HM Forces Railcard", true},
+    {"HOW", "Heart of Wales Railcard", true},
+    {"HRC", "Highland Railcard", true},
+    {"JCP", "Jobcentre Plus Travel Discount Card", true},
+    {"NDC", "New Deal Photocard", true},
+    {"NDJ", "New Deal Photocard", true},
+    {"NEW", "Network Railcard", true},
+    {"NGC", "Annual Gold Card", true},
+    {"OC5", "Online Club 50", false},
+    {"PBR", "Pembrokeshire Railcard", true},
+    {"SRN", "Senior Railcard", true},
+    {"SRY", "Young Scot Railcard", true},
+    {"TST", "26-30 Railcard", true},
+    {"TSU", "16-17 Saver", true},
+    {"VLC", "Valleys Student Railcard", true},
+    {"VLS", "Valleys Senior Railcard", true},
+    {"YNG", "16-25 Railcard", true},
+};
+
+const char* itso_railcard_name(const uint8_t* code, size_t len, bool* card) {
+    while(len > 0 && (code[len - 1] == ' ' || code[len - 1] == 0)) {
+        len--;
+    }
+    if(len != 3) return NULL;
+    for(size_t i = 0; i < sizeof(itso_railcards) / sizeof(itso_railcards[0]); i++) {
+        if(memcmp(itso_railcards[i].code, code, 3) != 0) continue;
+        if(card) *card = itso_railcards[i].card;
+        return itso_railcards[i].name;
+    }
+    return NULL;
+}
+
+bool itso_discount_from_card(const uint8_t* code, size_t len) {
+    return len == 5 && memcmp(code, "XXXXX", 5) == 0;
+}
+
+/*
+ * AccommodationAttribute codes. RSPS3002 3.8.6 takes them from the National
+ * Reservation System's reference data, which RSPS5048 defines and which is not
+ * published. "SEAT" and "HTMS" (a hot meal at the seat) are the two codes RDG's
+ * Guide to Rail Retailing quotes from it; the rest are the plain abbreviations
+ * a code in that style would use, and are decoded only because they cannot
+ * reasonably mean anything else. Any other code is shown as the card has it.
+ */
+static const struct {
+    char code[5];
+    const char* name;
+} itso_seat_attributes[] = {
+    {"AISL", "Aisle"},
+    {"AIRL", "Airline style"},
+    {"BACK", "Facing backwards"},
+    {"BIKE", "Bicycle space"},
+    {"FACE", "Facing forwards"},
+    {"HTMS", "Hot meal at seat"},
+    {"LUGG", "Near luggage space"},
+    {"POWR", "Power socket"},
+    {"PRIO", "Priority seat"},
+    {"QUIE", "Quiet coach"},
+    {"SEAT", "Seat"},
+    {"TABL", "Table"},
+    {"TOIL", "Near toilet"},
+    {"WCHR", "Wheelchair space"},
+    {"WIND", "Window"},
+    {"WNDW", "Window"},
+};
+
+const char* itso_seat_attribute_name(const char* code) {
+    for(size_t i = 0; i < sizeof(itso_seat_attributes) / sizeof(itso_seat_attributes[0]); i++) {
+        if(strcmp(itso_seat_attributes[i].code, code) == 0) return itso_seat_attributes[i].name;
+    }
+    return NULL;
+}
+
 const char* itso_count_name(ItsoCountKind kind) {
     switch(kind) {
     case ItsoCountRides:
@@ -269,6 +371,8 @@ const char* itso_count_name(ItsoCountKind kind) {
         return "Points";
     case ItsoCountCoupons:
         return "Coupons left";
+    case ItsoCountJourneys:
+        return "Journeys left";
     default:
         return NULL;
     }

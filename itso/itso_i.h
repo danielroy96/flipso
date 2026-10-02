@@ -47,6 +47,25 @@ size_t itso_parse_location(
  */
 void itso_parse_loc_fixed(uint8_t def_type, const uint8_t* data, uint8_t slots, ItsoLocation* out);
 
+/**
+ * The halves of itso_parse_reservation(), apart so that each can be tested
+ * against buffers cut short on its own.
+ *
+ * @param data a TYP 24 IPE Data Group from its header; @p len bytes of it.
+ */
+bool itso_parse_reservation_dataset(const uint8_t* data, size_t len, ItsoReservation* out);
+
+/**
+ * @param vgx a VGXRef 3 Value Group Extension from its header; @p len bytes of it.
+ * @param count NumberOfReservations: the legs it holds.
+ * @return false when it is not a VGXRef 3 extension, or its fixed part did not read.
+ */
+bool itso_parse_reservation_vgx(
+    const uint8_t* vgx,
+    size_t len,
+    uint8_t count,
+    ItsoReservation* out);
+
 /** Decode a VALC nibble and a raw amount into an ItsoMoney. */
 void itso_decode_money(int32_t raw, uint8_t valc, ItsoMoney* out);
 

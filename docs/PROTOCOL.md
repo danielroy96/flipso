@@ -703,9 +703,9 @@ Beyond that:
 | TYP 5 — Charge to account 2 | Transactions used, allowance per charge period, last reset date, the per-transaction limit in the value record's currency, deposit with its VAT, priority, print flags |
 | TYP 14 — Entitlement (rev 1, 2) | Entitlement code, class, validity dates, locations and half-day validity, passback, ID flags; CPICC, HolderID and SecondaryHolderID, fare rounding rule, deposit with payment, VAT and refundability, PrintTicket |
 | TYP 16 — ITSO ID (rev 1, 2) | Holder name, date of birth, gender, companion and photo flags, entitlement, class, validity dates, locations; CPICC (the concessionary pass issuer), HolderID and SecondaryHolderID, language (annex A.24), HalfDayOfWeek, fare rounding rule, deposit and card deposit with payment, VAT and refundability, PrintTicket; the language is marked as not in use when IDFlags bit 3 sends a POST to another application |
-| TYP 22 — Period ticket (rev 1, 2, 3) | Validity start (DTS in rev 1–2, date and time in rev 3), from/to locations — or, when both are absent, that the area is the operator's to define — passes remaining, expiry of the active pass and of the unused stock, auto-renew and what it adds, stored-pass mode; days and AM/PM periods it is valid (ValidOnDayCode and TYP22Flags together), off-peak, transferable, end time, pass length and unit, party size, class, issue date, amount paid with payment and VAT, CPICC, validity and promotion codes, RouteCode, print flags; in rev 3, what a top-up does with expired passes (TreatmentOfExpiredSP) and the identity document to carry, as a number, text or another product on the card |
+| TYP 22 — Period ticket (rev 1, 2, 3) | Validity start (DTS in rev 1–2, date and time in rev 3), from/to locations — or, when both are absent, that the area is the operator's to define — passes remaining, expiry of the active pass and of the unused stock, auto-renew and what it adds, stored-pass mode; days and AM/PM periods it is valid (ValidOnDayCode and TYP22Flags together), off-peak, transferable, end time, pass length and unit, party size, class, issue date, amount paid with payment and VAT, CPICC, validity and promotion codes, RouteCode, print flags; in rev 3, what a top-up does with expired passes (TreatmentOfExpiredSP) and the identity document it is valid only with, as a number, text or another product on the card, at the top of its screen and on the Summary |
 | TYP 23 — Journey ticket (rev 1, 2, 3) | Origin, destination, rides remaining, transfers made, auto-renew, used flag, stored-ride expiry (rev 3); issue date, validity start (rev 3), end time, class, party size, amount paid with payment and VAT, photocard number, CPICC, validity and promotion codes, RouteCode, print flags, and the mode group — how rides are counted (rev 3 adds return pairs), transfer and time limits, ride value in its own currency code |
-| TYP 24 — Reservation | Journeys remaining only; the dataset and the reservations extension are not decoded ([handoff](handoff/typ24-reservation.md)) |
+| TYP 24 — Reserved journey (rev 2) | The railcard it is valid only with, and the railcard number, at the top and on the Summary; journeys remaining, transfers remaining (one total), part-used flag; single, return or either-way and journeys sold; outward and return portions, each a start and a period in days; origin, destination and their alternatives, Route, the station or operator that sold it; TYP24Flags (test ticket first, the others only when set, the clear ones under Technical); days it may be used and days restrictions apply, the operator it is limited to, class, party size, amount paid and how; the eight optional groups - associated products, out-of-station interchanges, break of journey and other transfers, valid times, specific trains, routing points, and under Technical the discount code, percentage and code type, and the supplement codes - the passenger's name and gender, ticket number, FTOT, restriction code and ID type; and the reserved legs of its VGXRef 3 extension: the kind of place, coach, seat or berth, which way it faces and where it is (below) |
 | TYP 25 — Voucher | Vouchers remaining and auto-renew only; the dataset is not decoded ([handoff](handoff/typ25-voucher.md)) |
 | TYP 26 — Tolling | Rides remaining and auto-renew only; the dataset is not decoded ([handoff](handoff/typ26-tolling.md)) |
 | TYP 27 — Period ticket (space saving) | Issue date, price paid and currency, adult or child, class, passback, off-peak and weekday restrictions, expiry time, where it is valid (fare code, fare value, or a LOC4 of origin, destination and via), last use, both event codes, photocard number, the expiry offset from the directory date, the InstanceID, and blocking by a zero Seal |
@@ -770,6 +770,129 @@ ordinary rail ticket:
   epoch sits in 2028, an unwritten record otherwise reads as the most recent one
   on the card. Skip them.
 
+### Reserved journeys
+
+TYP 24 (TS 1000-5 clause 2.11, table 136) is the rail ticket that carries what a
+paper one does. Only format revision 2 is defined, and it is the only one
+decoded. Its value group holds one record (table 139), and a Value Group
+Extension with VGXRef 3 (clause 4.1.3, table AD3) after it holds the booking
+reference, where and when it was last validated, and one 32-byte entry per
+reserved leg: departure, retail service ID, from, to, coach, seat, attribute,
+which way the seat faces, a berth and whether its cabin is shared, and the
+owner's reservation type. NumberOfReservations, in the value record, says how
+many there are, and is only read when IPEBitMap bit 3 is set.
+
+The product keeps only what its summary and list row need - the portions, the
+journeys sold, the flags, the price and the first discount code, 20 bytes more
+than before. The
+rest of the dataset, its optional groups and its reservations are decoded from
+the saved blocks when the product's screen is drawn, like the capping
+extension, into an `ItsoReservation` whose groups with locations in them are
+allocated to fit. So a ticket the card no longer lists (one only a saved file
+remembers) shows its terms but not its reservations.
+
+Table 136's offsets assume six-byte LOC1s - its note 1, "for UK Rail
+applications" - but a LOC1 is as long as its own length byte says, and an
+AtcoCode makes one eleven or more. So everything after Origin, in the dataset
+and in the extension, is found by walking the locations, never by offset; the
+host tests hold a ticket whose stops are AtcoCodes to that.
+
+The specification is inconsistent in a few places, and these are the readings
+Flipso takes:
+
+- **Optional group order.** The counts come Associated, Discounts, Supplements,
+  Transfers, Interchanges, but table 136 lists the Interchange group before
+  Transfers. The table is the layout - it is what gives each group its size -
+  so the groups are read Associated, Discounts, Supplement, Interchange,
+  Transfers, Restriction1, Restriction2, Route, then PaxDetail.
+- **TransfersRemaining** is 11 bits, though its comment allows "up to 3
+  transfer types each with up to 511 transfers", which would need 27. It is
+  read as one count and shown as the total.
+- **Restriction2**'s elements come to 13.5 bytes with a six-byte LOC1 and then
+  put an RFU "at 15.5", but its byte count says 14: eight bytes are read after
+  the location, the last four bits RFU.
+- **Table AD3**'s byte count gives 36 for the part before the reservations,
+  but its elements total 19 with a six-byte LOC1. VGXLength is the bound.
+- **AmountPaidCurrencyCode** is the high nibble of its byte and the payment
+  method the low, the reverse of TYP 22 and 23.
+- The clause numbering jumps from 2.11 to "2.12.1.1.1 IPEBitMap Definition";
+  that is a slip, and table 137 is TYP 24's bitmap.
+- Where the table leaves a coding undefined, Flipso reads it this way and says
+  so here: a period of validity counts days on from its start, so a period of
+  0 is the start day alone; TimeBandOnOutOrReturn's two bits are 01 outward and
+  10 return, as BerthUpperLower's are assigned; a flag named "XOrY" -
+  TimeBandOnArriveOrDepart, TimeBandIncludeExcludeFlag,
+  RestrictionOrEasementFlag - means X when set, as TestOrLive is defined;
+  ViaNotVia is 1 via and 0 not via; SeatDirection is 1 facing, 2 back, 3
+  airline, in the order the table lists them.
+
+#### National Rail's profile
+
+TS 1000-5 leaves much of TYP 24 to its owner. RDG's *ITSO in National Rail
+Specification* (RSPS3002, version 02-01, 2015, section 3.8) is what National
+Rail does with it, and where it gives a user-defined element a meaning Flipso
+uses it - TYP 24 being, in practice, rail's:
+
+- **DiscountCode** is the railcard the ticket was priced with, a three-letter
+  code such as `DIS`, or `XXXXX` when the discount came from an entitlement on
+  the card. A ticket is not valid without its railcard, so the railcard leads
+  the product screen and goes on the Summary as **Valid only with: Disabled
+  Persons Railcard**. The names come from a table in `itso/itso_names.c`,
+  compiled from SAP Concur's published rail discount codes, a list of
+  fares-data railcards, and the RailUK fares guide; an unknown code is shown as
+  **Discount:** and the code. A TYP 22's IdentityDocumentID is the same kind of
+  requirement, and uses the same line, in the same places.
+- **DiscountCodeType** is 1 a status code, 2 a discount code, 3 an entitlement
+  on the card. **DiscountPercentage** is a whole percent on rail ("33.3% = 33")
+  where TS 1000-5 has tenths; a discount with one of rail's three code types is
+  read rail's way.
+- **IdDocumentReference** is a five-digit number: the kind of ID (numbered in
+  RSPS3008, which is not published), then the last four digits of the
+  railcard's or photocard's number. It is shown as **Railcard number: Ends
+  1372**, and the kind under Technical.
+- **ProductRetailer** with bit 15 set is the retailing station's NLC, not an
+  operator: five bits of first character ('0'-'9', 'A'-'V') and ten of the
+  last three digits, shown as **Sold by:** and the station. TYP 22, 23 and 24
+  all carry it that way (sections 3.6.3, 3.7.3 and 3.8.3), but bit 15 alone
+  does not rule out an OID: TS 1000-2 table B2 gives 57344-65535 to service
+  operators and retailers, and TYP 22 and 23 are bus tickets as often as rail
+  ones. What does is the gap below that. Table B2's 32768-57343 "shall not be
+  used", and it holds every NLC whose first character is '0' to 'N' - all of
+  the numeric ones, which is every NLC the station table names. So a retailer
+  in the gap is a station, and one at 57344 or above stays an operator, on all
+  three types: an NLC from 'O' to 'V' would be misread as an OID, but it would
+  have no station name to show either. The owner would have been a weaker
+  test - the operator table has no notion of rail - and so would the
+  locations, which a TYP 22 need not carry.
+- **VendorLoc** is where a TYP 24 was sold, and on rail it is the same station
+  as the retailer. It is shown as **Sold at:** only when it differs.
+- **ReservationType** is 0 seat, 1 berth, 2 bike, 3 no place, 4 wheelchair;
+  **SeatDirection** 01 facing, 10 back, 11 airline. Coach and seat are
+  left-padded with spaces, which are dropped.
+- **TransferEntitlementType** 2 is a break of journey, with NumberOfTransfers
+  and TransfersRemaining at 511, which is shown as unlimited. The Interchange
+  group holds out-of-station interchanges, and a PermittedInterchangeTime of 0
+  leaves the time to the gates.
+- Both portions open at 00:01, which is shown as the day, not a time.
+- **AccommodationAttribute** is "4 characters from NRS data feed", the National
+  Reservation System's reference data (RSPS5048), which is not published. The
+  only codes from it in public view are `SEAT` and `HTMS`, quoted in RDG's
+  Guide to Rail Retailing. Flipso names those, and the codes that cannot
+  reasonably be read any other way - `WNDW` and `WIND` window, `AISL` aisle,
+  `TABL` table, `QUIE` quiet coach, `POWR` power socket and a few more - as
+  **Feature:**, and shows any other code as it stands. Treat the list as a
+  best reading until a real ticket, or RSPS5048, confirms it.
+- Rail uses neither the time bands, nor the train restrictions, nor the
+  routing points ("DO NOT USE"). They are decoded all the same.
+- The flags are mostly fixed on rail - duplicate, follow-on and warrant never
+  set, companion always clear - so the product screen shows only those that
+  are set, and Technical the rest.
+
+A dataset is at most 256 bytes, which a six-bit IPELength cannot exceed, and a
+group count that runs past its end stops the walk there: the groups before it
+are shown, and Technical says the rest ran past the dataset. No real TYP 24 has
+been seen; Demo 01 carries one built from the specification.
+
 ### The records behind the live one
 
 The records the live one displaces are the transactions before it, and Flipso
@@ -817,10 +940,13 @@ LocDefType 212 carries several stops and names the first, counting the rest.
 - CMD9 and CMD10 are decoded from the specification alone: no real card of
   either has been read. A CMD10's one-way transaction counter is not read (see
   above), so a retired CMD10 is not flagged as one.
-- TYP 24 (reservations), TYP 25 (vouchers) and TYP 26 (tolling) are reported
-  from their directory entry and value record alone; their datasets, and TYP
-  24's reservations extension (VGXRef 3), are not decoded. Briefs for each are
-  in [docs/handoff](handoff/README.md).
+- TYP 25 (vouchers) and TYP 26 (tolling) are reported from their directory
+  entry and value record alone; their datasets are not decoded. Briefs for
+  each are in [docs/handoff](handoff/README.md).
+- TYP 24 (reserved journeys) is decoded from the specification alone: no real
+  one has been read, and table 136 leaves several codings undefined - see
+  [Reserved journeys](#reserved-journeys). Its reservations and optional
+  groups are not shown for a ticket the card has dropped.
 - A revision 3 period ticket's IdentityDocumentID keeps its first 16 bytes of
   up to 31, and says how many more there are.
 - Space Saving IPEs: the TYP 29 subtypes are shown as numbers - SPT's appear to

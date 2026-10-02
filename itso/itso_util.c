@@ -561,3 +561,35 @@ uint16_t itso_type2_frozen_pages(const uint8_t lock[2]) {
     if(lock[0] & 0x04) pages |= 0xFC00; /* BL15-10: pages 10-15. */
     return pages;
 }
+
+bool itso_retailer_location(uint16_t retailer, ItsoLocation* out) {
+    memset(out, 0, sizeof(*out));
+    if(!(retailer & 0x8000)) return false;
+    const uint8_t first = (retailer >> 10) & 0x1F;
+    const uint16_t rest = retailer & 0x03FF;
+    if(rest > 999) return false;
+    /* Rebuilt as the LOC1 an NLC would be, so it renders and resolves to a
+     * station name the way every other rail location does. */
+    char digits[4];
+    snprintf(digits, sizeof(digits), "%03u", rest);
+    const uint8_t loc1[6] = {
+        203,
+        4,
+        (uint8_t)(first < 10 ? '0' + first : 'A' + first - 10),
+        digits[0],
+        digits[1],
+        digits[2]};
+    return itso_parse_location(loc1, sizeof(loc1), ItsoLocStructLoc1, out) == sizeof(loc1);
+}
+
+bool itso_product_sold_at(const ItsoProduct* product, ItsoLocation* out) {
+    memset(out, 0, sizeof(*out));
+    if(!product->has_retailer) return false;
+    if(product->typ != ItsoTypPeriodTicket && product->typ != ItsoTypJourneyTicket &&
+       product->typ != ItsoTypReservationTicket) {
+        return false;
+    }
+    /* TS 1000-2 table B2: the gap between 32767 and 57344 "shall not be used". */
+    if(product->retailer < 32768 || product->retailer >= 57344) return false;
+    return itso_retailer_location(product->retailer, out);
+}

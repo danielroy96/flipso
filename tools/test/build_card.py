@@ -12,8 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from itso_build import (  # noqa: E402
     Bits, bcd, charge_tail, date_stamp, dir_entry, dts, instance_and_seal, journey_tail,
     capping_vgx, isam, log_entry, loc1, loyalty_tail, loc2, luhn, nlc, pad, period_tail, purse_tail,
-    put_secrc, tt_record, tt_record_rev4, type2_page_memory, typ27_dataset, typ28_dataset,
-    typ29_dataset, value_group,
+    put_secrc, rail_retailer, reservation_tail, reservation_vgx, tt_record, tt_record_rev4, type2_page_memory,
+    typ24_dataset, typ27_dataset, typ28_dataset, typ29_dataset, value_group,
     value_record, directory, isrn, shell_dataset, split_sectors, type2_full_page_memory)
 
 # ---------------------------------------------------------------- Shell (FID 15)
@@ -153,6 +153,9 @@ ipe22.put(0, 6, 12)         # IPELength = 12 blocks = 48 bytes
 ipe22.put(6, 6, 0b010010)   # IPEBitMap: CPICC, RouteCode + locations
 ipe22.put(12, 4, 3)         # IPEFormatRevision = 3
 ipe22.buf[2] = 255
+# ProductRetailer: an OID with bit 15 set, from the retailer-only range above
+# TS 1000-2 table B2's gap. On a TYP 22 it is an operator, not a station.
+ipe22.putb(3, (57345).to_bytes(2, "big"))
 ipe22.put(40, 16, T22_TRANSFERABLE | T22_OFF_PEAK | T22_WD_AM | T22_WD_PM
           | T22_SAT_PM | T22_SUN_AM | T22_SUN_PM)   # TYP22Flags: Saturday afternoons only
 ipe22.put(58, 6, 20)        # PassbackTime: 20 minutes
@@ -182,6 +185,7 @@ ipe23.put(0, 6, 13)         # IPELength = 13 blocks = 52 bytes
 ipe23.put(6, 6, 0b001010)   # IPEBitMap: bit 3 mode group, bit 1 route and locations
 ipe23.put(12, 4, 2)         # IPEFormatRevision = 2
 ipe23.buf[2] = 255
+ipe23.putb(3, rail_retailer("5631").to_bytes(2, "big"))  # ProductRetailer: the station
 # The terms, in the shape an SWR single takes (table 31a).
 ipe23.put(58, 14, date_stamp(2026, 9, 14))  # IssueDate
 ipe23.put(72, 5, 25)        # ValidityCode
@@ -468,6 +472,7 @@ ipe22id = Bits(56)
 ipe22id.put(0, 6, 14)       # IPELength = 14 blocks = 56 bytes
 ipe22id.put(6, 6, 0b000110) # IPEBitMap: identity document, route and locations
 ipe22id.put(12, 4, 3)
+ipe22id.putb(3, rail_retailer("1072").to_bytes(2, "big"))  # ProductRetailer: the station
 ipe22id.put(40, 16, T22_ALL_DAYS | (1 << 5) | (1 << 7))
 ipe22id.buf[18] = 0xFF
 ipe22id.putb(29, b"00000")  # RouteCode
@@ -489,6 +494,65 @@ ipe22long.put(29 * 8, 3, 1) # IdentityDocumentIDType: HEX
 ipe22long.put(29 * 8 + 3, 5, 20)
 ipe22long.putb(30, bytes(range(1, 21)))
 period_rev3_long_id_group = bytes(ipe22long.buf) + instance_and_seal()
+
+# A TYP 24 reserved journey (TS 1000-5 clause 2.11), every part of it present:
+# the IIN, the passenger, one of each of the eight optional groups, and a value
+# group of one record whose VGXRef 3 extension holds two reserved legs. Every
+# location is a six-byte NLC LOC1, the length table 136's offsets assume.
+T24_DUPLICATE, T24_TEST, T24_PASSENGER, T24_SEAT, T24_AUTO_RENEW = 1 << 1, 1 << 5, 1 << 6, 1 << 7, 1 << 9
+RES_FROM = dts(2026, 10, 1, 0, 0)
+reservation = typ24_dataset(
+    loc1(203, nlc("1072")), loc1(203, nlc("1444")), loc1(203, nlc("5685")),
+    alt_origin=loc1(203, nlc("0035")),
+    flags=T24_DUPLICATE | T24_TEST | T24_PASSENGER | T24_SEAT | T24_AUTO_RENEW,
+    sold_as=1, ticket_number=123456, travel_class=1, renew_days=14, journeys=2,
+    out_days=1, rtn_days=30, operator=b"GR", ftot=b"SOR", adults=1, children=1,
+    # Rail's IdDocumentReference: ID type 1, the railcard's last four digits.
+    id_doc=(14567).to_bytes(4, "big"), route=b"00700", out_from=RES_FROM,
+    rtn_from=RES_FROM + 60 * 24 * 2, restriction=b"OP", days=0xF8, restricted_days=0x06,
+    mop=3, paid=8950, retailer=rail_retailer("5685"),
+    associated=[2],
+    # A 16-25 Railcard, a third off: rail rounds the percentage to 33 (RSPS3002).
+    discounts=[(b"YNG  ", 0, 33, 1)],
+    supplements=[b"SLP"],
+    interchanges=[(loc1(203, nlc("5148")), loc1(203, nlc("5143")), 45)],
+    transfers=[(2, 511, 0)],                     # break of journey, as many as liked
+    bands=[(b"\0\0", loc1(255, b"\0\0\0\0"), 1, 7 * 60, 9 * 60 + 30, False, False)],
+    services=[(loc1(203, nlc("1444")), b"GR1234", 18 * 60 + 30, True)],
+    routes=[(loc1(203, nlc("1555")), 1)],
+    passenger=(b"A N OTHER", 2), iin="633597", reservations=True)
+assert len(reservation.buf) == 168, len(reservation.buf)
+RES_LEGS = [
+    # Coach and seat left-padded with spaces, as rail writes them (RSPS3002).
+    (dts(2026, 10, 1, 8, 30), b"GR1234", loc1(203, nlc("1072")), loc1(203, nlc("1444")),
+     b" C", b" 42", b"WNDW", 1, 0, 0, False),
+    # A berth, and an attribute no table knows.
+    (dts(2026, 10, 8, 17, 0), b"GR4321", loc1(203, nlc("1444")), loc1(203, nlc("1072")),
+     b"D", b"17A", b"ZQXV", 3, 2, 1, True),
+]
+reservation_values = value_group([
+    value_record(2, 5, dts(2026, 10, 1, 8, 2),
+                 reservation_tail(1, transfers=511, part_used=True, reservations=2)),
+], format_rev=2, extension=reservation_vgx(
+    dts(2026, 10, 1, 8, 2), loc1(203, nlc("1072")), b"ABC12345", RES_LEGS))
+reservation_group = (pad(bytes(reservation.buf) + instance_and_seal(), 192) +
+                     reservation_values + instance_and_seal())
+
+# The same shape on a bus operator's ticket, whose stops are AtcoCodes
+# (LocDefType 211): eleven-byte LOC1s where table 136 assumes six, so nothing
+# after Origin is where the table puts it. An interchange and a reserved leg
+# carry them too, so every walk is exercised.
+ATCO_A, ATCO_B = loc1(211, b"450016879"), loc1(211, b"450030236")
+reservation_atco = typ24_dataset(
+    ATCO_A, ATCO_B, ATCO_B, journeys=1, out_days=0, out_from=RES_FROM, mop=1, paid=420,
+    interchanges=[(ATCO_B, ATCO_A, 0)], routes=[(ATCO_A, 0)], reservations=True)
+reservation_atco_group = (
+    pad(bytes(reservation_atco.buf) + instance_and_seal(), 192) +
+    value_group([value_record(1, 1, RES_FROM, reservation_tail(1, reservations=1))],
+                format_rev=2, extension=reservation_vgx(
+                    0, loc1(255, b""), b"", [(dts(2026, 10, 1, 9, 5), b"X84", ATCO_A, ATCO_B,
+                                               b"", b"12", b"", 0, 0, 3, False)])) +
+    instance_and_seal())
 
 # ---------------------------------------------------------------- Cyclic log (FID 1)
 log = bytearray(192)
@@ -879,6 +943,8 @@ with open("card_data.h", "w") as f:
     f.write(carr("journey_rev3_group", journey_rev3_group))
     f.write(carr("period_rev3_id_group", period_rev3_id_group))
     f.write(carr("period_rev3_long_id_group", period_rev3_long_id_group))
+    f.write(carr("reservation_group", reservation_group))
+    f.write(carr("reservation_atco_group", reservation_atco_group))
     f.write("\n/* Synthetic ITSO CMD2 card. */\n")
     f.write(f'#define EXPECT_CMD2_ISRN "{CMD2_ISRN}"\n')
     f.write(carr("cmd2_shell", cmd2_shell.buf))

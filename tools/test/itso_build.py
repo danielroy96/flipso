@@ -604,6 +604,174 @@ def voucher_tail(remaining, auto_renew=False):
     return bytes(t.buf)
 
 
+def reservation_tail(remaining, transfers=0, part_used=False, reservations=0):
+    """TYP 24 table 139 from record byte 10: JourneysRemaining, an 11-bit
+    TransfersRemaining, JourneyPartUsedFlag, and NumberOfReservations - how
+    many legs the VGXRef 3 extension holds."""
+    t = Bits(5)
+    t.put(0, 8, remaining)
+    t.put(8, 11, transfers)
+    t.put(19, 1, 1 if part_used else 0)
+    t.put(20, 4, reservations)
+    return bytes(t.buf)
+
+
+# ------------------------------------------------- TYP 24 (TS 1000-5 clause 2.11)
+def typ24_dataset(origin, destination, vendor, *, alt_origin=None, alt_destination=None,
+                  flags=0, sold_as=0, ticket_number=0, travel_class=0, renew_days=0,
+                  journeys=1, out_days=0, rtn_days=0, operator=b"\0\0", ftot=b"\0\0\0",
+                  adults=1, children=0, concessions=0, id_doc=b"\0\0\0\0", route=b"\0" * 5,
+                  out_from=0, rtn_from=0, restriction=b"\0\0", days=0xFE, restricted_days=0,
+                  valc=0, mop=0, paid=0, remove_date=255, retailer=0, associated=(),
+                  discounts=(), supplements=(), interchanges=(), transfers=(), bands=(),
+                  services=(), routes=(), options=None, passenger=None, iin=None,
+                  reservations=False):
+    """A TYP 24 IPE Data Group, revision 2 (TS 1000-5 table 136).
+
+    Locations are LOC1 bytes, which is why the dataset has no fixed offsets
+    past Origin: table 136's assume six-byte LOC1s, and anything else moves
+    every element after it. The optional groups are lists, in table 136's order
+    - the Interchange group before Transfers, though their counts are the other
+    way round - and set bitmap bit 2 when any is given (or @p options says so):
+
+      discounts     (code, amount, tenths, code_type)
+      supplements   three ASCII bytes
+      interchanges  (exit_loc1, entry_loc1, minutes)
+      transfers     (type, count, hours)
+      bands         (operator, loc1, portion, start, end, arrival, include)
+      services      (loc1, service_id, departs, restriction)
+      routes        (loc1, via)
+
+    @p passenger is (name, gender), bitmap bit 1; @p iin six digits, bit 0;
+    @p reservations sets bit 3, which says the value record counts reservations.
+    """
+    has_options = options if options is not None else any(
+        (associated, discounts, supplements, interchanges, transfers, bands, services, routes))
+    head = Bits(30)
+    head.put(16, 8, remove_date)
+    head.put(24, 16, retailer)                 # ProductRetailer
+    head.put(40, 12, flags)                    # TYP24Flags, table 138
+    head.put(52, 4, sold_as)                   # ProductTypeEncoding
+    head.put(56, 32, ticket_number)            # TicketNumber
+    for off, width, n in ((88, 2, len(associated)), (90, 2, len(discounts)),
+                          (92, 2, len(supplements)), (94, 2, len(transfers)),
+                          (96, 3, len(interchanges)), (99, 3, len(bands)),
+                          (102, 3, len(services)), (105, 3, len(routes))):
+        assert n < (1 << width), f"{n} does not fit a {width}-bit count"
+        head.put(off, width, n)
+    head.put(108, 3, travel_class)
+    head.put(111, 6, renew_days)               # AutoRenewTimeAfterExpiry
+    head.put(117, 9, journeys)                 # NumberOfJourneysSold
+    head.put(126, 9, out_days)                 # OutPortionPeriodOfValidity
+    head.put(135, 9, rtn_days)                 # RtnPortionPeriodOfValidity
+    head.putb(18, operator)                    # OperatorSpecificity
+    head.putb(20, ftot)                        # FaresTypeOfTicket
+    head.buf[23], head.buf[24], head.buf[25] = adults, children, concessions
+    head.putb(26, id_doc)                      # IdDocumentReference
+
+    null = loc1(255, b"\0\0\0\0")              # six bytes, as rail's LOC1s are
+    terms = Bits(20)
+    terms.putb(0, route)
+    terms.put(40, 24, out_from)                # OutPortionValidFrom
+    terms.put(64, 24, rtn_from)                # RtnPortionValidFrom
+    terms.putb(11, restriction)                # RestrictionCode
+    terms.buf[13] = days                       # DaysTravelPermitted
+    terms.buf[14] = restricted_days            # DaysRestrictionApplies
+    terms.put(120, 4, valc)                    # AmountPaidCurrencyCode: the high nibble
+    terms.put(124, 4, mop)                     # AmountPaidMOP
+    terms.put(128, 32, paid)
+    body = (bytes(head.buf) + origin + destination + (alt_origin or null) +
+            (alt_destination or null) + bytes(terms.buf) + vendor)
+
+    if has_options:
+        body += bytes(associated)
+        for code, amount, tenths, code_type in discounts:
+            g = Bits(11)
+            g.putb(0, code)
+            g.put(40, 32, amount)
+            g.put(72, 10, tenths)
+            g.put(82, 5, code_type)
+            body += bytes(g.buf)
+        for code in supplements:
+            body += code
+        for exit_loc, entry_loc, minutes in interchanges:
+            body += exit_loc + entry_loc + bytes([minutes << 2])
+        for kind, count, hours in transfers:
+            g = Bits(3)
+            g.put(0, 8, kind)
+            g.put(8, 9, count)
+            g.put(18, 6, hours)
+            body += bytes(g.buf)
+        for op, loc, portion, start, end, arrival, include in bands:
+            g = Bits(4)
+            g.put(0, 2, portion)
+            g.put(2, 11, start)
+            g.put(13, 11, end)
+            g.put(24, 1, 1 if arrival else 0)
+            g.put(25, 1, 1 if include else 0)
+            body += op + loc + bytes(g.buf)
+        for loc, service, departs, restricted in services:
+            g = Bits(8)
+            g.putb(0, service)
+            g.put(48, 11, departs)
+            g.put(59, 1, 1 if restricted else 0)
+            body += loc + bytes(g.buf)
+        for loc, via in routes:
+            body += loc + bytes([via << 6])
+    if passenger is not None:
+        name, gender = passenger
+        body += pad(name, 20) + bytes([gender << 6])
+
+    total = len(body) + (3 if iin else 0)    # body starts with the two header bytes
+    blocks = (total + 3) // 4
+    assert blocks < 64, f"{blocks * 4} bytes is past the 252 an IPELength can say"
+    d = Bits(blocks * 4)
+    d.put(0, 6, blocks)
+    d.put(6, 6, (1 if iin else 0) | (2 if passenger is not None else 0) |
+          (4 if has_options else 0) | (8 if reservations else 0))
+    d.put(12, 4, 2)                            # IPEFormatRevision: 2, the only one
+    d.putb(2, body[2:])
+    if iin:
+        d.putb(blocks * 4 - 3, bcd(iin))       # after the padding (TS 1000-2 6.2.6)
+    return d
+
+
+def rail_retailer(nlc):
+    """ProductRetailer as rail sets it (RSPS3002 3.8.3): bit 15 set, then the
+    NLC's first character ('0'-'9', 'A'-'V') in five bits and its last three
+    digits in ten."""
+    first = nlc[0]
+    code = ord(first) - ord("0") if first.isdigit() else ord(first) - ord("A") + 10
+    return 0x8000 | (code << 10) | int(nlc[1:])
+
+
+def reservation_vgx(last_validation, location, booking, legs):
+    """The VGXRef 3 extension a TYP 24's value group carries (TS 1000-5 table AD3).
+
+    @p legs: (departs, service, from_loc1, to_loc1, coach, seat, attribute,
+    direction, berth, type, together), the strings ASCII and padded with spaces.
+    """
+    body = Bits(3)
+    body.put(0, 24, last_validation)           # DTSOfLastValidation
+    data = bytes(2) + bytes(body.buf) + location + booking.ljust(8)
+    for (departs, service, src, dst, coach, seat, attribute,
+         direction, berth, kind, together) in legs:
+        when = Bits(3)
+        when.put(0, 24, departs)
+        flags = Bits(2)
+        flags.put(0, 2, direction)             # SeatDirection
+        flags.put(2, 2, berth)                 # BerthUpperLower
+        flags.put(4, 4, kind)                  # ReservationType
+        flags.put(8, 1, 1 if together else 0)  # TogetherFlag
+        data += (bytes(when.buf) + service.ljust(6) + src + dst + coach.ljust(2) +
+                 seat.ljust(3) + attribute.ljust(4) + bytes(flags.buf))
+    data = pad(data, (len(data) + 3) // 4 * 4)
+    head = Bits(2)
+    head.put(0, 6, len(data) // 4)             # VGXLength, in blocks, header and all
+    head.put(8, 8, 3)                          # VGXRef 3
+    return bytes(head.buf) + data[2:]
+
+
 def count_tail(remaining):
     """TYP 24 table 139, and any other type whose tail is a bare count."""
     t = Bits(5)
