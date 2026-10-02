@@ -22,6 +22,9 @@
 /** Append a date, and optionally its time, in the user's configured formats. */
 void flipso_cat_datetime_struct(FuriString* out, const DateTime* dt, bool with_time);
 
+/** Append a Unix time as a date, and optionally its time, in the user's formats. */
+void flipso_cat_timestamp(FuriString* out, uint32_t timestamp, bool with_time);
+
 /** "Label: Yes" or "Label: No". */
 void flipso_cat_flag(FuriString* out, const char* indent, const char* label, bool value);
 
@@ -73,6 +76,22 @@ void flipso_cat_location(
     const char* indent,
     const char* label,
     const ItsoLocation* location);
+
+/**
+ * What a ticket is not valid without - a railcard, or an ID - as one line,
+ * "Valid only with: Disabled Persons Railcard", or "Discount: ABC" for a
+ * discount that is not a card. Nothing when the ticket names none.
+ *
+ * The same line in the summary and at the top of the product screen, for every
+ * type that can name one: a TYP 24's first DiscountCode, which on rail is the
+ * railcard it was priced with (RSPS3002 3.8.3), and a revision 3 TYP 22's
+ * IdentityDocumentID (TS 1000-5 table 3.27).
+ */
+void flipso_cat_valid_only_with(
+    FuriString* out,
+    const ItsoCard* card,
+    const ItsoProduct* product,
+    const char* indent);
 
 /** "Label: Pay as you go", naming the product in directory entry @p dir_index. */
 void flipso_cat_product_ref(

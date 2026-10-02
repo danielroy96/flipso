@@ -24,7 +24,7 @@ void flipso_cat_datetime_struct(FuriString* out, const DateTime* dt, bool with_t
 }
 
 /** Split a Unix timestamp and append it in the user's configured date format. */
-static void flipso_cat_timestamp(FuriString* out, uint32_t timestamp, bool with_time) {
+void flipso_cat_timestamp(FuriString* out, uint32_t timestamp, bool with_time) {
     DateTime dt;
     datetime_timestamp_to_datetime(timestamp, &dt);
     flipso_cat_datetime_struct(out, &dt, with_time);
@@ -302,6 +302,77 @@ bool flipso_product_listed(const ItsoProduct* product) {
            product->typ != ItsoTypEntitlement;
 }
 
+void flipso_cat_valid_only_with(
+    FuriString* out,
+    const ItsoCard* card,
+    const ItsoProduct* product,
+    const char* indent) {
+    const ItsoTicketTerms* t = &product->ticket;
+
+    if(product->typ == ItsoTypReservationTicket && t->has_discount) {
+        bool is_card = true;
+        const char* name = itso_railcard_name(t->discount, sizeof(t->discount), &is_card);
+        if(itso_discount_from_card(t->discount, sizeof(t->discount))) {
+            /* Priced against an entitlement on this card, which the screen
+             * names as part of the ticket. */
+            furi_string_cat_printf(out, "%sValid only with: A railcard on this card\n", indent);
+        } else if(name && is_card) {
+            furi_string_cat_printf(out, "%sValid only with: %s\n", indent, name);
+        } else if(name) {
+            furi_string_cat_printf(out, "%sDiscount: %s\n", indent, name);
+        } else {
+            /* A code the table does not know: shown as the card has it. */
+            size_t len = sizeof(t->discount);
+            while(len > 0 && (t->discount[len - 1] == ' ' || t->discount[len - 1] == 0)) {
+                len--;
+            }
+            furi_string_cat_printf(out, "%sDiscount: ", indent);
+            for(size_t i = 0; i < len; i++) {
+                const uint8_t c = t->discount[i];
+                if(c >= 0x20 && c <= 0x7E) {
+                    furi_string_push_back(out, (char)c);
+                } else {
+                    furi_string_cat_printf(out, "%02X", c);
+                }
+            }
+            if(len == 0) furi_string_cat(out, "None");
+            furi_string_push_back(out, '\n');
+        }
+        return;
+    }
+
+    if(product->typ != ItsoTypPeriodTicket || !t->has_id_doc) return;
+    const uint8_t kept = t->id_doc_len < ITSO_ID_DOC_LEN ? t->id_doc_len : ITSO_ID_DOC_LEN;
+    /* Another product on the card, such as a railcard: named. A pointer to
+     * entry 0 names nothing, and falls through to its bytes. */
+    if(t->id_doc_type == ItsoIdDocEntry && t->id_doc[0]) {
+        flipso_cat_product_ref(out, card, indent, "Valid only with", t->id_doc[0]);
+        return;
+    }
+    furi_string_cat_printf(out, "%sValid only with: ID ", indent);
+    if(t->id_doc_type == ItsoIdDocHex && kept <= 4) {
+        uint32_t number = 0;
+        for(uint8_t i = 0; i < kept; i++) {
+            number = (number << 8) | t->id_doc[i];
+        }
+        furi_string_cat_printf(out, "%lu", (unsigned long)number);
+    } else if(t->id_doc_type == ItsoIdDocAscii) {
+        for(uint8_t i = 0; i < kept && t->id_doc[i]; i++) {
+            const uint8_t c = t->id_doc[i];
+            furi_string_push_back(out, c >= 0x20 && c <= 0x7E ? (char)c : '?');
+        }
+    } else {
+        /* A number too long for 32 bits, or a coding that is RFU: its bytes. */
+        for(uint8_t i = 0; i < kept; i++) {
+            furi_string_cat_printf(out, "%02X", t->id_doc[i]);
+        }
+    }
+    if(t->id_doc_len > kept) {
+        furi_string_cat_printf(out, " and %u more bytes", t->id_doc_len - kept);
+    }
+    furi_string_push_back(out, '\n');
+}
+
 /** "Label: Pay as you go", naming the product in directory entry @p dir_index. */
 void flipso_cat_product_ref(
     FuriString* out,
@@ -379,7 +450,11 @@ static bool flipso_summary_states(const ItsoProduct* product, uint32_t now) {
 }
 
 /** One product as a summary line: "Period ticket: Until 31/03/2027". */
-static void flipso_summary_product(FuriString* out, const ItsoProduct* product, uint32_t now) {
+static void flipso_summary_product(
+    FuriString* out,
+    const ItsoCard* card,
+    const ItsoProduct* product,
+    uint32_t now) {
     const char* title = flipso_product_title(product);
 
     if(product->status == ItsoProductStatusBlocked) {
@@ -414,6 +489,11 @@ static void flipso_summary_product(FuriString* out, const ItsoProduct* product, 
     const char* count_label = itso_count_name(product->count_kind);
     if(count_label) {
         furi_string_cat_printf(out, "  %s: %lu\n", count_label, (unsigned long)product->count);
+    }
+    /* What it is not valid without, which no other line here would say. */
+    flipso_cat_valid_only_with(out, card, product, "  ");
+    if(product->typ == ItsoTypReservationTicket && (product->ticket.flags & ITSO_T24_TEST)) {
+        flipso_cat_flag(out, "  ", "Test ticket", true);
     }
     if(product->balance.valid || product->has_entitlement) {
         if(product->expiry && itso_date_expired(product->expiry, now)) {
@@ -466,7 +546,7 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
             past++;
             continue;
         }
-        flipso_summary_product(out, product, f->now);
+        flipso_summary_product(out, card, product, f->now);
         shown++;
     }
     if(card->dir_valid && !shown) furi_string_cat(out, "Products: None\n");

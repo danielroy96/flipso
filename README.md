@@ -11,8 +11,8 @@ tickets, passes, entitlements, journeys and pay-as-you-go balance stored on it.
 ![Build](https://img.shields.io/badge/build-ufbt-informational?style=flat-square)
 
 <p>
-  <img src="docs/screenshots/menu.png" width="250" alt="Card menu: Summary, Card, Pay as you go £24.15">
-  <img src="docs/screenshots/payg.png" width="250" alt="Pay as you go: balance £24.15, operator Southeastern">
+  <img src="docs/screenshots/home.png" width="250" alt="Home screen: Hold a card or ticket against the back">
+  <img src="docs/screenshots/menu.png" width="250" alt="Card screen: Summary, Card, Pay as you go">
   <img src="docs/screenshots/journeys.png" width="250" alt="Last tap: inside ticket gates, product and time">
 </p>
 
@@ -69,6 +69,8 @@ data.
 - A **Flipper Zero**
 - [**ufbt**](https://github.com/flipperdevices/flipperzero-ufbt)
 - A UK ITSO smartcard
+
+Flipso works on both official Flipper Zero and Momentum firmwares.
 
 ### Build and install
 

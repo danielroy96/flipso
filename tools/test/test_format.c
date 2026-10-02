@@ -398,6 +398,14 @@ static void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
     furi_string_reset(text);
     flipso_format_product(text, f, card, &card->products[3]);
     check("a rail RouteCode reads as text", shows(text, "Route code: 00000\n"));
+    check(
+        "a rail journey ticket was sold by a station",
+        shows(text, "Operator: South Western Railway\nSold by: Station 5631\n"));
+    furi_string_reset(text);
+    flipso_format_product(text, f, card, &card->products[2]);
+    check(
+        "a period ticket's retailer-only OID is still an operator",
+        shows(text, "Sold by: Unknown (57345)\n"));
     furi_string_reset(text);
     flipso_format_product(text, f, card, &card->products[4]);
     check("loyalty has its owner's data", shows(text, "Owner data: 4660\n"));
@@ -491,7 +499,8 @@ static void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
         false,
         period_rev3_id_group,
         sizeof(period_rev3_id_group));
-    check("a period ticket's identity document", shows(text, "Carry with it: ID RC123456\n"));
+    check("a period ticket's identity document", shows(text, "Valid only with: ID RC123456\n"));
+    check("a rail period ticket was sold by a station", shows(text, "Sold by: London Waterloo\n"));
     check(
         "what a top-up does with expired passes", shows(text, "Expired passes at top-up: Kept\n"));
 
@@ -506,7 +515,7 @@ static void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
         sizeof(period_rev3_long_id_group));
     check(
         "a long identity number is hex, with what is not kept counted",
-        shows(text, "Carry with it: ID 0102030405060708090A0B0C0D0E0F10 and 4 more bytes\n"));
+        shows(text, "Valid only with: ID 0102030405060708090A0B0C0D0E0F10 and 4 more bytes\n"));
     check(
         "a revision 3 period ticket's default",
         shows(text, "Expired passes at top-up: Written off\n"));
@@ -515,6 +524,173 @@ static void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
 }
 
 /* Wording pinned against the demo card that carries every product type. */
+/**
+ * A TYP 24 reserved journey's screen: the ticket's terms from ItsoProduct, the
+ * rest of its dataset and its reserved legs decoded on demand from the capture,
+ * and its codes under Technical.
+ */
+static void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
+    FuriString* text = furi_string_alloc();
+    static ItsoProduct p;
+
+    /* The product decodes from the capture, as the screen's on-demand part
+     * does: directory slot 9, where the synthetic card has nothing. */
+    FlipsoCapture* capture = flipso_capture_alloc();
+    flipso_capture_add(
+        capture, FlipsoBlockProduct, 9, reservation_group, sizeof(reservation_group));
+    FlipsoFormat with = *f;
+    with.capture = capture;
+    product_screen(
+        text,
+        &with,
+        card,
+        &p,
+        ItsoTypReservationTicket,
+        true,
+        reservation_group,
+        sizeof(reservation_group));
+    printf("\n%s\n", furi_string_get_cstr(text));
+
+    check(
+        "a test ticket says so first",
+        strncmp(furi_string_get_cstr(text), "\e#", 2) == 0 &&
+            strstr(strchr(furi_string_get_cstr(text), '\n') + 1, "Test ticket: Yes\n") ==
+                strchr(furi_string_get_cstr(text), '\n') + 1);
+    check(
+        "the railcard it is not valid without, next, with the number it carries",
+        shows(
+            text,
+            "Journeys left: 1\nValid only with: 16-25 Railcard\n  Railcard number: Ends 4567\n"
+            "Operator: "));
+    check("a rail retailer is the station that sold it", shows(text, "Sold by: Station 5685\n"));
+    check("a return of two journeys", shows(text, "Sold as: Return\n  Journeys sold: 2\n"));
+    check(
+        "the outward portion and its last day",
+        shows(text, "Outward: 01/10/2026 to 02/10/2026\n"));
+    check("the return portion", shows(text, "Return: 03/10/2026 to 02/11/2026\n"));
+    check("its own start is not a second Valid from", !shows(text, "Valid from: "));
+    check(
+        "only the flags that are set, above Technical",
+        shows(
+            text,
+            "Duplicate: Yes\nSeat reservation required: Yes\nPart-way through a leg: Yes\n") &&
+            !shows(text, "Replacement: Yes"));
+    check(
+        "the clear ones under Technical",
+        technical(
+            text,
+            "Replacement: No\nFollow-on renewal: No\nUnfulfilled warrant: No\nCarnet: No\n"
+            "Companion allowed: No\n") &&
+            !technical(text, "Test ticket: No"));
+    check("rail's 511 transfers are unlimited", shows(text, "Transfers left: Unlimited\n"));
+    check("the renewal window", shows(text, "Renews until: 14 days after expiry\n"));
+    check("the passenger", shows(text, "Passenger: A N OTHER\n  Gender: Female\n"));
+    check("the alternative origin", shows(text, "Or from: Station 0035\n"));
+    check("a null alternative is left out", !shows(text, "Or to: "));
+    check("the days", shows(text, "Valid days: Mon-Fri\n  Public holidays: No\n"));
+    check("the restricted days", shows(text, "Restrictions apply: Sat Sun\n"));
+    check("one operator only", shows(text, "Only on operator: GR\n"));
+    check("the railcard IPE it was sold with", shows(text, "Part of this ticket: ITSO ID\n"));
+    check("a via", shows(text, "Via: Station 1555\n"));
+    check(
+        "an out-of-station interchange",
+        shows(
+            text,
+            "Change stations at: London Bridge\n  Continue from: Station 5143\n"
+            "  Time allowed: 45 min\n"));
+    check("break of journey, transfer type 2", shows(text, "Break of journey: Allowed\n"));
+    check(
+        "valid times, and the journeys they apply to",
+        shows(text, "Valid times: Outside 07:00-09:30\n  Applies to: Outward departures\n"));
+    check(
+        "a train it may not be used on",
+        shows(text, "Not valid on train: GR1234\n  From: Station 1444\n  Departs: 18:30\n"));
+    check(
+        "where it was sold, the retailer's station, is not said twice", !shows(text, "Sold at: "));
+    check(
+        "the price",
+        shows(
+            text,
+            "Price paid: \xC2\xA3"
+            "89.50\n  Paid by: "));
+    check(
+        "the reservations under their own heading",
+        shows(
+            text,
+            "\e#Reservations\nBooking reference: ABC12345\nLast validated: 01/10/2026 08:02\n"
+            "  At: London Waterloo\n"));
+    check(
+        "the outward leg, its padding gone and its window named",
+        shows(
+            text,
+            "Leg 1: 01/10/2026 08:30\n  Train: GR1234\n  From: London Waterloo\n"
+            "  To: Station 1444\n  Reserved: Seat\n  Coach: C\n  Seat: 42\n"
+            "  Facing: Forwards\n  Feature: Window\n"));
+    check(
+        "the return leg, a shared upper berth with an attribute as it stands",
+        shows(
+            text,
+            "  Reserved: Sleeper berth\n  Coach: D\n  Berth: 17A\n  Facing: Airline style\n"
+            "  Feature: ZQXV\n  Bunk: Upper\n  Cabin shared: Yes\n"));
+    check("every leg read", !shows(text, "Not read: "));
+    check(
+        "no type code left on the screen",
+        !shows(text, "Type code: 0") && !shows(text, "Type code: 1\n"));
+    check("the ticket number, under Technical", technical(text, "Ticket number: 123456\n"));
+    check("the fare type", technical(text, "Fare type: SOR\nRestriction code: OP\nID type: 1\n"));
+    check(
+        "the discount's code, rail's whole percent and its type under Technical",
+        technical(
+            text,
+            "Discount code: YNG\n  Percentage: 33%\n  Code type: Status code\nSupplement: SLP\n"));
+    check("the route code", technical(text, "Route code: 00700\n"));
+
+    /* Sold through another station's retailer: VendorLoc says where. */
+    p.retailer = 0x8000 | (1 << 10) | 72;
+    furi_string_reset(text);
+    flipso_format_product(text, &with, card, &p);
+    check(
+        "where it was sold, when the retailer is elsewhere",
+        shows(text, "Sold at: Station 5685\n"));
+
+    /* A discount that is not a card to carry has no railcard to number. */
+    memcpy(p.ticket.discount, "GS3  ", sizeof(p.ticket.discount));
+    furi_string_reset(text);
+    flipso_format_product(text, &with, card, &p);
+    check(
+        "a GroupSave's ID is not a railcard",
+        shows(text, "Discount: GroupSave\nRailcard or photocard number: Ends 4567\n"));
+    house_style("reservation, GroupSave", text);
+
+    /* Read again without its capture: what ItsoProduct holds still shows, and
+     * nothing claims the reservations are there. */
+    product_screen(
+        text,
+        f,
+        card,
+        &p,
+        ItsoTypReservationTicket,
+        true,
+        reservation_group,
+        sizeof(reservation_group));
+    check("without the capture, the portions still show", shows(text, "Outward: 01/10/2026"));
+    check("and the legs cannot be read", shows(text, "Reservations: Could not be read\n"));
+
+    /* The summary carries the test flag under the product's line. */
+    ItsoCard one = *card;
+    one.products = &p;
+    one.product_count = 1;
+    furi_string_reset(text);
+    flipso_format_summary(text, f, &one);
+    check(
+        "the summary says journeys, the railcard, and that it is a test",
+        shows(text, "  Journeys left: 1\n  Valid only with: 16-25 Railcard\n  Test ticket: Yes\n"));
+    house_style("reservation summary", text);
+
+    flipso_capture_free(capture);
+    furi_string_free(text);
+}
+
 static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     FuriString* text = furi_string_alloc();
 
@@ -571,7 +747,8 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         flipso_format_product(text, f, card, p);
         if(p->typ == ItsoTypPeriodTicket) {
             check(
-                "a period ticket names the ID it needs", shows(text, "Carry with it: ITSO ID\n"));
+                "a period ticket names the ID it needs, near the top",
+                shows(text, "Valid only with: ITSO ID\nOperator: "));
             check(
                 "its passback is an instruction to the gate, under Technical",
                 technical(text, "Passback timeout: Set by the operator\n"));
@@ -595,6 +772,34 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         flipso_format_product(text, &after, card, &card->products[i]);
         check("an expired product is not called active", shows(text, "Status: Expired\n"));
         check("and says so once", !shows(text, "Status: Active\n"));
+        /* A revision 2 TYP 24, chained across five sectors, its two seats in
+         * the VGXRef 3 extension after its one value record. */
+        check(
+            "the reserved journey is a return with a day out and a month back",
+            shows(
+                text,
+                "Sold as: Return\n  Journeys sold: 2\nOutward: 13/03/2026 only\n"
+                "Return: 13/03/2026 to 12/04/2026\n"));
+        check(
+            "it is valid only with its railcard, near the top",
+            shows(
+                text,
+                "Journeys left: 0\nValid only with: Disabled Persons Railcard\n"
+                "  Railcard number: Ends 1372\nOperator: Southeastern\nSold by: Station 5230\n"));
+        check(
+            "it names the railcard product it goes with",
+            shows(text, "Part of this ticket: Entitlement\n"));
+        check(
+            "and its two seats, under their own heading",
+            shows(text, "\e#Reservations\nBooking reference: 8KQ2TX4M\n") &&
+                shows(text, "Leg 1: 13/03/2026 10:00\n") &&
+                shows(text, "Leg 2: 20/03/2026 14:00\n") && !shows(text, "Not read: "));
+        check(
+            "with the discount's code and percentage under Technical",
+            technical(text, "Discount code: DIS\n  Percentage: 33%\n"));
+        check(
+            "and its seats' positions in words",
+            shows(text, "  Feature: Table\n") && shows(text, "  Feature: Aisle\n"));
     }
     furi_string_free(text);
 }
@@ -647,6 +852,7 @@ int main(int argc, char** argv) {
         shows(text, "Photo on card: Yes") || shows(text, "Photo on card: No"));
     check("an entitlement's area is not a journey's end", !shows(text, "\nFrom: "));
     spec_review(&f, &card);
+    reservation_screen(&f, &card);
 
     furi_string_reset(text);
     flipso_format_card(text, &f, &card, NULL, false, 0);

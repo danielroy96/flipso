@@ -139,7 +139,17 @@ static void operators(const ItsoCard* card) {
         char role[64];
         snprintf(role, sizeof(role), "product %u owner (%s)", i + 1, flipso_product_title(p));
         oid_line(role, p->oid);
-        if(p->has_retailer) {
+        ItsoLocation station;
+        if(itso_product_sold_at(p, &station)) {
+            /* Not an OID at all: rail's NLC, which the gap is free to hold. */
+            snprintf(role, sizeof(role), "product %u retailer", i + 1);
+            printf(
+                "  %-40s %5u  %-28s station NLC %s\n",
+                role,
+                p->retailer,
+                "(the station that sold it)",
+                station.code);
+        } else if(p->has_retailer) {
             snprintf(role, sizeof(role), "product %u retailer", i + 1);
             oid_line(role, p->retailer);
         }
