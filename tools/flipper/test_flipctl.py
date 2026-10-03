@@ -362,27 +362,74 @@ def main():
         check("the marker is recognised across two reads", flipctl.launch_app(f, "flipso"))
     flipctl.APP_STARTUP_LIMIT_S = limit
 
-    # Screenshots: the frame is column-major, 8 rows to a byte, and an amber
+    # Screenshots: the frame is column-major, 8 rows to a byte, and a qflipper
     # capture is what the README's screenshots are, so it needs no recolouring.
+    import os
     import tempfile
     import zlib
+    def decode(data):
+        """A truecolour PNG's rows, unfiltered."""
+        pos, idat = 8, b""
+        width = int.from_bytes(data[16:20], "big")
+        while pos < len(data):
+            n = int.from_bytes(data[pos:pos + 4], "big")
+            if data[pos + 4:pos + 8] == b"IDAT":
+                idat += data[pos + 8:pos + 8 + n]
+            pos += 12 + n
+        raw = zlib.decompress(idat)
+        stride = 1 + width * 3
+        rows, prev = [], bytearray(stride - 1)
+        for y in range(len(raw) // stride):
+            f, line = raw[y * stride], bytearray(raw[y * stride + 1:(y + 1) * stride])
+            for i in range(len(line)):
+                a = line[i - 3] if i >= 3 else 0
+                b, c = prev[i], (prev[i - 3] if i >= 3 else 0)
+                if f == 1:
+                    line[i] = (line[i] + a) & 255
+                elif f == 2:
+                    line[i] = (line[i] + b) & 255
+                elif f == 3:
+                    line[i] = (line[i] + ((a + b) >> 1)) & 255
+                elif f == 4:
+                    p = a + b - c
+                    pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                    line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+            rows.append(line)
+            prev = line
+        return rows
+
     frame = bytearray(128 * 64 // 8)
     frame[0] = 0x01                     # (0, 0) lit
     frame[128 + 5] = 0x02               # (5, 9) lit
     def pixels(palette):
         with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
             flipctl.write_png(bytes(frame), tmp.name, scale=1, palette=palette)
-            data = open(tmp.name, "rb").read()
-        idat = data[data.index(b"IDAT") + 4:data.index(b"IEND") - 8]
-        raw = zlib.decompress(idat)
-        stride = 1 + 128 * 3
-        return lambda x, y: tuple(raw[y * stride + 1 + x * 3:y * stride + 4 + x * 3])
-    px = pixels("amber")
-    check("an amber shot draws lit pixels black", px(0, 0) == (0, 0, 0) and px(5, 9) == (0, 0, 0))
-    check("on the Flipper's amber", px(1, 0) == (0xFF, 0x82, 0x00))
+            rows = decode(open(tmp.name, "rb").read())
+        return lambda x, y: tuple(rows[y][x * 3:x * 3 + 3])
+    px = pixels("qflipper")
+    check("a qFlipper shot draws lit pixels black", px(0, 0) == (0, 0, 0) and px(5, 9) == (0, 0, 0))
+    check("on qFlipper's orange", px(1, 0) == (0xFE, 0x8A, 0x2C))
     px = pixels("screen")
     check("the plain shot is the grey it always was",
           px(0, 0) == (0x11, 0x11, 0x11) and px(1, 0) == (0xE8, 0xE8, 0xE8))
+
+    # The proof that it is qFlipper's file and not just its colours: a
+    # screenshot qFlipper itself saved - Demo 01's menu, kept here because the
+    # README's own are now taken with flipctl - decoded back to the screen's
+    # bitmap and written again, comes out the same to the byte.
+    shot = os.path.join(os.path.dirname(os.path.abspath(__file__)), "testdata",
+                        "qflipper_menu.png")
+    data = open(shot, "rb").read()
+    rows = decode(data)
+    menu = bytearray(128 * 64 // 8)
+    for y in range(64):
+        for x in range(128):
+            if rows[y * 4][x * 12] == 0:
+                menu[(y // 8) * 128 + x] |= 1 << (y % 8)
+    with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+        flipctl.write_png(bytes(menu), tmp.name, scale=4, palette="qflipper")
+        check("a qFlipper shot is the file qFlipper saves, to the byte",
+              open(tmp.name, "rb").read() == data)
 
     print("FAILED" if failures else "All flipctl recovery tests passed")
     return 1 if failures else 0

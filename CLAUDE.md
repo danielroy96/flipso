@@ -73,7 +73,7 @@ lookup/               flipso_operators.c operator id -> name, built-in table plu
                       over the SD card table; flipso_naptan.c NaptanCode/AtcoCode ->
                       bus stop name, same design
 itso/                 the decoder: pure C, no firmware dependency, host-testable
-scenes/               one file per scene; every scrolling text screen is the one
+scenes/               one file per scene; every paged text screen is the one
                       text scene (flipso_open_text()); list in flipso_scene_config.h
 views/                custom views (the icon list, the text panel, the scan screen),
                       and the hand-drawn £ and € the fonts lack
@@ -118,9 +118,9 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-86.4 KB of the 274 KB file as of 2026-10-02 - 10.4 KB of that came with the
-TYP 24 decoder, its screen and the rail railcard and seat tables, 76 KB before
-- because the 79 KB station table and the 26 KB of demo cards live in
+88.6 KB of the 280 KB file as of 2026-10-03 - 2.2 KB of that came with the
+paged screens and the title icons, 10.4 KB with the TYP 24 decoder, its screen and the rail
+railcard and seat tables, 76 KB before - because the 79 KB station table and the 26 KB of demo cards live in
 `.fapassets`, which the firmware unpacks to the SD card and never maps.
 Anything added as a `const` array *does* reach RAM. With the app at its idle
 scan screen 34.1 KB of the heap is free (measured 2026-10-02). A card on
@@ -132,7 +132,8 @@ seven products and twelve journeys, cost 8.9 KB over idle at 620 bytes a
 product; Demo 01's product list leaves 23.8 KB free. A TYP 24's screen decodes
 the rest of its dataset and its reservations as it is drawn, about 750 bytes
 for Demo 01's two legs, once for the whole screen and freed before the text is
-shown. With it open, 21.0 KB is free.
+shown. With it open, 19.1 KB is free (measured 2026-10-03, after the paged
+screens and their icons; 21.0 KB before).
 
 The text panel keeps its string at the size of the longest screen shown until
 the app exits, so a screen's text is not given back when it closes: back at
@@ -166,6 +167,16 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
   one (`TS 1000-2 table 11`). Do not narrate what the code already says.
 - New sources must be listed explicitly in `application.fam`. A bare `*.c` is
   matched recursively and would pull in the host-side tests under `tools/`.
+- Every text screen is a set of pages, turned with Left and Right, each opening
+  with its title (`flipso_cat_page()`), drawn as the icon list's header - icon
+  and text centred over a rule - and every title has an icon that says what
+  the page holds; draw a new one in `tools/icons/build_icons.py` rather than
+  borrow one that does not fit. The first page answers whether the
+  ticket is good, for where, until when and with what, and Technical is
+  always last. A new line goes on the page that answers the question it
+  answers, never on a page of its own. `test_format.c` pins each kind's page
+  order and checks every screen's pages are titled, non-empty and end with
+  Technical.
 - Screen text is built in `format/flipso_format*.c`, never in a scene, and follows the
   house style its header sets out: `Label: Value` with the value capitalised, a
   detail indented two spaces and itself labelled, money as `£`. `test_format.c`
@@ -252,6 +263,12 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
   was held, `ready` never ran, and the device sat at the desktop while
   everything downstream assumed it was ready. Use `; echo $?`, or
   `set -o pipefail`.
+- **A launch late in a long session can fail with `Preload failed ...: Not
+  enough memory`** (seen 2026-10-03, after about 90 minutes and dozens of
+  screenshot sessions). The loader needs room for the whole .fap's RAM image at
+  once, and a heap fragmented by RPC sessions may not have it; `deploy` reboots
+  and retries, and the fresh boot loads it. It is the cost of the app's size,
+  not a startup bug - but every KB added makes it likelier.
 - **Pushing a file while Flipso is up can run the Flipper out of memory.**
   Measured on 2026-09-28: straight after a deploy, with 13 KB of heap free,
   two 2 KB `flipctl push`es and the firmware rebooted with "out of memory" on

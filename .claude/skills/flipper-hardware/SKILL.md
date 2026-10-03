@@ -241,13 +241,21 @@ this is the only way to see what the app actually looks like, so use it freely
 when changing a screen, and show the user before-and-after when a layout
 changes.
 
-- `--amber` draws black on the Flipper's own #FF8200, which is what the
-  README's screenshots in `docs/screenshots/` are. Take those with it and
-  `--scale 4`, straight to their final path, and capture them from the demo
-  cards so no real card number or name is in them. No recolouring step is
-  needed. They are also the Apps Catalog's screenshots, and its bundler
-  rejects anything but 4x or 8x, and turns every pixel lighter than
-  (15,15,15) transparent - so the grey default palette would publish blank.
+- `--qflipper` writes the file qFlipper's *Save Screenshot* writes, to the
+  byte: black on qFlipper's #FE8A2C, 4x, and encoded as Qt's PNG writer does
+  (libpng's default filters and compression, a 72 dpi pHYs chunk). The
+  README's screenshots in `docs/screenshots/` are qFlipper's, so take any
+  replacement with this, straight to its final path, from the demo cards so no
+  real card number or name is in it. `test_flipctl.py` re-encodes
+  `tools/flipper/testdata/qflipper_menu.png`, a file qFlipper saved, and checks
+  it comes out identical, and on
+  2026-10-03 live captures of the Demo 01 menu and product list matched
+  qFlipper's files byte for byte. The old `--amber` (#FF8200, plain zlib) was
+  not qFlipper's output - it is now an alias for `--qflipper`. They are also
+  the Apps Catalog's screenshots (`tools/catalog/manifest.yml` lists them), and
+  its bundler rejects anything but 4x or 8x, and turns every pixel lighter
+  than (15,15,15) transparent - so the grey default palette would publish
+  blank.
 - Write screenshots to the scratchpad directory, not into the repo, unless
   they are the README's.
 - Straight after a `deploy`, the first capture can show the pre-launch frame.

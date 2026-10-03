@@ -68,6 +68,18 @@ void flipso_cat_heading(FuriString* out, FlipsoIcon icon, const char* title) {
     }
 }
 
+void flipso_cat_page(FuriString* out, FlipsoIcon icon, const char* title) {
+    if(!furi_string_empty(out)) furi_string_push_back(out, FLIPSO_TEXT_PAGE);
+    flipso_cat_heading(out, icon, title);
+}
+
+void flipso_cat_page_from(FuriString* out, FlipsoIcon icon, const char* title, FuriString* body) {
+    if(furi_string_empty(body)) return;
+    flipso_cat_page(out, icon, title);
+    furi_string_cat(out, body);
+    furi_string_reset(body);
+}
+
 /** "Label: Yes" or "Label: No". */
 void flipso_cat_flag(FuriString* out, const char* indent, const char* label, bool value) {
     furi_string_cat_printf(out, "%s%s: %s\n", indent, label, value ? "Yes" : "No");
@@ -399,8 +411,7 @@ void flipso_cat_product_name(FuriString* out, const ItsoCard* card, uint8_t dir_
     furi_string_cat_printf(out, "Directory slot %u", dir_index);
 }
 
-/** The newest tap the card itself holds, or NULL. */
-static const ItsoTap* flipso_latest_tap(const ItsoCard* card) {
+const ItsoTap* flipso_latest_tap(const ItsoCard* card) {
     /* Newest first, so the first on-card record is the newest. */
     for(uint8_t i = 0; i < card->tap_count; i++) {
         if(card->taps[i].on_card) return &card->taps[i];
@@ -503,7 +514,7 @@ static void flipso_summary_product(
 }
 
 void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
-    flipso_cat_heading(out, FlipsoIconInfo, "Summary");
+    flipso_cat_page(out, FlipsoIconInfo, "Summary");
 
     /* The card's own state first: a blocked or expired card is the headline,
      * whatever its products say. */
@@ -539,6 +550,13 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
         }
     }
 
+    /* The first page is the card and the holder: their money and who they are
+     * to the scheme, whatever state those are in. The tickets follow on pages
+     * of their own, the ones that can be used today ahead of the ones that
+     * cannot, so a glance finds what will get the holder through the gate. A
+     * paper ticket is its one product, and keeps it on the first page. */
+    FuriString* tickets = furi_string_alloc();
+    FuriString* lapsed = furi_string_alloc();
     uint8_t shown = 0, past = 0;
     for(uint8_t i = 0; i < card->product_count; i++) {
         const ItsoProduct* product = &card->products[i];
@@ -546,7 +564,12 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
             past++;
             continue;
         }
-        flipso_summary_product(out, card, product, f->now);
+        FuriString* to = out;
+        if(!card->shell_compact && product->typ != ItsoTypStoredTravelRights &&
+           product->typ != ItsoTypId && product->typ != ItsoTypEntitlement) {
+            to = flipso_summary_states(product, f->now) ? lapsed : tickets;
+        }
+        flipso_summary_product(to, card, product, f->now);
         shown++;
     }
     if(card->dir_valid && !shown) furi_string_cat(out, "Products: None\n");
@@ -576,9 +599,15 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
         flipso_cat_datetime_line(out, "  ", "When", tap->dts);
     }
 
+    /* What the card has dropped is no use today either, so it is counted with
+     * the tickets that are blocked or out of date. */
     if(past) {
-        furi_string_cat_printf(out, "Products off card: %u\n", past);
+        furi_string_cat_printf(lapsed, "Products off card: %u\n", past);
     }
+    flipso_cat_page_from(out, FlipsoIconProducts, "Tickets", tickets);
+    flipso_cat_page_from(out, FlipsoIconInvalid, "Not valid", lapsed);
+    furi_string_free(tickets);
+    furi_string_free(lapsed);
 }
 
 void flipso_format_about(
@@ -587,23 +616,21 @@ void flipso_format_about(
     uint32_t stations,
     uint32_t stops,
     uint16_t operators) {
-    flipso_cat_heading(out, FlipsoIconInfo, "Flipso");
+    flipso_cat_page(out, FlipsoIconInfo, "Flipso");
     if(version) furi_string_cat_printf(out, "Version: %s\n", version);
     furi_string_cat(
         out,
         "Reads UK ITSO travel smartcards, such as bus passes, rail smartcards "
         "and concessionary passes.\n");
 
-    furi_string_cat(out, "\n");
-    flipso_cat_heading(out, FlipsoIconNone, "Station names");
+    flipso_cat_page(out, FlipsoIconTrain, "Station names");
     if(stations) {
         furi_string_cat_printf(out, "Installed: %lu stations\n", (unsigned long)stations);
     } else {
         furi_string_cat(out, "Installed: No\nReinstall Flipso to restore them.\n");
     }
 
-    furi_string_cat(out, "\n");
-    flipso_cat_heading(out, FlipsoIconNone, "Bus stop names");
+    flipso_cat_page(out, FlipsoIconBus, "Bus stop names");
     if(stops) {
         furi_string_cat_printf(out, "Installed: %lu stops\n", (unsigned long)stops);
     } else {
@@ -615,8 +642,7 @@ void flipso_format_about(
             "its data folder.\n");
     }
 
-    furi_string_cat(out, "\n");
-    flipso_cat_heading(out, FlipsoIconNone, "Operator names");
+    flipso_cat_page(out, FlipsoIconOperator, "Operator names");
     if(operators) {
         furi_string_cat_printf(out, "Your operators file: %u names\n", operators);
     } else {
@@ -626,8 +652,7 @@ void flipso_format_about(
             "Add names to apps_data/flipso/operators.txt on the SD card.\n");
     }
 
-    furi_string_cat(out, "\n");
-    flipso_cat_heading(out, FlipsoIconSave, "Saved cards");
+    flipso_cat_page(out, FlipsoIconSave, "Saved cards");
     furi_string_cat(out, "Folder: apps_data/flipso/cards\n");
     furi_string_cat(
         out, "Saved cards can contain personal information. Take care sharing them.\n");

@@ -19,6 +19,155 @@ static bool flipso_same_date(uint16_t a, uint16_t b) {
     return a == b || (itso_date_open(a) && itso_date_open(b));
 }
 
+/**
+ * What a product is to the holder, which decides the pages its screen has and
+ * what goes on each: a season ticket's first question is not a purse's.
+ */
+typedef enum {
+    FlipsoKindPeriod, /**< TYP 22: a season, rail point to point or zonal. */
+    FlipsoKindJourney, /**< TYP 23: rides, a carnet, a single or return. */
+    FlipsoKindReserved, /**< TYP 24: a rail ticket with its trains and seats. */
+    FlipsoKindPaper, /**< TYP 27, 28 and 29: the Space Saving paper tickets. */
+    FlipsoKindPurse, /**< TYP 2: pay as you go. */
+    FlipsoKindAccount, /**< TYP 4 and 5: charge to account. */
+    FlipsoKindId, /**< TYP 16: the ITSO ID. */
+    FlipsoKindEntitlement, /**< TYP 14. */
+    FlipsoKindOther, /**< Loyalty, vouchers, tolls and anything else. */
+} FlipsoKind;
+
+static FlipsoKind flipso_kind(const ItsoProduct* product) {
+    switch(product->typ) {
+    case ItsoTypPeriodTicket:
+        return FlipsoKindPeriod;
+    case ItsoTypJourneyTicket:
+        return FlipsoKindJourney;
+    case ItsoTypReservationTicket:
+        return FlipsoKindReserved;
+    case ItsoTypStoredTravelRights:
+        return FlipsoKindPurse;
+    case ItsoTypChargeToAccount1:
+    case ItsoTypChargeToAccount2:
+        return FlipsoKindAccount;
+    case ItsoTypId:
+        return FlipsoKindId;
+    case ItsoTypEntitlement:
+        return FlipsoKindEntitlement;
+    default:
+        return product->space_saving ? FlipsoKindPaper : FlipsoKindOther;
+    }
+}
+
+/**
+ * Where a line belongs, as the blocks that write them see it. Each kind maps
+ * these onto the pages it has (flipso_pages_alloc()), so a block need not know
+ * which product it is writing for: a reserved journey's travellers go on its
+ * Details page and a season ticket's on its Conditions page, and a purse with
+ * no page for terms puts any it has on Top-up.
+ */
+typedef enum {
+    FlipsoSlotMain, /**< The first page: is it good, where, until when, whose. */
+    FlipsoSlotLeft, /**< What is left of it, and how it renews. */
+    FlipsoSlotRules, /**< When it can be used: days, times, trains. */
+    FlipsoSlotWho, /**< Who it covers: travellers, class, photocard. */
+    FlipsoSlotRoute, /**< A reserved journey's permitted route. */
+    FlipsoSlotDetails, /**< A reserved journey's terms beyond those. */
+    FlipsoSlotPurchase, /**< Who sold it, when, and for how much. */
+    FlipsoSlotHistory, /**< What has happened to it on the card. */
+    FlipsoSlotOffCard, /**< What only the saved file remembers. */
+    FlipsoSlotCount,
+} FlipsoSlot;
+
+/* The pages a product's screen can have, in the order a kind lists them in
+ * flipso_pages_emit(); the slots above all land on one of these. */
+typedef enum {
+    FlipsoPageMain,
+    FlipsoPageLeft,
+    FlipsoPageRules,
+    FlipsoPageRoute,
+    FlipsoPageDetails,
+    FlipsoPagePurchase,
+    FlipsoPageHistory,
+    FlipsoPageOffCard,
+    FlipsoPageCount,
+} FlipsoPage;
+
+typedef struct {
+    FlipsoKind kind;
+    FuriString* page[FlipsoPageCount];
+    FlipsoPage slot[FlipsoSlotCount];
+} FlipsoPages;
+
+static FlipsoPages* flipso_pages_alloc(const ItsoProduct* product) {
+    FlipsoPages* p = malloc(sizeof(FlipsoPages));
+    p->kind = flipso_kind(product);
+    for(size_t i = 0; i < FlipsoPageCount; i++) {
+        p->page[i] = furi_string_alloc();
+    }
+
+    /* What most tickets have: a page for what is left, one for the terms -
+     * where who it covers sits with when it can be used - and one for the
+     * purchase. A route and the details beyond it are a reserved journey's
+     * alone, so anything else's would be terms. */
+    FlipsoPage* s = p->slot;
+    s[FlipsoSlotMain] = FlipsoPageMain;
+    s[FlipsoSlotLeft] = FlipsoPageLeft;
+    s[FlipsoSlotRules] = FlipsoPageRules;
+    s[FlipsoSlotWho] = FlipsoPageRules;
+    s[FlipsoSlotRoute] = FlipsoPageRules;
+    s[FlipsoSlotDetails] = FlipsoPageRules;
+    s[FlipsoSlotPurchase] = FlipsoPagePurchase;
+    s[FlipsoSlotHistory] = FlipsoPageHistory;
+    s[FlipsoSlotOffCard] = FlipsoPageOffCard;
+
+    switch(p->kind) {
+    case FlipsoKindReserved:
+        /* Its trains and times are the restrictions; how many journeys are
+         * left, and who it covers, are details of the ticket. */
+        s[FlipsoSlotLeft] = FlipsoPageDetails;
+        s[FlipsoSlotWho] = FlipsoPageDetails;
+        s[FlipsoSlotRoute] = FlipsoPageRoute;
+        s[FlipsoSlotDetails] = FlipsoPageDetails;
+        break;
+    case FlipsoKindPurse:
+        /* Who sold a purse is part of whose money it is, so it follows the
+         * operator on the first page; its terms are its top-up and limits. */
+        s[FlipsoSlotRules] = s[FlipsoSlotWho] = s[FlipsoSlotRoute] = s[FlipsoSlotDetails] =
+            FlipsoPageLeft;
+        s[FlipsoSlotPurchase] = FlipsoPageMain;
+        break;
+    case FlipsoKindAccount:
+        s[FlipsoSlotRules] = s[FlipsoSlotWho] = s[FlipsoSlotRoute] = s[FlipsoSlotDetails] =
+            s[FlipsoSlotPurchase] = FlipsoPageLeft;
+        break;
+    case FlipsoKindId:
+        /* What the ID says about the holder is a page of its own; the terms
+         * the card was issued on, and who issued it, are the other. */
+        s[FlipsoSlotPurchase] = FlipsoPageRules;
+        break;
+    case FlipsoKindEntitlement:
+        s[FlipsoSlotLeft] = s[FlipsoSlotPurchase] = FlipsoPageRules;
+        break;
+    case FlipsoKindOther:
+        s[FlipsoSlotPurchase] = FlipsoPageMain;
+        break;
+    default:
+        break;
+    }
+    return p;
+}
+
+static void flipso_pages_free(FlipsoPages* p) {
+    for(size_t i = 0; i < FlipsoPageCount; i++) {
+        furi_string_free(p->page[i]);
+    }
+    free(p);
+}
+
+/** The page a slot's lines go on. */
+static FuriString* flipso_pages_at(FlipsoPages* p, FlipsoSlot slot) {
+    return p->page[p->slot[slot]];
+}
+
 /** A deposit, how it was paid, and whether it comes back. */
 static void flipso_cat_deposit(
     FuriString* out,
@@ -63,22 +212,26 @@ static void flipso_cat_code_bytes(FuriString* out, const uint8_t* data, size_t l
 
 /**
  * The terms a period or journey ticket was sold on: the days and times it is
- * good for, how long each pass lasts, who it covers, and what was paid for it.
+ * good for, how long each pass lasts and how it renews, and who it covers.
+ * What was paid for it is flipso_cat_ticket_price()'s, for the Purchase page.
  */
-static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product) {
+static void flipso_cat_ticket_terms(FlipsoPages* p, const ItsoProduct* product) {
     const ItsoTicketTerms* t = &product->ticket;
     if(!t->valid) return;
+    FuriString* rules = flipso_pages_at(p, FlipsoSlotRules);
+    FuriString* left = flipso_pages_at(p, FlipsoSlotLeft);
+    FuriString* who = flipso_pages_at(p, FlipsoSlotWho);
 
     char text[48];
     /* Day filters are a period ticket's; a journey ticket has none to show. */
     if(product->typ == ItsoTypPeriodTicket) {
         uint8_t days = itso_ticket_days(t->valid_days, t->flags);
         itso_format_days(days, text, sizeof(text));
-        furi_string_cat_printf(out, "Valid days: %s\n", text);
+        furi_string_cat_printf(rules, "Valid days: %s\n", text);
         itso_format_part_days(days, t->flags, text, sizeof(text));
-        if(text[0]) furi_string_cat_printf(out, "  Part days: %s\n", text);
-        flipso_cat_flag(out, "  ", "Public holidays", days & ITSO_DOW_SPECIAL);
-        if(t->flags & ITSO_T22_OFF_PEAK_ONLY) flipso_cat_flag(out, "", "Off-peak only", true);
+        if(text[0]) furi_string_cat_printf(rules, "  Part days: %s\n", text);
+        flipso_cat_flag(rules, "  ", "Public holidays", days & ITSO_DOW_SPECIAL);
+        if(t->flags & ITSO_T22_OFF_PEAK_ONLY) flipso_cat_flag(rules, "", "Off-peak only", true);
     }
 
     /* TYP 23's mode group: how rides are counted, and what joins legs into one
@@ -94,19 +247,19 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
             "Return, journeys in pairs"};
         const size_t defined = product->format_rev >= 3 ? 4 : 3;
         furi_string_cat_printf(
-            out, "Ticket use: %s\n", t->mode < defined ? modes[t->mode] : "Other");
+            left, "Ticket use: %s\n", t->mode < defined ? modes[t->mode] : "Other");
         if(t->mode == ItsoJourneyModeStoredJourneys ||
            (t->mode == ItsoJourneyModeReturn && defined == 4)) {
             /* TimeLimit counts 30 second steps between the start of one leg
              * and the next. */
-            furi_string_cat_printf(out, "  Changes allowed: %u\n", t->max_transfers);
+            furi_string_cat_printf(left, "  Changes allowed: %u\n", t->max_transfers);
             furi_string_cat_printf(
-                out,
+                left,
                 "  Time between legs: %u min%s\n",
                 t->time_limit / 2,
                 (t->time_limit & 1) ? " 30 s" : "");
         }
-        flipso_cat_money(out, "", "Value of a ride", &t->ride_value);
+        flipso_cat_money(left, "", "Value of a ride", &t->ride_value);
     }
 
     /* Below 1440 the time falls on the expiry date itself; from 1440 it is the
@@ -117,7 +270,7 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
         bool next_day = minutes >= 1440;
         if(next_day) minutes -= 1440;
         furi_string_cat_printf(
-            out,
+            rules,
             "Ends at: %02u:%02u %s\n",
             minutes / 60,
             minutes % 60,
@@ -128,7 +281,7 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
         static const char* const units[] = {"day", "month", "quarter", "year"};
         const char* unit = t->duration_unit < COUNT_OF(units) ? units[t->duration_unit] : "unit";
         furi_string_cat_printf(
-            out,
+            left,
             "Pass length: %u %s%s\n",
             t->pass_duration,
             unit,
@@ -140,51 +293,56 @@ static void flipso_cat_ticket_terms(FuriString* out, const ItsoProduct* product)
     if(product->auto_renew && t->renew_quantity) {
         const bool one = t->renew_quantity == 1;
         furi_string_cat_printf(
-            out,
+            left,
             "Renewal adds: %u %s\n",
             t->renew_quantity,
             product->stored_passes ? (one ? "pass" : "passes") : (one ? "day" : "days"));
     }
     if(product->auto_renew && t->has_stock_duration && t->stock_duration) {
-        furi_string_cat_printf(out, "  Unused passes last: %u more days\n", t->stock_duration);
+        furi_string_cat_printf(left, "  Unused passes last: %u more days\n", t->stock_duration);
     }
     /* Revision 3's TreatmentOfExpiredSP: what a top-up does with passes whose
      * stock has expired (rule 8 of TS 1000-5 clause 2.9.3.4). */
     if(product->typ == ItsoTypPeriodTicket && product->format_rev >= 3) {
         furi_string_cat_printf(
-            out,
+            left,
             "Expired passes at top-up: %s\n",
             (t->flags & ITSO_T22_KEEP_EXPIRED) ? "Kept" : "Written off");
     }
 
     if(t->adults || t->children || t->concessions) {
-        furi_string_cat(out, "Travellers:");
+        furi_string_cat(who, "Travellers:");
         const char* sep = " ";
         if(t->adults) {
-            furi_string_cat_printf(out, "%s%u adult%s", sep, t->adults, t->adults == 1 ? "" : "s");
+            furi_string_cat_printf(who, "%s%u adult%s", sep, t->adults, t->adults == 1 ? "" : "s");
             sep = ", ";
         }
         if(t->children) {
             furi_string_cat_printf(
-                out, "%s%u child%s", sep, t->children, t->children == 1 ? "" : "ren");
+                who, "%s%u child%s", sep, t->children, t->children == 1 ? "" : "ren");
             sep = ", ";
         }
         if(t->concessions) {
             furi_string_cat_printf(
-                out, "%s%u concession%s", sep, t->concessions, t->concessions == 1 ? "" : "s");
+                who, "%s%u concession%s", sep, t->concessions, t->concessions == 1 ? "" : "s");
         }
-        furi_string_push_back(out, '\n');
+        furi_string_push_back(who, '\n');
     }
 
     const char* travel_class = itso_class_name(t->travel_class);
-    if(travel_class) furi_string_cat_printf(out, "Class: %s\n", travel_class);
+    if(travel_class) furi_string_cat_printf(who, "Class: %s\n", travel_class);
     if(product->typ == ItsoTypPeriodTicket && (t->flags & ITSO_T22_TRANSFERABLE)) {
-        flipso_cat_flag(out, "", "Transferable", true);
+        flipso_cat_flag(who, "", "Transferable", true);
     }
     if(t->photocard) {
-        furi_string_cat_printf(out, "Photocard number: %lu\n", (unsigned long)t->photocard);
+        furi_string_cat_printf(who, "Photocard number: %lu\n", (unsigned long)t->photocard);
     }
+}
 
+/** When a ticket was issued and what was paid for it. */
+static void flipso_cat_ticket_price(FuriString* out, const ItsoProduct* product) {
+    const ItsoTicketTerms* t = &product->ticket;
+    if(!t->valid) return;
     if(t->issue_date) flipso_cat_date_line(out, "", "Issued", t->issue_date);
     if(t->amount_paid.valid) {
         flipso_cat_money(out, "", "Price paid", &t->amount_paid);
@@ -378,22 +536,27 @@ static void flipso_cat_reservation_id(
     }
 }
 
-/** A TYP24Flags flag (table 138) the main section shows only when set. */
+/**
+ * A TYP24Flags flag (table 138) the ticket's pages show only when set, and
+ * the page that says it: how it was issued is part of the purchase, a seat
+ * it needs is a restriction, and the rest are details of the ticket.
+ */
 typedef struct {
     uint16_t bit;
     const char* label;
+    FlipsoSlot slot;
 } FlipsoT24Flag;
 
 /* TestOrLive leads the screen, PassengerDetails is said by the passenger, and
  * AutoRenew is with the other products' renewal line. */
 static const FlipsoT24Flag flipso_t24_flags[] = {
-    {ITSO_T24_DUPLICATE, "Duplicate"},
-    {ITSO_T24_REPLACEMENT, "Replacement"},
-    {ITSO_T24_FOLLOW_ON, "Follow-on renewal"},
-    {ITSO_T24_WARRANT, "Unfulfilled warrant"},
-    {ITSO_T24_CARNET, "Carnet"},
-    {ITSO_T24_SEAT_REQUIRED, "Seat reservation required"},
-    {ITSO_T24_COMPANION, "Companion allowed"},
+    {ITSO_T24_DUPLICATE, "Duplicate", FlipsoSlotPurchase},
+    {ITSO_T24_REPLACEMENT, "Replacement", FlipsoSlotPurchase},
+    {ITSO_T24_FOLLOW_ON, "Follow-on renewal", FlipsoSlotPurchase},
+    {ITSO_T24_WARRANT, "Unfulfilled warrant", FlipsoSlotPurchase},
+    {ITSO_T24_CARNET, "Carnet", FlipsoSlotDetails},
+    {ITSO_T24_SEAT_REQUIRED, "Seat reservation required", FlipsoSlotRules},
+    {ITSO_T24_COMPANION, "Companion allowed", FlipsoSlotDetails},
 };
 
 /** "Outward departures": which journeys a time band applies to, and how. */
@@ -416,165 +579,181 @@ static void flipso_cat_band_applies(FuriString* out, const ItsoTimeBand* b) {
 
 /**
  * The terms of a TYP 24 reserved journey beyond what every ticket shows: the
- * flags that are set, the passenger, the days and times it may be used, the
- * trains and routes it is held to, and the changes and breaks it allows
- * (TS 1000-5 tables 136 and 138). The codes behind it are under Technical.
+ * days, times and trains it may be used on (its Restrictions page), the route
+ * it is held to and the changes and breaks it allows (Route), and the
+ * passenger and the products it was sold with (Details), from TS 1000-5
+ * tables 136 and 138. The codes behind it are under Technical.
  *
  * @param res the rest of the dataset; NULL, or not valid, where it would not
  *            decode, which leaves what ItsoProduct holds.
  */
 static void flipso_cat_reservation(
-    FuriString* out,
+    FlipsoPages* p,
     const FlipsoFormat* f,
     const ItsoCard* card,
     const ItsoProduct* product,
     const ItsoReservation* res) {
     const ItsoTicketTerms* t = &product->ticket;
     if(product->typ != ItsoTypReservationTicket || !t->valid) return;
+    FuriString* rules = flipso_pages_at(p, FlipsoSlotRules);
+    FuriString* route = flipso_pages_at(p, FlipsoSlotRoute);
+    FuriString* details = flipso_pages_at(p, FlipsoSlotDetails);
 
     /* Only the flags that are set: a ticket that is none of these is the
      * ordinary case, and Technical lists the rest. */
     for(size_t i = 0; i < COUNT_OF(flipso_t24_flags); i++) {
         if(t->flags & flipso_t24_flags[i].bit)
-            flipso_cat_flag(out, "", flipso_t24_flags[i].label, true);
+            flipso_cat_flag(
+                flipso_pages_at(p, flipso_t24_flags[i].slot), "", flipso_t24_flags[i].label, true);
     }
     if(product->value_parsed && t->part_used) {
-        flipso_cat_flag(out, "", "Part-way through a leg", true);
+        flipso_cat_flag(details, "", "Part-way through a leg", true);
     }
+
+    if(res && res->valid) {
+        if(product->auto_renew) {
+            furi_string_cat_printf(
+                details,
+                "Renews until: %u day%s after expiry\n",
+                res->renew_days,
+                res->renew_days == 1 ? "" : "s");
+        }
+
+        if(res->has_passenger) {
+            furi_string_cat_printf(
+                details, "Passenger: %s\n", res->passenger[0] ? res->passenger : "Not stored");
+            /* RSPS3002 3.8.3: 00 not specified, 01 male, 10 female, 11 not used. */
+            const char* gender = res->gender == 1 ? "Male" : res->gender == 2 ? "Female" : NULL;
+            furi_string_cat_printf(details, "  Gender: %s\n", gender ? gender : "Not specified");
+        }
+
+        /* The other products on the card the ticket was sold with: on rail, the
+         * railcard it was priced against (RSPS3002 3.8.3). */
+        for(uint8_t i = 0; i < res->associated_count; i++) {
+            flipso_cat_product_ref(details, card, "", "Part of this ticket", res->associated[i]);
+        }
+
+        /* The times first: on an off-peak ticket they decide which train the
+         * holder may catch. */
+        for(uint8_t i = 0; i < res->time_band_count; i++) {
+            const ItsoTimeBand* b = &res->time_bands[i];
+            /* TimeBandIncludeExcludeFlag: valid within the band, or only outside it. */
+            furi_string_cat(rules, b->include ? "Valid times: " : "Valid times: Outside ");
+            flipso_cat_minutes(rules, b->start);
+            furi_string_push_back(rules, '-');
+            flipso_cat_minutes(rules, b->end);
+            furi_string_push_back(rules, '\n');
+            flipso_cat_band_applies(rules, b);
+            if(!itso_is_blank(b->operator_code, sizeof(b->operator_code))) {
+                flipso_cat_ud_line(
+                    rules, "  ", "Operator", b->operator_code, sizeof(b->operator_code));
+            }
+            flipso_cat_location(rules, f, "  ", "At", &b->location);
+        }
+
+        char days[40];
+        itso_format_days(res->valid_days, days, sizeof(days));
+        furi_string_cat_printf(rules, "Valid days: %s\n", days);
+        flipso_cat_flag(rules, "  ", "Public holidays", res->valid_days & ITSO_DOW_SPECIAL);
+        itso_format_days(res->restricted_days, days, sizeof(days));
+        /* DaysRestrictionApplies: the days the RestrictionCode holds on, not
+         * days the ticket is not valid. */
+        furi_string_cat_printf(rules, "Restrictions apply: %s\n", days);
+        if(res->restricted_days & ITSO_DOW_SPECIAL) {
+            flipso_cat_flag(rules, "  ", "Public holidays", true);
+        }
+
+        if(itso_is_blank(res->operator_code, sizeof(res->operator_code))) {
+            furi_string_cat(rules, "Operators: Any\n");
+        } else {
+            flipso_cat_ud_line(
+                rules, "", "Only on operator", res->operator_code, sizeof(res->operator_code));
+        }
+
+        for(uint8_t i = 0; i < res->service_count; i++) {
+            const ItsoServiceRule* sr = &res->services[i];
+            /* RestrictionOrEasementFlag: a train it may not be used on, or one it
+             * may be though its other terms would rule it out. */
+            flipso_cat_ud_line(
+                rules,
+                "",
+                sr->restriction ? "Not valid on train" : "Also valid on train",
+                sr->service,
+                sizeof(sr->service));
+            flipso_cat_location(rules, f, "  ", "From", &sr->departs);
+            furi_string_cat(rules, "  Departs: ");
+            flipso_cat_minutes(rules, sr->time);
+            furi_string_push_back(rules, '\n');
+        }
+
+        for(uint8_t i = 0; i < res->route_count; i++) {
+            const ItsoRoutePoint* r = &res->routes[i];
+            if(r->via == 0 || r->via == 1) {
+                flipso_cat_location(route, f, "", r->via ? "Via" : "Not via", &r->location);
+            } else {
+                flipso_cat_location(route, f, "", "Routing point", &r->location);
+                furi_string_cat_printf(route, "  Via code: %u\n", r->via);
+            }
+        }
+
+        flipso_cat_location(route, f, "", "Or from", &res->alt_from);
+        flipso_cat_location(route, f, "", "Or to", &res->alt_to);
+
+        /* An out-of-station interchange: off at one station and on again at
+         * another nearby, as across London (RSPS3002 4.4.2.2). A time of zero is
+         * rail's way of leaving it to the gates (3.8.3). */
+        for(uint8_t i = 0; i < res->interchange_count; i++) {
+            const ItsoInterchange* x = &res->interchanges[i];
+            flipso_cat_location(route, f, "", "Change stations at", &x->exit);
+            flipso_cat_location(route, f, "  ", "Continue from", &x->entry);
+            if(x->minutes) {
+                furi_string_cat_printf(route, "  Time allowed: %u min\n", x->minutes);
+            } else {
+                furi_string_cat(route, "  Time allowed: Set by the operator\n");
+            }
+        }
+
+        for(uint8_t i = 0; i < res->transfer_count; i++) {
+            const ItsoTransfer* x = &res->transfers[i];
+            if(x->type == ITSO_TRANSFER_BREAK_OF_JOURNEY) {
+                furi_string_cat(route, "Break of journey: Allowed\n");
+                if(x->count < ITSO_TRANSFERS_UNLIMITED) {
+                    furi_string_cat_printf(route, "  Breaks allowed: %u\n", x->count);
+                }
+            } else {
+                furi_string_cat_printf(
+                    route,
+                    "Transfer type %u: %u transfer%s\n",
+                    x->type,
+                    x->count,
+                    x->count == 1 ? "" : "s");
+            }
+            if(x->hours) {
+                furi_string_cat_printf(
+                    route, "  Extra time: %u hour%s\n", x->hours, x->hours == 1 ? "" : "s");
+            }
+        }
+    }
+
     if(product->value_parsed && t->transfers_left) {
         /* Table 139 allows three transfer types of up to 511 each, but keeps
          * one 11-bit count: what is left is the total across them. Rail sets
          * 511 for a break of journey, which is as many as the holder likes. */
         if(t->transfers_left >= ITSO_TRANSFERS_UNLIMITED) {
-            furi_string_cat(out, "Transfers left: Unlimited\n");
+            furi_string_cat(route, "Transfers left: Unlimited\n");
         } else {
-            furi_string_cat_printf(out, "Transfers left: %u in total\n", t->transfers_left);
+            furi_string_cat_printf(route, "Transfers left: %u in total\n", t->transfers_left);
         }
     }
+}
 
+/** A reserved journey's VendorLoc, unless it is the station the retailer already named. */
+static void flipso_cat_sold_at(
+    FuriString* out,
+    const FlipsoFormat* f,
+    const ItsoProduct* product,
+    const ItsoReservation* res) {
     if(!res || !res->valid) return;
-
-    if(product->auto_renew) {
-        furi_string_cat_printf(
-            out,
-            "Renews until: %u day%s after expiry\n",
-            res->renew_days,
-            res->renew_days == 1 ? "" : "s");
-    }
-
-    if(res->has_passenger) {
-        furi_string_cat_printf(
-            out, "Passenger: %s\n", res->passenger[0] ? res->passenger : "Not stored");
-        /* RSPS3002 3.8.3: 00 not specified, 01 male, 10 female, 11 not used. */
-        const char* gender = res->gender == 1 ? "Male" : res->gender == 2 ? "Female" : NULL;
-        furi_string_cat_printf(out, "  Gender: %s\n", gender ? gender : "Not specified");
-    }
-
-    flipso_cat_location(out, f, "", "Or from", &res->alt_from);
-    flipso_cat_location(out, f, "", "Or to", &res->alt_to);
-
-    char days[40];
-    itso_format_days(res->valid_days, days, sizeof(days));
-    furi_string_cat_printf(out, "Valid days: %s\n", days);
-    flipso_cat_flag(out, "  ", "Public holidays", res->valid_days & ITSO_DOW_SPECIAL);
-    itso_format_days(res->restricted_days, days, sizeof(days));
-    /* DaysRestrictionApplies: the days the RestrictionCode holds on, not
-     * days the ticket is not valid. */
-    furi_string_cat_printf(out, "Restrictions apply: %s\n", days);
-    if(res->restricted_days & ITSO_DOW_SPECIAL) {
-        flipso_cat_flag(out, "  ", "Public holidays", true);
-    }
-
-    if(itso_is_blank(res->operator_code, sizeof(res->operator_code))) {
-        furi_string_cat(out, "Operators: Any\n");
-    } else {
-        flipso_cat_ud_line(
-            out, "", "Only on operator", res->operator_code, sizeof(res->operator_code));
-    }
-
-    /* The other products on the card the ticket was sold with: on rail, the
-     * railcard it was priced against (RSPS3002 3.8.3). */
-    for(uint8_t i = 0; i < res->associated_count; i++) {
-        flipso_cat_product_ref(out, card, "", "Part of this ticket", res->associated[i]);
-    }
-
-    for(uint8_t i = 0; i < res->route_count; i++) {
-        const ItsoRoutePoint* r = &res->routes[i];
-        if(r->via == 0 || r->via == 1) {
-            flipso_cat_location(out, f, "", r->via ? "Via" : "Not via", &r->location);
-        } else {
-            flipso_cat_location(out, f, "", "Routing point", &r->location);
-            furi_string_cat_printf(out, "  Via code: %u\n", r->via);
-        }
-    }
-
-    /* An out-of-station interchange: off at one station and on again at
-     * another nearby, as across London (RSPS3002 4.4.2.2). A time of zero is
-     * rail's way of leaving it to the gates (3.8.3). */
-    for(uint8_t i = 0; i < res->interchange_count; i++) {
-        const ItsoInterchange* x = &res->interchanges[i];
-        flipso_cat_location(out, f, "", "Change stations at", &x->exit);
-        flipso_cat_location(out, f, "  ", "Continue from", &x->entry);
-        if(x->minutes) {
-            furi_string_cat_printf(out, "  Time allowed: %u min\n", x->minutes);
-        } else {
-            furi_string_cat(out, "  Time allowed: Set by the operator\n");
-        }
-    }
-
-    for(uint8_t i = 0; i < res->transfer_count; i++) {
-        const ItsoTransfer* x = &res->transfers[i];
-        if(x->type == ITSO_TRANSFER_BREAK_OF_JOURNEY) {
-            furi_string_cat(out, "Break of journey: Allowed\n");
-            if(x->count < ITSO_TRANSFERS_UNLIMITED) {
-                furi_string_cat_printf(out, "  Breaks allowed: %u\n", x->count);
-            }
-        } else {
-            furi_string_cat_printf(
-                out,
-                "Transfer type %u: %u transfer%s\n",
-                x->type,
-                x->count,
-                x->count == 1 ? "" : "s");
-        }
-        if(x->hours) {
-            furi_string_cat_printf(
-                out, "  Extra time: %u hour%s\n", x->hours, x->hours == 1 ? "" : "s");
-        }
-    }
-
-    for(uint8_t i = 0; i < res->time_band_count; i++) {
-        const ItsoTimeBand* b = &res->time_bands[i];
-        /* TimeBandIncludeExcludeFlag: valid within the band, or only outside it. */
-        furi_string_cat(out, b->include ? "Valid times: " : "Valid times: Outside ");
-        flipso_cat_minutes(out, b->start);
-        furi_string_push_back(out, '-');
-        flipso_cat_minutes(out, b->end);
-        furi_string_push_back(out, '\n');
-        flipso_cat_band_applies(out, b);
-        if(!itso_is_blank(b->operator_code, sizeof(b->operator_code))) {
-            flipso_cat_ud_line(out, "  ", "Operator", b->operator_code, sizeof(b->operator_code));
-        }
-        flipso_cat_location(out, f, "  ", "At", &b->location);
-    }
-
-    for(uint8_t i = 0; i < res->service_count; i++) {
-        const ItsoServiceRule* s = &res->services[i];
-        /* RestrictionOrEasementFlag: a train it may not be used on, or one it
-         * may be though its other terms would rule it out. */
-        flipso_cat_ud_line(
-            out,
-            "",
-            s->restriction ? "Not valid on train" : "Also valid on train",
-            s->service,
-            sizeof(s->service));
-        flipso_cat_location(out, f, "  ", "From", &s->departs);
-        furi_string_cat(out, "  Departs: ");
-        flipso_cat_minutes(out, s->time);
-        furi_string_push_back(out, '\n');
-    }
-
-    /* VendorLoc, unless it is the station the retailer already named. */
     ItsoLocation sold_by;
     if(!itso_product_sold_at(product, &sold_by) || strcmp(sold_by.code, res->vendor.code) != 0 ||
        sold_by.code_kind != res->vendor.code_kind) {
@@ -582,71 +761,99 @@ static void flipso_cat_reservation(
     }
 }
 
+/** True when a reserved journey has reservations to show, or ought to. */
+static bool flipso_has_reservations(const ItsoProduct* product, const ItsoReservation* res) {
+    if(!res || product->typ != ItsoTypReservationTicket || !product->ticket.valid) return false;
+    return res->has_extension || product->ticket.reservations;
+}
+
 /**
- * The seats, berths and spaces a reserved journey holds, from its VGXRef 3
- * extension (TS 1000-5 table AD3), under a heading of their own. The kinds of
- * place and seat direction are as RSPS3002 3.8.6 defines them for rail.
+ * What a reserved journey's VGXRef 3 extension (TS 1000-5 table AD3) says
+ * beyond its legs, each on the page it belongs to: the booking reference with
+ * the purchase, the last validation with the history, and whether the legs
+ * could all be read with the ticket's details.
  */
-static void flipso_cat_reserved_legs(
+static void flipso_cat_reservation_record(
+    FlipsoPages* p,
+    const FlipsoFormat* f,
+    const ItsoProduct* product,
+    const ItsoReservation* res) {
+    if(!flipso_has_reservations(product, res)) return;
+    FuriString* details = flipso_pages_at(p, FlipsoSlotDetails);
+    if(!res->has_extension) {
+        furi_string_cat(details, "Reservations: Could not be read\n");
+        return;
+    }
+    const uint8_t expected = product->ticket.reservations;
+    if(!res->leg_count && !expected) furi_string_cat(details, "Reserved legs: None\n");
+    if(expected > res->leg_count) {
+        furi_string_cat_printf(
+            details, "Not read: %u of %u\n", expected - res->leg_count, expected);
+    }
+
+    FuriString* history = flipso_pages_at(p, FlipsoSlotHistory);
+    if(res->last_validation) {
+        flipso_cat_datetime_line(history, "", "Last validated", res->last_validation);
+        flipso_cat_location(history, f, "  ", "At", &res->last_validation_at);
+    } else {
+        furi_string_cat(history, "Last validated: Never\n");
+    }
+}
+
+/** A reserved journey's booking reference, which leads its Purchase page. */
+static void
+    flipso_cat_booking(FuriString* out, const ItsoProduct* product, const ItsoReservation* res) {
+    if(!flipso_has_reservations(product, res) || !res->has_extension) return;
+    flipso_cat_ud_line(
+        out, "", "Booking reference", (const uint8_t*)res->booking, strlen(res->booking));
+}
+
+/**
+ * The seats, berths and spaces a reserved journey holds, a page to each leg,
+ * led by what the holder looks for on the platform: when the train goes, and
+ * the coach and seat. The kinds of place and seat direction are as RSPS3002
+ * 3.8.6 defines them for rail.
+ */
+static void flipso_cat_leg_pages(
     FuriString* out,
     const FlipsoFormat* f,
     const ItsoProduct* product,
     const ItsoReservation* res) {
-    if(product->typ != ItsoTypReservationTicket || !product->ticket.valid) return;
-    const uint8_t expected = product->ticket.reservations;
-    if(!res->has_extension && !expected) return;
-
-    furi_string_cat(out, "\n");
-    flipso_cat_heading(out, FlipsoIconNone, "Reservations");
-    if(!res->has_extension) {
-        furi_string_cat(out, "Reservations: Could not be read\n");
-        return;
-    }
-    flipso_cat_ud_line(
-        out, "", "Booking reference", (const uint8_t*)res->booking, strlen(res->booking));
-    if(res->last_validation) {
-        flipso_cat_datetime_line(out, "", "Last validated", res->last_validation);
-        flipso_cat_location(out, f, "  ", "At", &res->last_validation_at);
-    } else {
-        furi_string_cat(out, "Last validated: Never\n");
-    }
-    if(!res->leg_count && !expected) furi_string_cat(out, "Reserved legs: None\n");
+    if(!flipso_has_reservations(product, res) || !res->has_extension) return;
 
     static const char* const places[] = {
         "Seat", "Sleeper berth", "Bicycle space", "No specific place", "Wheelchair space"};
     static const char* const directions[] = {NULL, "Forwards", "Backwards", "Airline style"};
     for(uint8_t i = 0; i < res->leg_count; i++) {
         const ItsoReservedLeg* leg = &res->legs[i];
-        char label[12];
-        snprintf(label, sizeof(label), "Leg %u", i + 1);
-        flipso_cat_datetime_line(out, "", label, leg->departs);
-        if(leg->service[0]) furi_string_cat_printf(out, "  Train: %s\n", leg->service);
-        flipso_cat_location(out, f, "  ", "From", &leg->from);
-        flipso_cat_location(out, f, "  ", "To", &leg->to);
-        if(leg->type < COUNT_OF(places)) {
-            furi_string_cat_printf(out, "  Reserved: %s\n", places[leg->type]);
-        } else {
-            furi_string_cat_printf(out, "  Reserved: Other (%u)\n", leg->type);
-        }
-        if(leg->coach[0]) furi_string_cat_printf(out, "  Coach: %s\n", leg->coach);
+        char title[12];
+        snprintf(title, sizeof(title), "Leg %u", i + 1);
+        flipso_cat_page(out, FlipsoIconSeat, title);
+        flipso_cat_datetime_line(out, "", "Departs", leg->departs);
+        flipso_cat_location(out, f, "", "From", &leg->from);
+        flipso_cat_location(out, f, "", "To", &leg->to);
+        if(leg->coach[0]) furi_string_cat_printf(out, "Coach: %s\n", leg->coach);
         if(leg->seat[0]) {
             furi_string_cat_printf(
-                out, "  %s: %s\n", leg->type == ItsoPlaceBerth ? "Berth" : "Seat", leg->seat);
+                out, "%s: %s\n", leg->type == ItsoPlaceBerth ? "Berth" : "Seat", leg->seat);
+        }
+        if(leg->type < COUNT_OF(places)) {
+            furi_string_cat_printf(out, "Reserved: %s\n", places[leg->type]);
+        } else {
+            furi_string_cat_printf(out, "Reserved: Other (%u)\n", leg->type);
         }
         if(directions[leg->direction & 0x03]) {
-            furi_string_cat_printf(out, "  Facing: %s\n", directions[leg->direction & 0x03]);
+            furi_string_cat_printf(out, "Facing: %s\n", directions[leg->direction & 0x03]);
         }
         if(leg->attribute[0]) {
             const char* feature = itso_seat_attribute_name(leg->attribute);
-            furi_string_cat_printf(out, "  Feature: %s\n", feature ? feature : leg->attribute);
+            furi_string_cat_printf(out, "Feature: %s\n", feature ? feature : leg->attribute);
         }
         if(leg->berth == 1 || leg->berth == 2) {
-            furi_string_cat_printf(out, "  Bunk: %s\n", leg->berth == 1 ? "Lower" : "Upper");
+            furi_string_cat_printf(out, "Bunk: %s\n", leg->berth == 1 ? "Lower" : "Upper");
             flipso_cat_flag(out, "  ", "Cabin shared", leg->together);
         }
-    }
-    if(expected > res->leg_count) {
-        furi_string_cat_printf(out, "Not read: %u of %u\n", expected - res->leg_count, expected);
+        if(leg->service[0]) furi_string_cat_printf(out, "Train: %s\n", leg->service);
     }
 }
 
@@ -827,47 +1034,46 @@ void flipso_cat_last_use(
 
 /**
  * The parts of a Space Saving IPE (TYP 27, 28 or 29) that are its own rather than
- * shared with a full ticket: its restrictions, where and when it was last used,
- * and the day passes or journeys it keeps count of. Its price, issue date, class
- * and travellers are in @c ticket and shown by flipso_cat_ticket_terms(), its
- * area by flipso_cat_space_area(), and its rides or passes left by the
- * product's counter.
+ * shared with a full ticket: its restrictions, on its Conditions page, and the
+ * day passes or journeys it keeps count of, on its Use page. Its price, issue
+ * date, class and travellers are in @c ticket and shown by
+ * flipso_cat_ticket_terms() and flipso_cat_ticket_price(), its area by
+ * flipso_cat_space_area(), its rides or passes left by the product's counter,
+ * and where or when it was last used by flipso_cat_last_use(), all on the
+ * pages those belong to.
  *
  * Every element the dataset carries is shown, default or not: a paper ticket
  * holds little enough that "Off-peak only: No" is information, not clutter.
  */
-static void flipso_cat_space_saving(
-    FuriString* out,
-    const FlipsoFormat* f,
-    const ItsoCard* card,
-    const ItsoProduct* product) {
+static void
+    flipso_cat_space_saving(FlipsoPages* p, const ItsoCard* card, const ItsoProduct* product) {
     if(!product->space_saving) return;
     const ItsoSpaceSaving* ss = &card->space;
+    FuriString* rules = flipso_pages_at(p, FlipsoSlotRules);
+    FuriString* left = flipso_pages_at(p, FlipsoSlotLeft);
 
-    flipso_cat_flag(out, "", "Off-peak only", ss->flags & ITSO_SS_OFF_PEAK);
-    flipso_cat_flag(out, "", "Weekdays only", ss->flags & ITSO_SS_WEEKDAY);
+    flipso_cat_flag(rules, "", "Off-peak only", ss->flags & ITSO_SS_OFF_PEAK);
+    flipso_cat_flag(rules, "", "Weekdays only", ss->flags & ITSO_SS_WEEKDAY);
     /* ExpiryTimeFlag (tables 49, 52 and 56): 23:59, or a time the owner sets in
      * its readers - end of service, which can fall after midnight. */
     if(ss->flags & ITSO_SS_EXPIRY_TIME) {
-        furi_string_cat(out, "Ends at: Set by the operator\n");
+        furi_string_cat(rules, "Ends at: Set by the operator\n");
     } else {
-        furi_string_cat(out, "Ends at: 23:59 on the expiry date\n");
+        furi_string_cat(rules, "Ends at: 23:59 on the expiry date\n");
     }
     if(product->typ == ItsoTypPeriodCompact && !product->ticket.photocard) {
-        furi_string_cat(out, "Photocard number: None\n");
+        furi_string_cat(flipso_pages_at(p, FlipsoSlotWho), "Photocard number: None\n");
     }
-
-    flipso_cat_last_use(out, f, card, product, NULL);
 
     /* TYP 28: the day passes spent so far, each the day it was used. A tick of
      * zero is a pass still to use and 31 one never sold (clause 2.15.2). */
     if(product->typ == ItsoTypCarnet) {
-        flipso_cat_flag(out, "", "Valid on day of issue", ss->carnet_issue_day);
-        flipso_cat_flag(out, "", "Valid on day of expiry", ss->carnet_expiry_day);
+        flipso_cat_flag(rules, "", "Valid on day of issue", ss->carnet_issue_day);
+        flipso_cat_flag(rules, "", "Valid on day of expiry", ss->carnet_expiry_day);
         for(size_t i = 0; i < COUNT_OF(ss->carnet_ticks); i++) {
             uint8_t tick = ss->carnet_ticks[i];
             if(tick == 0 || tick == 31 || tick > product->expiry) continue;
-            flipso_cat_date_line(out, "", "Day used", (uint16_t)(product->expiry - tick));
+            flipso_cat_date_line(left, "", "Day used", (uint16_t)(product->expiry - tick));
         }
     }
 
@@ -875,39 +1081,47 @@ static void flipso_cat_space_saving(
      * the day the latest journey began - which is only today if that was today,
      * so it hangs off that date rather than claiming to be today's. */
     if(product->typ == ItsoTypMultiUse && product->format_rev == 2) {
-        furi_string_cat_printf(out, "Daily journey limit: %u\n", ss->max_daily_journeys);
-        furi_string_cat_printf(out, "Changes allowed: %u\n", product->ticket.max_transfers);
+        furi_string_cat_printf(rules, "Daily journey limit: %u\n", ss->max_daily_journeys);
+        furi_string_cat_printf(rules, "Changes allowed: %u\n", product->ticket.max_transfers);
         if(ss->journey_start_dts) {
-            flipso_cat_datetime_line(out, "", "Journey began", ss->journey_start_dts);
-            furi_string_cat_printf(out, "  Changes made: %u\n", ss->transfers);
-            furi_string_cat_printf(out, "  Journeys that day: %u\n", ss->daily_journeys);
+            flipso_cat_datetime_line(left, "", "Journey began", ss->journey_start_dts);
+            furi_string_cat_printf(left, "  Changes made: %u\n", ss->transfers);
+            furi_string_cat_printf(left, "  Journeys that day: %u\n", ss->daily_journeys);
         } else {
-            furi_string_cat(out, "Journey began: Not yet\n");
+            furi_string_cat(left, "Journey began: Not yet\n");
         }
     }
 }
 
 /**
- * The parts of an ITSO ID or entitlement beyond name and entitlement: language,
- * valid periods, fare rounding and deposits. An entitlement (TYP 14) carries
- * all of these but the language and the card deposit. Its issuer and holder
- * numbers are under Technical, with the other numbers nothing names.
+ * The parts of an ITSO ID or entitlement beyond name and entitlement: the
+ * language, which is about the holder, and the valid periods and fare
+ * rounding, which are the terms. An entitlement (TYP 14) carries all of these
+ * but the language. Its deposits are flipso_cat_id_deposits()', and its issuer
+ * and holder numbers are under Technical, with the other numbers nothing names.
  */
-static void flipso_cat_id_details(FuriString* out, const ItsoProduct* product) {
+static void flipso_cat_id_details(FlipsoPages* p, const ItsoProduct* product) {
     if(!flipso_product_is_identity(product) || !product->body_parsed) return;
+    FuriString* holder = flipso_pages_at(p, FlipsoSlotLeft);
+    FuriString* rules = flipso_pages_at(p, FlipsoSlotRules);
 
     char code[3];
     if(itso_language_code(product->language, code)) {
         const char* name = itso_language_name(product->language);
         if(name) {
-            furi_string_cat_printf(out, "Language: %s\n", name);
+            furi_string_cat_printf(holder, "Language: %s\n", name);
         } else {
             /* ISO 639-1, upper cased so it reads as a code rather than a word. */
-            furi_string_cat_printf(out, "Language: %c%c\n", code[0] - 32, code[1] - 32);
+            furi_string_cat_printf(holder, "Language: %c%c\n", code[0] - 32, code[1] - 32);
         }
         /* IDFlags bit 3 points a POST at another application on the card, and
          * then Language "shall be ignored" (TS 1000-5 table 22). */
-        if(product->id_flags & 0x08) furi_string_cat(out, "  In use: No\n");
+        if(product->id_flags & 0x08) furi_string_cat(holder, "  In use: No\n");
+    }
+    /* IDFlags bits 3, 6 and 7 (TS 1000-5 table 24); bit 5 is shown with the
+     * other print flags, under Technical. */
+    if(product->has_id_flags && (product->id_flags & 0x08)) {
+        furi_string_cat(holder, "More details: In another app on the card\n");
     }
 
     /* HalfDayOfWeek: two network-defined periods per day (annex A.10). A zero
@@ -916,30 +1130,31 @@ static void flipso_cat_id_details(FuriString* out, const ItsoProduct* product) {
         char days[40];
         uint8_t mask = itso_half_days_mask(product->half_days);
         itso_format_days(mask, days, sizeof(days));
-        furi_string_cat_printf(out, "Valid days: %s\n", days);
+        furi_string_cat_printf(rules, "Valid days: %s\n", days);
         static const char* const names[] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
         for(int day = 0; day < 7; day++) {
             uint8_t pair = (product->half_days >> (14 - 2 * day)) & 0x03;
-            if(pair == 0x02) furi_string_cat_printf(out, "  %s: First period only\n", names[day]);
-            if(pair == 0x01) furi_string_cat_printf(out, "  %s: Second period only\n", names[day]);
+            if(pair == 0x02)
+                furi_string_cat_printf(rules, "  %s: First period only\n", names[day]);
+            if(pair == 0x01)
+                furi_string_cat_printf(rules, "  %s: Second period only\n", names[day]);
         }
-        if(mask & ITSO_DOW_SPECIAL) flipso_cat_flag(out, "  ", "Special days", true);
+        if(mask & ITSO_DOW_SPECIAL) flipso_cat_flag(rules, "  ", "Special days", true);
     }
 
     /* How a machine rounds a half or proportional fare for this holder. */
     if(product->rounding & ITSO_ROUNDING_ENABLED) {
         furi_string_cat_printf(
-            out,
+            rules,
             "Fare rounding: %s to %s\n",
             (product->rounding & ITSO_ROUNDING_FLAG) ? "Up" : "Down",
             (product->rounding & ITSO_ROUNDING_VALUE) ? "5p" : "1p");
     }
+}
 
-    /* IDFlags bits 3, 6 and 7 (TS 1000-5 table 24); bit 5 is shown with the
-     * other print flags, under Technical. */
-    if(product->has_id_flags && (product->id_flags & 0x08)) {
-        furi_string_cat(out, "More details: In another app on the card\n");
-    }
+/** An ID's or entitlement's deposits, and whether the card says they come back. */
+static void flipso_cat_id_deposits(FuriString* out, const ItsoProduct* product) {
+    if(!flipso_product_is_identity(product) || !product->body_parsed) return;
     if(product->has_deposit) {
         flipso_cat_deposit(
             out,
@@ -1035,8 +1250,7 @@ static void flipso_cat_capping(
     const ItsoProduct* product) {
     ItsoCapping* cap = malloc(sizeof(ItsoCapping));
     if(flipso_decode_capping(f, card, product, cap)) {
-        furi_string_cat(out, "\n");
-        flipso_cat_heading(out, FlipsoIconNone, "Fare capping");
+        flipso_cat_page(out, FlipsoIconCap, "Fare capping");
         bool any = false;
         static const char* const rules[] = {NULL, "Daily", "Short period", "Long period"};
         for(uint8_t a = 0; a < ITSO_CAP_ACCUMULATORS; a++) {
@@ -1108,45 +1322,35 @@ static void flipso_cat_value_record(
  *
  * Index 0 is the live record, which the screen has already shown as the
  * balance or the counter, so a product whose group holds one written record
- * has no history to show rather than a section with one line in it. Unless
+ * has no history to show rather than a page with one line on it. Unless
  * there is no live record: a saved card whose product group did not read still
  * has whatever records the file kept, and every one of those is earlier by
  * definition.
  */
-static void flipso_cat_value_history(FuriString* out, const ItsoProduct* product) {
+static void flipso_cat_value_history(FlipsoPages* p, const ItsoProduct* product) {
     uint8_t first = product->value_parsed ? 1 : 0;
-    if(product->value_history_count <= first) return;
 
-    /* Two sections rather than one. A card keeps two value records and writes
+    /* Two pages rather than one. A card keeps two value records and writes
      * each new one over the oldest, so anything before them survives only
      * because a file remembered it - and running the two together would present
      * what the file knows as what the card says. A product the card has dropped
-     * has already said so for the whole screen, and every record it has is from
+     * has already said so on its first page, and every record it has is from
      * a file, so it keeps one list rather than being told the same thing twice. */
     const bool split = product->on_card;
-
-    for(uint8_t section = 0; section < (split ? 2 : 1); section++) {
-        const bool on_card = (section == 0);
-        bool headed = false;
-
-        for(uint8_t i = first; i < product->value_history_count; i++) {
-            const ItsoValueRecord* record = &product->value_history[i];
-            if(split && record->on_card != on_card) continue;
-
-            if(!headed) {
-                furi_string_cat(out, "\n");
-                flipso_cat_heading(out, FlipsoIconPast, on_card ? "Earlier on card" : "Off card");
-                headed = true;
-            }
-            flipso_cat_value_record(out, product, record);
-        }
+    for(uint8_t i = first; i < product->value_history_count; i++) {
+        const ItsoValueRecord* record = &product->value_history[i];
+        const bool off_card = split && !record->on_card;
+        flipso_cat_value_record(
+            flipso_pages_at(p, off_card ? FlipsoSlotOffCard : FlipsoSlotHistory), product, record);
     }
 }
 
 /**
- * Everything a screen says about one product, in the order a holder asks it:
- * whose it is, what it is worth, whose it is, when it is good for, where, and
- * then the terms and the history behind that.
+ * Everything a screen says about one product but its codes, each line on the
+ * page it belongs to (see FlipsoSlot). The first page answers what a holder
+ * asks first - is it good, for where, until when, with what, and whose - and
+ * its lines are written in that order; the rest are written in the order they
+ * read on their own pages.
  *
  * Shared by the purse, ID and product screens, so a product reads the same
  * wherever it is reached from.
@@ -1155,84 +1359,89 @@ static void flipso_cat_value_history(FuriString* out, const ItsoProduct* product
  *            flipso_decode_reservation(); NULL for any other product.
  */
 static void flipso_cat_product_details(
-    FuriString* out,
+    FlipsoPages* p,
     const FlipsoFormat* f,
     const ItsoCard* card,
     const ItsoProduct* product,
     const ItsoReservation* res) {
     const uint32_t now = f->now;
     const bool identity = flipso_product_is_identity(product);
+    const FlipsoKind kind = p->kind;
+    FuriString* main = flipso_pages_at(p, FlipsoSlotMain);
+    FuriString* left = flipso_pages_at(p, FlipsoSlotLeft);
+    FuriString* rules = flipso_pages_at(p, FlipsoSlotRules);
+    FuriString* details = flipso_pages_at(p, FlipsoSlotDetails);
+    FuriString* purchase = flipso_pages_at(p, FlipsoSlotPurchase);
 
     /* A test ticket is not valid for travel, which outranks everything else
      * the screen says about it (TS 1000-5 table 138, TestOrLive). Clear, it is
      * the ordinary case, and Technical says so. */
     if(product->typ == ItsoTypReservationTicket && (product->ticket.flags & ITSO_T24_TEST)) {
-        flipso_cat_flag(out, "", "Test ticket", true);
+        flipso_cat_flag(main, "", "Test ticket", true);
     }
 
-    /* --- Who it belongs to (TYP 14 / TYP 16). --- */
+    /* Before anything the product says about itself, because everything below
+     * is written in the present tense and for this one it is not true any more:
+     * the card listed it when the record was saved and does not list it now. */
+    if(!product->on_card) {
+        furi_string_cat(main, "On card: No longer\n");
+        if(product->last_seen) {
+            furi_string_cat(main, "  Last seen: ");
+            flipso_cat_time(main, product->last_seen);
+            furi_string_push_back(main, '\n');
+        }
+    }
+
+    /* --- Who it belongs to (TYP 14 / TYP 16): the name on the first page,
+     * the rest of what it says about the holder on a page of its own. --- */
     if(product->has_name) {
-        furi_string_cat_printf(out, "Name: %s\n", product->name);
+        furi_string_cat_printf(main, "Name: %s\n", product->name);
     } else if(product->typ == ItsoTypId && product->body_parsed) {
         /* The name fields are optional and often left off cards that carry a
          * printed photo ID instead. */
-        furi_string_cat(out, "Name: Not stored\n");
+        furi_string_cat(main, "Name: Not stored\n");
     }
     if(product->has_dob) {
         /* A Datef rather than a DATE, so it can predate the DATE epoch, and is
          * formatted from its parts rather than through a timestamp. */
         DateTime dob = {
             .day = product->dob_day, .month = product->dob_month, .year = product->dob_year};
-        furi_string_cat(out, "Born: ");
-        flipso_cat_datetime_struct(out, &dob, false);
-        furi_string_push_back(out, '\n');
+        furi_string_cat(left, "Born: ");
+        flipso_cat_datetime_struct(left, &dob, false);
+        furi_string_push_back(left, '\n');
     }
     if(product->has_id_flags) {
         const char* gender = itso_gender_name(product->id_flags);
-        if(gender) furi_string_cat_printf(out, "Gender: %s\n", gender);
+        if(gender) furi_string_cat_printf(left, "Gender: %s\n", gender);
     }
 
-    /* --- What it is worth. --- */
+    /* --- What it is worth. A season ticket's stock of passes is not what
+     * the holder asks about first, nor a reserved journey's count of
+     * journeys: the dates and the trains are. --- */
     if(product->balance.valid) {
         flipso_cat_money(
-            out, "", product->balance_is_spend ? "Spent so far" : "Balance", &product->balance);
+            main, "", product->balance_is_spend ? "Spent so far" : "Balance", &product->balance);
     } else if(product->typ == ItsoTypStoredTravelRights) {
-        furi_string_cat(out, "Balance: Not readable\n");
+        furi_string_cat(main, "Balance: Not readable\n");
     }
+    FuriString* count = (kind == FlipsoKindPeriod || kind == FlipsoKindReserved) ? left : main;
     const char* count_label = itso_count_name(product->count_kind);
     if(count_label) {
-        furi_string_cat_printf(out, "%s: %lu\n", count_label, (unsigned long)product->count);
+        furi_string_cat_printf(count, "%s: %lu\n", count_label, (unsigned long)product->count);
     }
     if(product->count_kind == ItsoCountTransactions && product->has_charge_period) {
         furi_string_cat_printf(
-            out,
+            count,
             "  Allowance: %u every %u week%s\n",
             product->max_transactions,
             product->weeks_per_period,
             product->weeks_per_period == 1 ? "" : "s");
     }
     if(product->has_last_reset && product->last_reset) {
-        flipso_cat_date_line(out, "  ", "Count last reset", product->last_reset);
+        flipso_cat_date_line(count, "  ", "Count last reset", product->last_reset);
     }
 
-    /* --- What it is not valid without: a railcard, or an ID. Up here, with
-     * what it is worth, because a ticket without it is worth nothing. --- */
-    flipso_cat_valid_only_with(out, card, product, "");
-    if(res && res->valid) flipso_cat_reservation_id(out, product, res);
-
-    /* --- Whose it is. --- */
-    flipso_cat_operator(out, f, "", "Operator", product->oid);
-    /* The retailer is only worth a row when it differs from the owner; on most
-     * products the operator sells its own product and the two are the same.
-     * A rail ticket's may be the station that sold it instead. */
-    ItsoLocation sold_at;
-    if(itso_product_sold_at(product, &sold_at)) {
-        flipso_cat_location(out, f, "", "Sold by", &sold_at);
-    } else if(product->has_retailer && product->retailer != product->oid) {
-        flipso_cat_operator(out, f, "", "Sold by", product->retailer);
-    }
-
-    /* --- When it is good for. --- */
+    /* --- Whether it is good. --- */
     /* The status comes from where the card keeps the product - in use, blocked,
      * never used - not from whether it is still any good. A ticket still "in
      * use" by that measure can have run out of date or of rides, and saying
@@ -1241,60 +1450,107 @@ static void flipso_cat_product_details(
      * stock can still be in its current pass. */
     if(product->status == ItsoProductStatusActive && !itso_date_open(product->expiry) &&
        itso_date_expired(product->expiry, now)) {
-        furi_string_cat(out, "Status: Expired\n");
+        furi_string_cat(main, "Status: Expired\n");
     } else if(
         product->status == ItsoProductStatusActive &&
         (product->count_kind == ItsoCountRides || product->count_kind == ItsoCountCoupons ||
          product->count_kind == ItsoCountJourneys) &&
         product->count == 0) {
-        furi_string_cat(out, "Status: Used up\n");
+        furi_string_cat(main, "Status: Used up\n");
     } else if(product->status != ItsoProductStatusUnknown) {
-        furi_string_cat_printf(out, "Status: %s\n", itso_status_name(product->status));
+        furi_string_cat_printf(main, "Status: %s\n", itso_status_name(product->status));
     }
-    flipso_cat_expiry(out, "", "Expires", "Expired", product->expiry, now);
 
+    /* --- Where. An entitlement's two locations are areas it is good in, not
+     * the ends of a journey, and come after what it entitles the holder to. --- */
+    /* A Space Saving IPE has an area element instead, and keeps the place it
+     * was last used in @c from - not the start of a journey, so
+     * flipso_cat_last_use() labels it with the other facts of its use. */
+    /* A ticket's zone map (LocDefType 204, "valid within zone", TS 1000-1
+     * table 6) is an area too, when it stands alone: "From: Zones 1,2,3" reads
+     * as the start of a journey that has no end. */
+    if(!identity) {
+        const bool zones = product->from.valid && !product->to.valid &&
+                           product->from.def_type == 204;
+        if(product->space_saving) {
+            flipso_cat_space_area(main, f, card);
+        } else {
+            flipso_cat_location(main, f, "", zones ? "Valid in" : "From", &product->from);
+            flipso_cat_location(main, f, "", "To", &product->to);
+        }
+        /* A period ticket may leave both locations out, and then it is good
+         * wherever its owner has configured that product type to be accepted -
+         * an operator's whole network, typically. The card cannot say more than
+         * that, and saying nothing reads as though Flipso had failed to decode
+         * them. */
+        if(product->typ == ItsoTypPeriodTicket && product->ticket.valid && !product->from.valid &&
+           !product->to.valid) {
+            furi_string_cat(main, "Area: Set by the operator\n");
+        }
+    }
+
+    /* --- When it is good for. --- */
+    /* A season ticket's start is one of the dates it is checked against; a
+     * carnet's, an account's or an ID's is one of its terms. */
+    FuriString* start =
+        (kind == FlipsoKindJourney || kind == FlipsoKindAccount || identity) ? rules : main;
     /* A purse's start date gates auto-top-up, and is shown with it. */
     if(product->has_start && product->typ != ItsoTypStoredTravelRights) {
-        furi_string_cat(out, "Valid from: ");
-        flipso_cat_date(out, product->start);
+        furi_string_cat(start, "Valid from: ");
+        flipso_cat_date(start, product->start);
         if(product->ticket.has_start_time && product->ticket.start_time) {
             furi_string_cat_printf(
-                out,
+                start,
                 " %02u:%02u",
                 product->ticket.start_time / 60,
                 product->ticket.start_time % 60);
         }
-        furi_string_push_back(out, '\n');
+        furi_string_push_back(start, '\n');
     } else if(product->typ == ItsoTypReservationTicket) {
         /* A reserved journey is good for two portions, each from a start for
-         * a number of days, rather than from one date. */
+         * a number of days, rather than from one date. What it was sold as is
+         * a detail; the dates are what it is checked against. */
         if(product->ticket.valid) {
             const ItsoTicketTerms* t = &product->ticket;
-            flipso_cat_sold_as(out, t);
-            flipso_cat_portion(out, "Outward", t->valid_from_dts, t->outward_days);
-            flipso_cat_portion(out, "Return", t->return_from_dts, t->return_days);
+            flipso_cat_sold_as(details, t);
+            flipso_cat_portion(main, "Outward", t->valid_from_dts, t->outward_days);
+            flipso_cat_portion(main, "Return", t->return_from_dts, t->return_days);
         }
     } else if(product->ticket.valid_from_dts) {
         /* Revisions 1 and 2 of a period ticket hold a DTS here, not a DATE. */
-        flipso_cat_datetime_line(out, "", "Valid from", product->ticket.valid_from_dts);
+        flipso_cat_datetime_line(start, "", "Valid from", product->ticket.valid_from_dts);
     }
+    /* A reserved journey's expiry is the end of its return portion, which the
+     * first page has already said. */
+    flipso_cat_expiry(
+        kind == FlipsoKindReserved ? details : main,
+        "",
+        "Expires",
+        "Expired",
+        product->expiry,
+        now);
     if(product->has_end_date && !flipso_same_date(product->end_date, product->expiry)) {
-        flipso_cat_expiry(out, "", "Valid to", "Ended", product->end_date, now);
+        flipso_cat_expiry(main, "", "Valid to", "Ended", product->end_date, now);
     }
     if(product->has_sub_expiry && !flipso_same_date(product->sub_expiry, product->expiry)) {
         flipso_cat_expiry(
-            out, "", "Entitlement until", "Entitlement ended", product->sub_expiry, now);
+            identity ? rules : main,
+            "",
+            "Entitlement until",
+            "Entitlement ended",
+            product->sub_expiry,
+            now);
     }
     /* The pass in use and the stock of unused passes expire separately, so a
      * season ticket can be live while the passes behind it have lapsed. */
     if(product->has_current_expiry) {
         flipso_cat_expiry(
-            out, "", "Current pass until", "Current pass ended", product->current_expiry, now);
+            main, "", "Current pass until", "Current pass ended", product->current_expiry, now);
     }
     if(product->has_stored_expiry && !flipso_same_date(product->stored_expiry, product->expiry)) {
         const bool rides = product->typ == ItsoTypJourneyTicket;
         flipso_cat_expiry(
-            out,
+            kind == FlipsoKindPeriod ? left : main,
             "",
             rides ? "Unused rides until" : "Unused passes until",
             rides ? "Unused rides expired" : "Unused passes expired",
@@ -1302,38 +1558,30 @@ static void flipso_cat_product_details(
             now);
     }
 
-    /* --- Where. An entitlement's two locations are areas it is good in, not
-     * the ends of a journey. --- */
-    /* A Space Saving IPE has an area element instead, and keeps the place it
-     * was last used in @c from - not the start of a journey, so
-     * flipso_cat_space_saving() labels it with the other facts of its use. */
-    /* A ticket's zone map (LocDefType 204, "valid within zone", TS 1000-1
-     * table 6) is an area too, when it stands alone: "From: Zones 1,2,3" reads
-     * as the start of a journey that has no end. */
-    const bool zones = product->from.valid && !product->to.valid && product->from.def_type == 204;
-    if(product->space_saving) {
-        flipso_cat_space_area(out, f, card);
-    } else {
-        flipso_cat_location(out, f, "", identity || zones ? "Valid in" : "From", &product->from);
-        flipso_cat_location(out, f, "", identity ? "Also valid in" : "To", &product->to);
-    }
-    /* A period ticket may leave both locations out, and then it is good wherever
-     * its owner has configured that product type to be accepted - an operator's
-     * whole network, typically. The card cannot say more than that, and saying
-     * nothing reads as though Flipso had failed to decode them. */
-    if(product->typ == ItsoTypPeriodTicket && product->ticket.valid && !product->from.valid &&
-       !product->to.valid) {
-        furi_string_cat(out, "Area: Set by the operator\n");
+    /* --- What it is not valid without: a railcard, or an ID. On the first
+     * page, because a ticket without it is worth nothing. --- */
+    flipso_cat_valid_only_with(main, card, product, "");
+    if(res && res->valid) flipso_cat_reservation_id(main, product, res);
+
+    /* A journey in progress: legs taken so far and the fare accumulated across
+     * them, which is what a capped or multi-leg discount is computed from. */
+    if(product->has_journey && (product->journey_legs || product->cumulative_fare.value)) {
+        furi_string_cat_printf(
+            main,
+            "Current journey: %u leg%s\n",
+            product->journey_legs,
+            product->journey_legs == 1 ? "" : "s");
+        flipso_cat_money(main, "  ", "Fare so far", &product->cumulative_fare);
     }
 
     /* --- What it entitles the holder to. --- */
     if(product->has_entitlement) {
         furi_string_cat_printf(
-            out, "Entitlement: %s\n", itso_entitlement_name(product->entitlement_code));
+            main, "Entitlement: %s\n", itso_entitlement_name(product->entitlement_code));
         /* Profile code zero is "unspecified", which tells the holder nothing. */
         if(product->concession_class) {
             furi_string_cat_printf(
-                out, "Concession: %s\n", itso_profile_name(product->concession_class));
+                main, "Concession: %s\n", itso_profile_name(product->concession_class));
         }
     }
     if(product->has_id_flags) {
@@ -1341,53 +1589,149 @@ static void flipso_cat_product_details(
          * no entitlement of their own (TS 1000-5 table 24). Not "free": that
          * is only what it means where the holder's rate is. */
         if(itso_id_companion(product->id_flags)) {
-            furi_string_cat(out, "Companion: Travels at the same rate\n");
+            furi_string_cat(main, "Companion: Travels at the same rate\n");
         }
         if(identity)
-            flipso_cat_flag(out, "", "Photo on card", itso_id_personalised(product->id_flags));
+            flipso_cat_flag(left, "", "Photo on card", itso_id_personalised(product->id_flags));
     }
+    if(identity) {
+        flipso_cat_location(main, f, "", "Valid in", &product->from);
+        flipso_cat_location(main, f, "", "Also valid in", &product->to);
+    }
+
+    /* A paper ticket keeps no journey log, so when or where it was last used
+     * is what its first page has in place of a last tap. */
+    flipso_cat_last_use(main, f, card, product, NULL);
+    /* A voucher's renewal is all there is to say about how it is used. */
+    if(product->auto_renew) {
+        furi_string_cat(kind == FlipsoKindOther ? main : left, "Auto-renew: On\n");
+    }
+
+    /* --- Whose it is, last on the first page. --- */
+    flipso_cat_operator(main, f, "", "Operator", product->oid);
+
+    /* --- What it cost. The retailer is only worth a row when it differs
+     * from the owner; on most products the operator sells its own product and
+     * the two are the same. A rail ticket's may be the station that sold it
+     * instead. --- */
+    flipso_cat_booking(purchase, product, res);
+    ItsoLocation sold_at;
+    if(itso_product_sold_at(product, &sold_at)) {
+        flipso_cat_location(purchase, f, "", "Sold by", &sold_at);
+    } else if(product->has_retailer && product->retailer != product->oid) {
+        flipso_cat_operator(purchase, f, "", "Sold by", product->retailer);
+    }
+    flipso_cat_sold_at(purchase, f, product, res);
+    flipso_cat_ticket_price(purchase, product);
+
     /* --- Its state. --- */
-    if(product->ticket_used) flipso_cat_flag(out, "", "Used", true);
-    if(product->auto_renew) furi_string_cat(out, "Auto-renew: On\n");
-    if(product->priority_override) flipso_cat_flag(out, "", "Used first", true);
-    /* A journey in progress: legs taken so far and the fare accumulated across
-     * them, which is what a capped or multi-leg discount is computed from. */
-    if(product->has_journey && (product->journey_legs || product->cumulative_fare.value)) {
-        furi_string_cat_printf(
-            out,
-            "Current journey: %u leg%s\n",
-            product->journey_legs,
-            product->journey_legs == 1 ? "" : "s");
-        flipso_cat_money(out, "  ", "Fare so far", &product->cumulative_fare);
-    }
+    if(product->ticket_used) flipso_cat_flag(left, "", "Used", true);
+    if(product->priority_override) flipso_cat_flag(left, "", "Used first", true);
     if(product->has_transfers && product->transfers) {
-        furi_string_cat_printf(out, "Changes made: %u\n", product->transfers);
+        furi_string_cat_printf(left, "Changes made: %u\n", product->transfers);
     }
 
     /* --- The terms behind it, then what has happened to it. --- */
-    flipso_cat_ticket_terms(out, product);
-    flipso_cat_reservation(out, f, card, product, res);
-    flipso_cat_space_saving(out, f, card, product);
-    flipso_cat_id_details(out, product);
-    flipso_cat_last_transaction(out, product);
-    flipso_cat_purse_terms(out, product);
-    flipso_cat_capping(out, f, card, product);
-    if(res) flipso_cat_reserved_legs(out, f, product, res);
+    flipso_cat_ticket_terms(p, product);
+    flipso_cat_reservation(p, f, card, product, res);
+    flipso_cat_reservation_record(p, f, product, res);
+    flipso_cat_space_saving(p, card, product);
+    flipso_cat_id_details(p, product);
+    flipso_cat_id_deposits(purchase, product);
+    flipso_cat_purse_terms(left, product);
 
+    FuriString* history = flipso_pages_at(p, FlipsoSlotHistory);
+    flipso_cat_last_transaction(history, product);
     if(product->value_group && !product->value_parsed) {
-        furi_string_cat(out, "Transaction history: Could not be read\n");
+        furi_string_cat(history, "Transaction history: Could not be read\n");
     }
+    flipso_cat_value_history(p, product);
+}
 
-    /* Last, because the terms are what the product is and the history is what
-     * has happened to it: a card read more than once can carry several
-     * screenfuls of the latter. */
-    flipso_cat_value_history(out, product);
+/** A page of @p p, under its title, where it has anything on it. */
+static void flipso_pages_put(
+    FuriString* out,
+    FlipsoPages* p,
+    FlipsoPage page,
+    FlipsoIcon icon,
+    const char* title) {
+    flipso_cat_page_from(out, icon, title, p->page[page]);
 }
 
 /**
- * The Technical section under a product: the codes and machine numbers behind
+ * The pages flipso_cat_product_details() filled, in the order the holder
+ * reads them for the kind of product it is, with a reserved journey's legs
+ * and any fare capping in their places. Technical is the caller's to add.
+ */
+static void flipso_pages_emit(
+    FuriString* out,
+    FlipsoPages* p,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    const ItsoProduct* product,
+    const ItsoReservation* res) {
+    /* The first page is the product, by name, even with nothing decoded on it. */
+    flipso_cat_page(
+        out,
+        product->on_card ? flipso_product_icon(product) : FlipsoIconPast,
+        flipso_product_title(product));
+    furi_string_cat(out, p->page[FlipsoPageMain]);
+    furi_string_reset(p->page[FlipsoPageMain]);
+
+    switch(p->kind) {
+    case FlipsoKindPeriod:
+        flipso_pages_put(out, p, FlipsoPageLeft, FlipsoIconPass, "Passes");
+        flipso_pages_put(out, p, FlipsoPageRules, FlipsoIconTerms, "Conditions");
+        break;
+    case FlipsoKindJourney:
+        flipso_pages_put(out, p, FlipsoPageLeft, FlipsoIconTicket, "Rides");
+        flipso_pages_put(out, p, FlipsoPageRules, FlipsoIconTerms, "Conditions");
+        break;
+    case FlipsoKindReserved:
+        /* The seat first: on the platform it is what the holder is looking for. */
+        flipso_cat_leg_pages(out, f, product, res);
+        flipso_pages_put(out, p, FlipsoPageRules, FlipsoIconTerms, "Restrictions");
+        flipso_pages_put(out, p, FlipsoPageRoute, FlipsoIconRoute, "Route");
+        flipso_pages_put(out, p, FlipsoPageDetails, FlipsoIconInfo, "Details");
+        break;
+    case FlipsoKindPaper:
+        flipso_pages_put(out, p, FlipsoPageRules, FlipsoIconTerms, "Conditions");
+        flipso_pages_put(out, p, FlipsoPageLeft, FlipsoIconTaps, "Use");
+        break;
+    case FlipsoKindPurse:
+        flipso_pages_put(out, p, FlipsoPageLeft, FlipsoIconTopUp, "Top-up");
+        break;
+    case FlipsoKindAccount:
+        flipso_pages_put(out, p, FlipsoPageLeft, FlipsoIconAccount, "Account");
+        break;
+    case FlipsoKindId:
+        flipso_pages_put(out, p, FlipsoPageLeft, FlipsoIconId, "Holder");
+        flipso_pages_put(out, p, FlipsoPageRules, FlipsoIconTerms, "ID terms");
+        break;
+    case FlipsoKindEntitlement:
+        flipso_pages_put(out, p, FlipsoPageRules, FlipsoIconTerms, "Entitlement terms");
+        break;
+    case FlipsoKindOther:
+        flipso_pages_put(out, p, FlipsoPageLeft, FlipsoIconInfo, "Details");
+        flipso_pages_put(out, p, FlipsoPageRules, FlipsoIconTerms, "Conditions");
+        break;
+    }
+    flipso_pages_put(out, p, FlipsoPagePurchase, FlipsoIconPurchase, "Purchase");
+    flipso_cat_capping(out, f, card, product);
+    flipso_pages_put(out, p, FlipsoPageHistory, FlipsoIconPast, "History");
+    flipso_pages_put(out, p, FlipsoPageOffCard, FlipsoIconPast, "Off card");
+
+    /* Every slot lands on a page its kind shows, so nothing should be left;
+     * if a kind ever gains a line with nowhere to go, it is shown, not lost. */
+    for(size_t i = 0; i < FlipsoPageCount; i++) {
+        flipso_pages_put(out, p, (FlipsoPage)i, FlipsoIconInfo, "More");
+    }
+}
+
+/**
+ * What a product's Technical page says: the codes and machine numbers behind
  * it, which mean nothing without the scheme's own tables but are what tells two
- * otherwise identical products apart.
+ * otherwise identical products apart. The caller gives it its title.
  *
  * @param res as flipso_cat_product_details() takes it.
  */
@@ -1397,8 +1741,6 @@ static void flipso_cat_product_technical(
     const ItsoCard* card,
     const ItsoProduct* product,
     const ItsoReservation* res) {
-    furi_string_cat(out, "\n");
-    flipso_cat_heading(out, FlipsoIconNone, "Technical");
     furi_string_cat_printf(out, "Type code: %u.%u\n", product->typ, product->ptyp);
     furi_string_cat_printf(out, "Operator number: %u\n", product->oid);
     if(product->oid_extended) {
@@ -1552,38 +1894,92 @@ static void flipso_cat_product_technical(
     free(cap);
 }
 
-void flipso_format_payg(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
+/**
+ * Every page of one product, Technical last unless @p technical is false, for
+ * a screen that puts several products' codes on one page of its own.
+ */
+static void flipso_cat_product_screen(
+    FuriString* out,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    const ItsoProduct* product,
+    bool technical) {
+    /* A reserved journey's dataset and reservations, decoded once for every
+     * page and released before the text is shown. */
+    ItsoReservation* res = NULL;
+    if(product->typ == ItsoTypReservationTicket && product->ticket.valid) {
+        res = malloc(sizeof(ItsoReservation));
+        flipso_decode_reservation(f, card, product, res);
+    }
+    FlipsoPages* pages = flipso_pages_alloc(product);
+    flipso_cat_product_details(pages, f, card, product, res);
+    flipso_pages_emit(out, pages, f, card, product, res);
+    flipso_pages_free(pages);
+    if(technical) {
+        flipso_cat_page(out, FlipsoIconCode, "Technical");
+        flipso_cat_product_technical(out, f, card, product, res);
+    }
+    if(res) {
+        itso_reservation_free(res);
+        free(res);
+    }
+}
+
+/**
+ * A screen of every product the card holds that @p wanted picks: each one's
+ * pages in turn, then one Technical page for all of them, each product's codes
+ * under its name when there is more than one - so Technical is the screen's
+ * last page however many there are. Nothing at all when there are none.
+ *
+ * @return how many products it showed.
+ */
+static uint8_t flipso_cat_products_screen(
+    FuriString* out,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    bool (*wanted)(const ItsoProduct* product)) {
     uint8_t found = 0;
     for(uint8_t i = 0; i < card->product_count; i++) {
         const ItsoProduct* product = &card->products[i];
         /* What the card holds now; a product it has dropped is the product
          * list's to show. */
-        if(!product->on_card || product->typ != ItsoTypStoredTravelRights) continue;
-        if(found++) furi_string_cat(out, "\n");
-        flipso_cat_heading(out, FlipsoIconPurse, "Pay as you go");
-        flipso_cat_product_details(out, f, card, product, NULL);
-        /* The product list leaves these out, so this is the only screen with
-         * room for the rest of what the card says about them. */
+        if(!product->on_card || !wanted(product)) continue;
+        found++;
+        flipso_cat_product_screen(out, f, card, product, false);
+    }
+    if(!found) return 0;
+
+    flipso_cat_page(out, FlipsoIconCode, "Technical");
+    bool first = true;
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        const ItsoProduct* product = &card->products[i];
+        if(!product->on_card || !wanted(product)) continue;
+        if(found > 1) {
+            if(!first) furi_string_push_back(out, '\n');
+            flipso_cat_heading(out, FlipsoIconNone, flipso_product_title(product));
+        }
+        first = false;
         flipso_cat_product_technical(out, f, card, product, NULL);
     }
-    if(!found) {
-        flipso_cat_heading(out, FlipsoIconPurse, "Pay as you go");
+    return found;
+}
+
+static bool flipso_product_is_purse(const ItsoProduct* product) {
+    return product->typ == ItsoTypStoredTravelRights;
+}
+
+void flipso_format_payg(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
+    /* The product list leaves these out, so this is the only screen with room
+     * for the rest of what the card says about them. */
+    if(!flipso_cat_products_screen(out, f, card, flipso_product_is_purse)) {
+        flipso_cat_page(out, FlipsoIconPurse, "Pay as you go");
         furi_string_cat(out, "No purse on this card.\n");
     }
 }
 
 void flipso_format_id(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
-    uint8_t found = 0;
-    for(uint8_t i = 0; i < card->product_count; i++) {
-        const ItsoProduct* product = &card->products[i];
-        if(!product->on_card || !flipso_product_is_identity(product)) continue;
-        if(found++) furi_string_cat(out, "\n");
-        flipso_cat_heading(out, FlipsoIconId, flipso_product_title(product));
-        flipso_cat_product_details(out, f, card, product, NULL);
-        flipso_cat_product_technical(out, f, card, product, NULL);
-    }
-    if(!found) {
-        flipso_cat_heading(out, FlipsoIconId, "ID");
+    if(!flipso_cat_products_screen(out, f, card, flipso_product_is_identity)) {
+        flipso_cat_page(out, FlipsoIconId, "ID");
         furi_string_cat(out, "No identity product on this card.\n");
     }
 }
@@ -1593,34 +1989,5 @@ void flipso_format_product(
     const FlipsoFormat* f,
     const ItsoCard* card,
     const ItsoProduct* product) {
-    flipso_cat_heading(
-        out,
-        product->on_card ? flipso_product_icon(product) : FlipsoIconPast,
-        flipso_product_title(product));
-
-    /* Before anything the product says about itself, because everything below
-     * is written in the present tense and for this one it is not true any more:
-     * the card listed it when the record was saved and does not list it now. */
-    if(!product->on_card) {
-        furi_string_cat(out, "On card: No longer\n");
-        if(product->last_seen) {
-            furi_string_cat(out, "  Last seen: ");
-            flipso_cat_time(out, product->last_seen);
-            furi_string_push_back(out, '\n');
-        }
-    }
-
-    /* A reserved journey's dataset and reservations, decoded once for both
-     * sections and released before the text is shown. */
-    ItsoReservation* res = NULL;
-    if(product->typ == ItsoTypReservationTicket && product->ticket.valid) {
-        res = malloc(sizeof(ItsoReservation));
-        flipso_decode_reservation(f, card, product, res);
-    }
-    flipso_cat_product_details(out, f, card, product, res);
-    flipso_cat_product_technical(out, f, card, product, res);
-    if(res) {
-        itso_reservation_free(res);
-        free(res);
-    }
+    flipso_cat_product_screen(out, f, card, product, true);
 }

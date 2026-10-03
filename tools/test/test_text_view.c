@@ -155,17 +155,122 @@ int main(void) {
     check("the last line is shown", line_drawn("Line 19"));
     check("it does not scroll past the end", on_screen("Line 1"));
 
-    /* Left and Right page by a screen less a line. */
+    /* Left and Right belong to the pages now, and a text with only one has
+     * nowhere to turn to: they leave the scroll where it was. */
     press(text, InputKeyLeft, InputTypeShort);
     render(text);
-    check("left pages back", line_drawn("Line 11") && !line_drawn("Line 19"));
-    for(int i = 0; i < 10; i++)
-        press(text, InputKeyLeft, InputTypeShort);
-    render(text);
-    check("left stops at the top", line_drawn("Line 0"));
+    check("left on a single page does not move it", line_drawn("Line 19"));
     press(text, InputKeyRight, InputTypeShort);
     render(text);
-    check("right pages forward", line_drawn("Line 4") && !line_drawn("Line 3"));
+    check("nor does right", line_drawn("Line 19"));
+
+    /* --- Pages. --- */
+    flipso_text_view_set_text(
+        text, "\e#One\nA1\nA2\n\f\e#Two\nB1\n\f\e#Three\nC1\nC2\nC3\nC4\nC5\nC6\n");
+    render(text);
+    show("the first of three pages");
+    check("the first page's title is drawn", line_drawn("One"));
+    check("and its lines", line_drawn("A1") && line_drawn("A2"));
+    check("but nothing of the next page", !line_drawn("Two") && !line_drawn("B1"));
+    check("no page break is drawn as text", !on_screen("\f"));
+    /* The arrows are drawn as lines, which the stub marks '|', centred on the
+     * title row; these look at the tall column at the base of each. */
+    check("there is no left arrow on the first page", canvas.pixels[5][2] != '|');
+    check("there is a right arrow", canvas.pixels[5][STUB_W - 3] == '|');
+    int title_x = -1;
+    for(int i = 0; i < canvas.text_count; i++) {
+        if(strcmp(canvas.texts[i], "One") == 0) title_x = canvas.text_x[i];
+    }
+    check("the title stands clear of where a left arrow goes", title_x >= 5);
+    check(
+        "the title is centred, as the icon list's header is",
+        title_x == (STUB_W - 3 * STUB_GLYPH_PRIMARY_W) / 2);
+    check(
+        "a rule separates the title from the page",
+        canvas.pixels[13][0] == '-' && canvas.pixels[13][64] == '-' &&
+            canvas.pixels[13][STUB_W - 1] == '-');
+
+    press(text, InputKeyRight, InputTypeShort);
+    render(text);
+    show("the middle page");
+    check("right turns to the next page", line_drawn("Two") && line_drawn("B1"));
+    check("and leaves the first behind", !line_drawn("One") && !line_drawn("A1"));
+    check(
+        "the middle page has both arrows",
+        canvas.pixels[5][2] == '|' && canvas.pixels[5][STUB_W - 3] == '|');
+
+    press(text, InputKeyRight, InputTypeRepeat);
+    render(text);
+    show("the last page");
+    check("a held right keeps turning", line_drawn("Three"));
+    check("there is no right arrow on the last page", canvas.pixels[5][STUB_W - 3] != '|');
+    check("but there is a left one", canvas.pixels[5][2] == '|');
+    check("a page shows four rows under its title", line_drawn("C4") && !line_drawn("C5"));
+
+    /* The title stays put while the page scrolls under it. */
+    for(int i = 0; i < 10; i++)
+        press(text, InputKeyDown, InputTypeShort);
+    render(text);
+    show("the last page, scrolled to its end");
+    check("the title stays while the page scrolls", line_drawn("Three"));
+    check("the page scrolls to its last line", line_drawn("C6") && !line_drawn("C2"));
+    check("the scrollbar is not in the title row", canvas.pixels[0][STUB_W - 1] != ':');
+    check(
+        "the scrollbar runs beside the page",
+        canvas.pixels[20][STUB_W - 1] == ':' || canvas.pixels[20][STUB_W - 1] == 'H');
+
+    /* No wrapping round: the last page is the end. */
+    press(text, InputKeyRight, InputTypeShort);
+    render(text);
+    check("right on the last page stays there", line_drawn("Three") && line_drawn("C6"));
+
+    press(text, InputKeyLeft, InputTypeShort);
+    press(text, InputKeyRight, InputTypeShort);
+    render(text);
+    check("a page is opened at its top", line_drawn("C1"));
+
+    for(int i = 0; i < 5; i++)
+        press(text, InputKeyLeft, InputTypeShort);
+    render(text);
+    check("left stops at the first page", line_drawn("One"));
+
+    flipso_text_view_set_text(text, "\e#A\nA1\n\f\e#B\nB1\n");
+    press(text, InputKeyRight, InputTypeShort);
+    flipso_text_view_set_text(text, "\e#C\nC1\n\f\e#D\nD1\n");
+    render(text);
+    check("new text opens on its first page", line_drawn("C") && line_drawn("C1"));
+
+    /* A title too wide for the row is cut short of the arrow, and says so. */
+    flipso_text_view_set_text(text, "\e#Abcdefghijklmnopqrstuvwxyz\nBody\n\f\e#Next\nMore\n");
+    render(text);
+    show("a title too long for its row");
+    bool cut = false;
+    int cut_end = 0;
+    for(int i = 0; i < canvas.text_count; i++) {
+        if(strncmp(canvas.texts[i], "Abc", 3) == 0) {
+            size_t n = strlen(canvas.texts[i]);
+            cut = n > 3 && strcmp(canvas.texts[i] + n - 3, "...") == 0;
+            cut_end = canvas.text_x[i] + (int)n * STUB_GLYPH_PRIMARY_W;
+        }
+    }
+    check("a long title is cut with dots", cut);
+
+    /* One longer than the buffer the title is cut in: the dots still fit, and
+     * nothing is written past it (the suite runs under ASan). */
+    FuriString* longest = furi_string_alloc_set_str("\e#");
+    for(int i = 0; i < 120; i++)
+        furi_string_push_back(longest, (char)('a' + i % 26));
+    furi_string_cat_str(longest, "\nBody\n\f\e#Next\nMore\n");
+    flipso_text_view_set_text(text, furi_string_get_cstr(longest));
+    furi_string_free(longest);
+    render(text);
+    bool dotted = false;
+    for(int i = 0; i < canvas.text_count; i++) {
+        size_t n = strlen(canvas.texts[i]);
+        if(n > 3 && strcmp(canvas.texts[i] + n - 3, "...") == 0) dotted = true;
+    }
+    check("a title longer than the cut buffer is cut safely", dotted);
+    check("and stops short of the arrow", cut_end <= STUB_W - 5);
 
     /* --- Indentation. --- */
     flipso_text_view_set_text(text, "Deposit: 5.00\n  paid by Card\n");
@@ -282,13 +387,17 @@ int main(void) {
     flipso_text_view_set_text(text, "\e#\x11Pay as you go\nBody\n");
     render(text);
     show("a heading with an icon");
-    check("the heading icon is drawn", canvas.pixels[3][4] == '@');
+    int icon_x = -1;
+    for(int x = 0; x < STUB_W && icon_x < 0; x++) {
+        if(canvas.pixels[1][x] == '@') icon_x = x;
+    }
+    check("the heading icon is drawn", icon_x >= 0);
     check("the icon number is not drawn as text", line_drawn("Pay as you go"));
     int heading_x = -1;
     for(int i = 0; i < canvas.text_count; i++) {
         if(strcmp(canvas.texts[i], "Pay as you go") == 0) heading_x = canvas.text_x[i];
     }
-    check("the heading text clears the icon", heading_x >= 12);
+    check("the heading text clears the icon", icon_x >= 0 && heading_x >= icon_x + 10);
     flipso_text_view_set_text(text, "\e#\x15Out of range\n");
     render(text);
     check("an unknown icon number is left as text", on_screen("Out of range"));
