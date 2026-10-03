@@ -42,7 +42,7 @@ For a saved card, `tools/test/screens.py card.flipso` prints every screen as
 the device would draw it, with station and stop names from the real tables.
 It ends with every operator number on the card, flagging any that falls in a
 TS 1000-2 table B2 gap, which no real OID can. Check the screens there, not
-by scrolling the device.
+by paging through the device. Each page prints as a block under its title.
 
 For full ground truth on a card whose geometry is in doubt, loop every DESFire
 file id 0..31 reading settings *and* data. That shows each file's true size,

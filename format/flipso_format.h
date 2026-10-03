@@ -2,11 +2,19 @@
  * @file flipso_format.h
  * @brief Everything the detail screens say, as text, built without a screen.
  *
- * Each screen of a card is a scrolling page of "Label: Value" lines under bold
- * headings, and all of them are built here from an ItsoCard and the lookup
- * tables, so that the words the user reads can be tested on the host like the
- * decoder behind them: tools/test/test_format.c renders the synthetic cards and
- * checks what comes out. The scenes only hand the result to the text view.
+ * Each screen of a card is a set of pages of "Label: Value" lines, turned with
+ * Left and Right, and all of them are built here from an ItsoCard and the
+ * lookup tables, so that the words the user reads can be tested on the host
+ * like the decoder behind them: tools/test/test_format.c renders the synthetic
+ * cards and checks what comes out. The scenes only hand the result to the text
+ * view.
+ *
+ * A page groups what answers one question a holder has on a bus or a train,
+ * and the pages come in the order they ask them: the first says whether the
+ * ticket is good, where and until when; the ones after say what is left, the
+ * terms, what it cost and what has happened to it; Technical, the codes
+ * nothing names, is always last. Every page opens with its title, and a line
+ * appears on one page only.
  *
  * The conventions every line follows, so the screens read as one app:
  *
@@ -58,6 +66,22 @@ typedef enum {
     FlipsoIconSave,
     FlipsoIconAccount,
     FlipsoIconInfo,
+    /* Page titles: every page of a text screen has an icon, and these are the
+     * pages none of the above describes. */
+    FlipsoIconCode,
+    FlipsoIconChip,
+    FlipsoIconInvalid,
+    FlipsoIconTopUp,
+    FlipsoIconCap,
+    FlipsoIconTerms,
+    FlipsoIconPurchase,
+    FlipsoIconRoute,
+    FlipsoIconSeat,
+    FlipsoIconApps,
+    FlipsoIconFile,
+    FlipsoIconTrain,
+    FlipsoIconBus,
+    FlipsoIconOperator,
     FlipsoIconCount, /**< One past the last; the table size is this less one. */
 } FlipsoIcon;
 

@@ -122,30 +122,33 @@ static const char* flipso_file_comm_name(uint8_t comm) {
 /** "Anyone", "Nobody" or "Key 3": who may do a thing to a file. */
 static void flipso_cat_file_right(FuriString* out, const char* label, uint8_t key) {
     if(key == FLIPSO_ACCESS_FREE) {
-        furi_string_cat_printf(out, "    %s: Anyone\n", label);
+        furi_string_cat_printf(out, "  %s: Anyone\n", label);
     } else if(key == FLIPSO_ACCESS_NEVER) {
-        furi_string_cat_printf(out, "    %s: Nobody\n", label);
+        furi_string_cat_printf(out, "  %s: Nobody\n", label);
     } else {
-        furi_string_cat_printf(out, "    %s: Key %u\n", label, key);
+        furi_string_cat_printf(out, "  %s: Key %u\n", label, key);
     }
 }
 
-/** One file, as a line naming it and its details indented under it. */
+/** One file, as a page of its own titled with its number. */
 static void
     flipso_cat_media_file(FuriString* out, const FlipsoMedia* media, const FlipsoMediaFile* file) {
+    char title[12];
+    snprintf(title, sizeof(title), "File %u", file->id);
+    flipso_cat_page(out, FlipsoIconFile, title);
     if(!file->settings_valid) {
         /* The card named the file and would not describe it without a key. */
-        furi_string_cat_printf(out, "File %u: Details locked\n", file->id);
+        furi_string_cat(out, "Details: Locked\n");
         return;
     }
-    furi_string_cat_printf(out, "File %u: %s\n", file->id, flipso_file_type_name(file->type));
+    furi_string_cat_printf(out, "Type: %s\n", flipso_file_type_name(file->type));
 
     switch(file->type) {
     case FLIPSO_FILE_LINEAR_RECORD:
     case FLIPSO_FILE_CYCLIC_RECORD:
         furi_string_cat_printf(
             out,
-            "  Records: %lu of %lu, %lu bytes each\n",
+            "Records: %lu of %lu, %lu bytes each\n",
             (unsigned long)file->record.cur,
             (unsigned long)file->record.max,
             (unsigned long)file->record.size);
@@ -155,7 +158,7 @@ static void
          * will say about it without a key is the range it is kept within. */
         furi_string_cat_printf(
             out,
-            "  Range: %ld to %ld\n",
+            "Range: %ld to %ld\n",
             (long)(int32_t)file->value.lo_limit,
             (long)(int32_t)file->value.hi_limit);
         break;
@@ -163,20 +166,20 @@ static void
         /* A transaction MAC file has no length of its own to report. */
         break;
     default:
-        furi_string_cat_printf(out, "  Size: %lu bytes\n", (unsigned long)file->data.size);
+        furi_string_cat_printf(out, "Size: %lu bytes\n", (unsigned long)file->data.size);
         break;
     }
 
-    furi_string_cat_printf(out, "  Encryption: %s\n", flipso_file_comm_name(file->comm));
+    furi_string_cat_printf(out, "Encryption: %s\n", flipso_file_comm_name(file->comm));
     /* The word as the card gave it, then what it means. */
-    furi_string_cat_printf(out, "  Access rights: %04X\n", file->access);
+    furi_string_cat_printf(out, "Access rights: %04X\n", file->access);
     flipso_cat_file_right(out, "Read", FLIPSO_ACCESS_READ(file->access));
     flipso_cat_file_right(out, "Write", FLIPSO_ACCESS_WRITE(file->access));
 
     if(file->data_len) {
         /* Four bytes to a group, so a long run wraps between groups rather than
          * in the middle of a byte. */
-        furi_string_cat(out, "  Contents:");
+        furi_string_cat(out, "Contents:");
         for(uint8_t i = 0; i < file->data_len; i += 4) {
             uint8_t run = (uint8_t)(file->data_len - i);
             if(run > 4) run = 4;
@@ -187,14 +190,14 @@ static void
     } else if(flipso_media_file_free_read(file)) {
         /* The rights said anyone could read it and the read still failed, which
          * is worth distinguishing from a file that is simply locked. */
-        furi_string_cat(out, "  Contents: Could not be read\n");
+        furi_string_cat(out, "Contents: Could not be read\n");
     } else {
-        furi_string_cat(out, "  Contents: Locked\n");
+        furi_string_cat(out, "Contents: Locked\n");
     }
 }
 
 void flipso_format_media(FuriString* out, const FlipsoMedia* media) {
-    flipso_cat_heading(out, FlipsoIconCard, "Chip");
+    flipso_cat_page(out, FlipsoIconChip, "Chip");
     if(!media->valid) {
         furi_string_cat(out, "The card did not describe itself.\n");
         return;
@@ -217,8 +220,7 @@ void flipso_format_media(FuriString* out, const FlipsoMedia* media) {
         media->hw_vendor,
         media->hw_proto);
 
-    furi_string_cat(out, "\n");
-    flipso_cat_heading(out, FlipsoIconNone, "Applications");
+    flipso_cat_page(out, FlipsoIconApps, "Applications");
     if(!media->app_list_valid) {
         /* A card may keep its directory behind the master key, in which case
          * all we know of is whatever we went looking for by name. */
@@ -235,30 +237,21 @@ void flipso_format_media(FuriString* out, const FlipsoMedia* media) {
 
     if(!media->has_files) return;
 
-    /* Named where we can: the application list above has already paired the
-     * name with its number, so repeating the number here says nothing. */
-    furi_string_cat(out, "\n");
+    /* Which application the file pages after this one are from, named where
+     * we can: the list above has already paired the name with its number. */
     const char* app = flipso_media_app_name(media->selected_aid);
-    FuriString* title = furi_string_alloc();
     if(app) {
-        furi_string_printf(title, "Files in %s", app);
+        furi_string_cat_printf(out, "Files read from: %s\n", app);
     } else {
-        furi_string_printf(title, "Files in %06lX", (unsigned long)media->selected_aid);
+        furi_string_cat_printf(
+            out, "Files read from: %06lX\n", (unsigned long)media->selected_aid);
     }
-    flipso_cat_heading(out, FlipsoIconNone, furi_string_get_cstr(title));
-    furi_string_free(title);
+    if(media->file_count == 0) furi_string_cat(out, "Files: None listed\n");
+    if(media->files_truncated) furi_string_cat(out, "More files: Too many to list\n");
 
-    if(media->file_count == 0) {
-        furi_string_cat(out, "Files: None listed\n");
-        return;
-    }
     for(uint8_t i = 0; i < media->file_count; i++) {
-        /* A blank line between files: each is a block of indented details,
-         * and the gap is what shows where one ends. */
-        if(i) furi_string_push_back(out, '\n');
         flipso_cat_media_file(out, media, &media->files[i]);
     }
-    if(media->files_truncated) furi_string_cat(out, "\nMore files: Too many to list\n");
 }
 
 /** The ISRN as it prints: issuer, operator, then serial - 633597 1234 0012 3458. */
@@ -273,141 +266,10 @@ static void flipso_cat_isrn(FuriString* out, const ItsoCard* card) {
     }
 }
 
-void flipso_format_card(
-    FuriString* out,
-    const FlipsoFormat* f,
-    const ItsoCard* card,
-    const char* saved_name,
-    bool demo,
-    uint32_t read_at) {
-    /* The blocking indicator is a property of the whole shell, so it comes
-     * before anything else on the screen: once it is set a machine rejects the
-     * card, however valid the products further down still look.
-     * TS 1000-2 clause 5.1.2. */
-    if(card->shell_blocked) {
-        flipso_cat_heading(out, FlipsoIconWarning, "Blocked");
-        furi_string_cat(
-            out,
-            "This card has been stopped by its issuer. Readers will reject it, "
-            "even where the products on it are still in date.\n\n");
-    }
-
-    /* A compact shell stores no number, so a paper ticket has no headline one:
-     * the number it implies is under Technical, said for what it is. */
-    if(!card->shell_compact) {
-        flipso_cat_heading(out, FlipsoIconCard, "Card number");
-        flipso_cat_isrn(out, card);
-        furi_string_push_back(out, '\n');
-        if(!card->isrn_check_ok) furi_string_cat(out, "Check digit: Does not match\n");
-        furi_string_cat(out, "\n");
-    }
-
-    flipso_cat_heading(out, FlipsoIconPass, "Validity");
-    /* A compact shell's expiry is implied rather than stored, and never comes, so
-     * a paper ticket's validity is its product's and takes the place of both
-     * lines. */
-    if(card->shell_compact) {
-        flipso_cat_ticket_state(out, "Status", card, f->now);
-    } else {
-        flipso_cat_expiry(out, "", "Expires", "Expired", card->expiry, f->now);
-    }
-    /* The good case is stated rather than left to silence, because nothing else
-     * on the screen separates a card the issuer is happy with from one whose
-     * directory was never read. */
-    if(card->shell_compact) {
-        /* Already stated, from the product. */
-    } else if(card->shell_blocked) {
-        furi_string_cat(out, "Status: Blocked\n");
-    } else if(itso_card_retired(card)) {
-        furi_string_cat(out, "Status: Retired\n");
-    } else if(!itso_date_open(card->expiry) && itso_date_expired(card->expiry, f->now)) {
-        furi_string_cat(out, "Status: Expired\n");
-    } else if(card->dir_valid) {
-        furi_string_cat(out, "Status: Active\n");
-    }
-
-    furi_string_cat(out, "\n");
-    flipso_cat_heading(out, FlipsoIconNone, "Issuer");
-    /* The shell owner is the operator that issued the card and so the one that
-     * brands it. An unnamed one shows its number in the "Unknown (1234)" that
-     * stands in for the name, because the number is what a user needs to add
-     * their card to the operators file; a named one's is under Technical. */
+/** What the card's Technical page says: its media, layout, keys and directory. */
+static void
+    flipso_cat_card_technical(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
     const uint16_t issuer = itso_card_issuer_oid(card);
-    flipso_cat_operator(out, f, "", "Operator", issuer);
-    if(card->mcrn_present && card->mcrn[0]) {
-        furi_string_cat_printf(out, "Card reference: %s\n", card->mcrn);
-    }
-
-    /* What the chip says about itself, which only a live DESFire read asks. */
-    if(f->media && f->media->valid) {
-        furi_string_cat(out, "\n");
-        flipso_cat_heading(out, FlipsoIconNone, "Chip");
-        flipso_cat_chip_summary(out, f->media);
-    } else if(card->chip_uid_valid) {
-        /* A Type 2 tag's serial is in its own page memory, saved with the rest,
-         * and is the only thing that tells one paper ticket from another. */
-        furi_string_cat(out, "\n");
-        flipso_cat_heading(out, FlipsoIconNone, "Chip");
-        /* A full-shell tag's chip is named by its media definition. */
-        const char* chip = itso_type2_chip_name(card);
-        if(chip) furi_string_cat_printf(out, "Chip: %s\n", chip);
-        furi_string_cat(out, "UID: ");
-        flipso_cat_hex(out, card->chip_uid, sizeof(card->chip_uid));
-        furi_string_push_back(out, '\n');
-        /* The first byte of a 7-byte UID is the maker's ISO/IEC 7816-6 code. */
-        const char* maker = flipso_chip_maker(card->chip_uid[0]);
-        if(maker) {
-            furi_string_cat_printf(out, "Maker: %s\n", maker);
-        } else {
-            furi_string_cat_printf(out, "Maker: Unknown (%02X)\n", card->chip_uid[0]);
-        }
-        furi_string_cat_printf(out, "Memory: %u bytes\n", card->chip_memory_len);
-
-        /* The lock bits: which pages the issuer made read-only. ITSO says which
-         * a CMD4 must lock once it is issued (TS 1000-10 clause 5.10.2), so a
-         * ticket whose data could still be rewritten says so. */
-        uint16_t locked = itso_type2_locked_pages(card->chip_lock);
-        furi_string_cat(out, "Locked pages: ");
-        flipso_cat_pages(out, locked);
-        furi_string_push_back(out, '\n');
-        if(card->shell_compact) {
-            uint16_t unlocked = ITSO_CMD4_LOCKED_PAGES & ~locked;
-            flipso_cat_flag(out, "  ", "As ITSO requires", !unlocked);
-            if(unlocked) {
-                furi_string_cat(out, "  Still writable: ");
-                flipso_cat_pages(out, unlocked);
-                furi_string_push_back(out, '\n');
-            }
-        } else if(chip) {
-            /* CMD9 and CMD10 only recommend it (TS 1000-10 clause 10.23.1): the
-             * shell never changes, so its pages are locked, and the directory
-             * that starts on page 12 is left writable. */
-            uint16_t unlocked = ITSO_TYPE2_FULL_LOCKED_PAGES & ~locked;
-            flipso_cat_flag(out, "  ", "Shell locked", !unlocked);
-        }
-        /* The block-lock bits, which fix the lock bits themselves. */
-        furi_string_cat(out, "Lock bits frozen: ");
-        flipso_cat_pages(out, itso_type2_frozen_pages(card->chip_lock));
-        furi_string_push_back(out, '\n');
-
-        /* A CMD9's one-way count of transactions (TS 1000-10 table 107). Each
-         * value record written must be numbered at least this high, which is
-         * what stops an old copy of the card being written back; the count
-         * starts at 1 and 16 retires the card, so a product on it can be used
-         * fifteen times less what has been counted. */
-        if(card->chip_abacus_valid) {
-            if(itso_card_retired(card)) {
-                furi_string_cat(out, "Uses left: None, retired\n");
-            } else {
-                furi_string_cat_printf(
-                    out, "Uses left: %u\n", card->chip_abacus < 15 ? 15 - card->chip_abacus : 0);
-            }
-            furi_string_cat_printf(out, "  Abacus: %u of 16\n", card->chip_abacus);
-        }
-    }
-
-    furi_string_cat(out, "\n");
-    flipso_cat_heading(out, FlipsoIconNone, "Technical");
     /* FVC is the number of the customer media definition the shell follows. */
     switch(card->fvc) {
     case 2:
@@ -497,15 +359,142 @@ void flipso_format_card(
     if(card->dir_instance_valid) {
         flipso_cat_machine(out, f, "", "Last updated by machine", card->dir_isam);
     }
+}
+
+void flipso_format_card(
+    FuriString* out,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    const char* saved_name,
+    bool demo,
+    uint32_t read_at) {
+    /* The blocking indicator is a property of the whole shell, so it comes
+     * before anything else on the screen: once it is set a machine rejects the
+     * card, however valid the products further down still look.
+     * TS 1000-2 clause 5.1.2. */
+    flipso_cat_page(out, card->shell_blocked ? FlipsoIconWarning : FlipsoIconCard, "Card");
+    if(card->shell_blocked) {
+        furi_string_cat(
+            out,
+            "This card has been stopped by its issuer. Readers will reject it, "
+            "even where the products on it are still in date.\n");
+    }
+
+    /* A compact shell stores no number, so a paper ticket has no headline one:
+     * the number it implies is under Technical, said for what it is. The
+     * number stands alone under the page's title: with a label in front, its
+     * eighteen digits break across two rows. */
+    if(!card->shell_compact) {
+        flipso_cat_isrn(out, card);
+        furi_string_push_back(out, '\n');
+        if(!card->isrn_check_ok) furi_string_cat(out, "  Check digit: Does not match\n");
+    }
+
+    /* The good case is stated rather than left to silence, because nothing else
+     * on the screen separates a card the issuer is happy with from one whose
+     * directory was never read. A compact shell's expiry is implied rather
+     * than stored, and never comes, so a paper ticket's validity is its
+     * product's and takes the place of both lines. */
+    if(card->shell_compact) {
+        flipso_cat_ticket_state(out, "Status", card, f->now);
+    } else if(card->shell_blocked) {
+        furi_string_cat(out, "Status: Blocked\n");
+    } else if(itso_card_retired(card)) {
+        furi_string_cat(out, "Status: Retired\n");
+    } else if(!itso_date_open(card->expiry) && itso_date_expired(card->expiry, f->now)) {
+        furi_string_cat(out, "Status: Expired\n");
+    } else if(card->dir_valid) {
+        furi_string_cat(out, "Status: Active\n");
+    }
+    if(!card->shell_compact) {
+        flipso_cat_expiry(out, "", "Expires", "Expired", card->expiry, f->now);
+    }
+
+    /* The shell owner is the operator that issued the card and so the one that
+     * brands it. An unnamed one shows its number in the "Unknown (1234)" that
+     * stands in for the name, because the number is what a user needs to add
+     * their card to the operators file; a named one's is under Technical. */
+    flipso_cat_operator(out, f, "", "Operator", itso_card_issuer_oid(card));
+    if(card->mcrn_present && card->mcrn[0]) {
+        furi_string_cat_printf(out, "Card reference: %s\n", card->mcrn);
+    }
+
+    /* What the chip says about itself, which only a live DESFire read asks. */
+    if(f->media && f->media->valid) {
+        flipso_cat_page(out, FlipsoIconChip, "Chip");
+        flipso_cat_chip_summary(out, f->media);
+    } else if(card->chip_uid_valid) {
+        /* A Type 2 tag's serial is in its own page memory, saved with the rest,
+         * and is the only thing that tells one paper ticket from another. */
+        flipso_cat_page(out, FlipsoIconChip, "Chip");
+        /* A full-shell tag's chip is named by its media definition. */
+        const char* chip = itso_type2_chip_name(card);
+        if(chip) furi_string_cat_printf(out, "Chip: %s\n", chip);
+
+        /* A CMD9's one-way count of transactions (TS 1000-10 table 107). Each
+         * value record written must be numbered at least this high, which is
+         * what stops an old copy of the card being written back; the count
+         * starts at 1 and 16 retires the card, so a product on it can be used
+         * fifteen times less what has been counted. Next to the chip, because
+         * it is the chip's life that runs out. */
+        if(card->chip_abacus_valid) {
+            if(itso_card_retired(card)) {
+                furi_string_cat(out, "Uses left: None, retired\n");
+            } else {
+                furi_string_cat_printf(
+                    out, "Uses left: %u\n", card->chip_abacus < 15 ? 15 - card->chip_abacus : 0);
+            }
+            furi_string_cat_printf(out, "  Abacus: %u of 16\n", card->chip_abacus);
+        }
+
+        furi_string_cat(out, "UID: ");
+        flipso_cat_hex(out, card->chip_uid, sizeof(card->chip_uid));
+        furi_string_push_back(out, '\n');
+        /* The first byte of a 7-byte UID is the maker's ISO/IEC 7816-6 code. */
+        const char* maker = flipso_chip_maker(card->chip_uid[0]);
+        if(maker) {
+            furi_string_cat_printf(out, "Maker: %s\n", maker);
+        } else {
+            furi_string_cat_printf(out, "Maker: Unknown (%02X)\n", card->chip_uid[0]);
+        }
+        furi_string_cat_printf(out, "Memory: %u bytes\n", card->chip_memory_len);
+
+        /* The lock bits: which pages the issuer made read-only. ITSO says which
+         * a CMD4 must lock once it is issued (TS 1000-10 clause 5.10.2), so a
+         * ticket whose data could still be rewritten says so. */
+        uint16_t locked = itso_type2_locked_pages(card->chip_lock);
+        furi_string_cat(out, "Locked pages: ");
+        flipso_cat_pages(out, locked);
+        furi_string_push_back(out, '\n');
+        if(card->shell_compact) {
+            uint16_t unlocked = ITSO_CMD4_LOCKED_PAGES & ~locked;
+            flipso_cat_flag(out, "  ", "As ITSO requires", !unlocked);
+            if(unlocked) {
+                furi_string_cat(out, "  Still writable: ");
+                flipso_cat_pages(out, unlocked);
+                furi_string_push_back(out, '\n');
+            }
+        } else if(chip) {
+            /* CMD9 and CMD10 only recommend it (TS 1000-10 clause 10.23.1): the
+             * shell never changes, so its pages are locked, and the directory
+             * that starts on page 12 is left writable. */
+            uint16_t unlocked = ITSO_TYPE2_FULL_LOCKED_PAGES & ~locked;
+            flipso_cat_flag(out, "  ", "Shell locked", !unlocked);
+        }
+        /* The block-lock bits, which fix the lock bits themselves. */
+        furi_string_cat(out, "Lock bits frozen: ");
+        flipso_cat_pages(out, itso_type2_frozen_pages(card->chip_lock));
+        furi_string_push_back(out, '\n');
+    }
 
     /* Where this came from, for a card opened off the SD card. The read time
      * matters more than it looks: a balance is only true as of the tap that
-     * wrote it, and a saved card carries no hint of its own age otherwise. */
+     * wrote it, and a saved card carries no hint of its own age otherwise -
+     * so this comes before the codes, not after them. */
     if(saved_name) {
-        furi_string_cat(out, "\n");
         /* A demo card is a saved-card file too, but calling it saved would
          * say the user kept it. */
-        flipso_cat_heading(
+        flipso_cat_page(
             out, demo ? FlipsoIconCard : FlipsoIconSave, demo ? "Demo card" : "Saved card");
         furi_string_cat_printf(out, "Name: %s\n", saved_name);
         if(read_at) {
@@ -514,4 +503,7 @@ void flipso_format_card(
             furi_string_push_back(out, '\n');
         }
     }
+
+    flipso_cat_page(out, FlipsoIconCode, "Technical");
+    flipso_cat_card_technical(out, f, card);
 }

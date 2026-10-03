@@ -235,7 +235,7 @@ one directory entry and no Sector Chain Table. So every such ticket has the same
 card number, `633597 8189 0000000 3`, and the shell owner names no operator. The
 ticket's one product does: its owner, SPT's OID 8323, stands in for the shell
 owner as the card's issuer, and so titles the menu "SPT Subway" and fills the
-Card screen's Issuer section. A saved ticket is named and matched on its chip
+Card screen's first page. A saved ticket is named and matched on its chip
 serial for the same reason - the card number would be identical on all of them.
 The Card screen marks the number as shared, shows the chip serial and its maker
 (the first byte of the UID: `04` NXP, `05` Infineon - every real Subway ticket
@@ -244,7 +244,7 @@ which the card does not hold.
 
 That is all the chip says about itself. An Ultralight-class chip has no
 equivalent of a DESFire's GetVersion - no batch, production week or storage
-report - so the rest of the Chip section comes from the page memory itself:
+report - so the rest of the Chip page comes from the page memory itself:
 
 - **Memory**, the bytes the tag gave up before refusing a read: 64 on a CMD4.
 - **Locked pages**, from the two static lock bytes in page 2 (the MIFARE
@@ -264,7 +264,7 @@ alike. The product has no Sector Chain Table to give it a status either, so it
 claims none, with one exception: TS 1000-10 clause 5.16 blocks a CMD4 product by
 setting its **Seal** to all zeros, and Flipso reads that as blocked. The
 **InstanceID** in pages 8-9 has the full IPE's structure, so the product's
-Technical section names the ISAM that sold it - on the real tickets, one
+Technical page names the ISAM that sold it - on the real tickets, one
 registered to SPT.
 
 The ticket itself is a **Space Saving IPE** (TS 1000-5 clauses 2.14-2.16): a
@@ -705,7 +705,7 @@ Beyond that:
 | TYP 16 — ITSO ID (rev 1, 2) | Holder name, date of birth, gender, companion and photo flags, entitlement, class, validity dates, locations; CPICC (the concessionary pass issuer), HolderID and SecondaryHolderID, language (annex A.24), HalfDayOfWeek, fare rounding rule, deposit and card deposit with payment, VAT and refundability, PrintTicket; the language is marked as not in use when IDFlags bit 3 sends a POST to another application |
 | TYP 22 — Period ticket (rev 1, 2, 3) | Validity start (DTS in rev 1–2, date and time in rev 3), from/to locations — or, when both are absent, that the area is the operator's to define — passes remaining, expiry of the active pass and of the unused stock, auto-renew and what it adds, stored-pass mode; days and AM/PM periods it is valid (ValidOnDayCode and TYP22Flags together), off-peak, transferable, end time, pass length and unit, party size, class, issue date, amount paid with payment and VAT, CPICC, validity and promotion codes, RouteCode, print flags; in rev 3, what a top-up does with expired passes (TreatmentOfExpiredSP) and the identity document it is valid only with, as a number, text or another product on the card, at the top of its screen and on the Summary |
 | TYP 23 — Journey ticket (rev 1, 2, 3) | Origin, destination, rides remaining, transfers made, auto-renew, used flag, stored-ride expiry (rev 3); issue date, validity start (rev 3), end time, class, party size, amount paid with payment and VAT, photocard number, CPICC, validity and promotion codes, RouteCode, print flags, and the mode group — how rides are counted (rev 3 adds return pairs), transfer and time limits, ride value in its own currency code |
-| TYP 24 — Reserved journey (rev 2) | The railcard it is valid only with, and the railcard number, at the top and on the Summary; journeys remaining, transfers remaining (one total), part-used flag; single, return or either-way and journeys sold; outward and return portions, each a start and a period in days; origin, destination and their alternatives, Route, the station or operator that sold it; TYP24Flags (test ticket first, the others only when set, the clear ones under Technical); days it may be used and days restrictions apply, the operator it is limited to, class, party size, amount paid and how; the eight optional groups - associated products, out-of-station interchanges, break of journey and other transfers, valid times, specific trains, routing points, and under Technical the discount code, percentage and code type, and the supplement codes - the passenger's name and gender, ticket number, FTOT, restriction code and ID type; and the reserved legs of its VGXRef 3 extension: the kind of place, coach, seat or berth, which way it faces and where it is (below) |
+| TYP 24 — Reserved journey (rev 2) | The railcard it is valid only with, and the railcard number, on the first page and on the Summary; journeys remaining, transfers remaining (one total), part-used flag; single, return or either-way and journeys sold; outward and return portions, each a start and a period in days; origin, destination and their alternatives, Route, the station or operator that sold it; TYP24Flags (test ticket first, the others only when set, the clear ones under Technical); days it may be used and days restrictions apply, the operator it is limited to, class, party size, amount paid and how; the eight optional groups - associated products, out-of-station interchanges, break of journey and other transfers, valid times, specific trains, routing points, and under Technical the discount code, percentage and code type, and the supplement codes - the passenger's name and gender, ticket number, FTOT, restriction code and ID type; and the reserved legs of its VGXRef 3 extension: the kind of place, coach, seat or berth, which way it faces and where it is (below) |
 | TYP 25 — Voucher | Vouchers remaining and auto-renew only; the dataset is not decoded ([handoff](handoff/typ25-voucher.md)) |
 | TYP 26 — Tolling | Rides remaining and auto-renew only; the dataset is not decoded ([handoff](handoff/typ26-tolling.md)) |
 | TYP 27 — Period ticket (space saving) | Issue date, price paid and currency, adult or child, class, passback, off-peak and weekday restrictions, expiry time, where it is valid (fare code, fare value, or a LOC4 of origin, destination and via), last use, both event codes, photocard number, the expiry offset from the directory date, the InstanceID, and blocking by a zero Seal |
@@ -900,9 +900,12 @@ keeps them all rather than only the newest: the balance as it was, what changed
 it, and when. A card holds no statement anywhere else, so those few records are
 the only history it carries.
 
-They are shown under **Earlier on card** on the Pay as you go and product
-screens, and the ones only a saved file remembers under **Off card**. The
-journey log is split the same way. Each
+They are shown on the **History** page of the Pay as you go and product
+screens, after the last transaction, and the ones only a saved file remembers
+on a page of their own, **Off card**. The journey log is split the same way:
+a page to each journey, the card's own first, then the ones only the file
+remembers, each titled with the clock the product list gives a dropped
+product. Each
 record contributes whichever of a balance or a counter its IPE type keeps in the
 tail — the same field the screen shows above as the current value, decoded in one
 place rather than two, because a history that disagreed with the balance above it
@@ -910,7 +913,7 @@ would be worse than no history.
 
 The store is small: TS 1000-2 table 14 allows five records and every real card
 to hand is issued with two, so a card straight off the reader shows at most one
-earlier transaction. What makes the section worth having is that a saved card
+earlier transaction. What makes the page worth having is that a saved card
 accumulates them — see [Saved cards](#saved-cards).
 
 Ordering matters more here than for picking the live record. Both records of a

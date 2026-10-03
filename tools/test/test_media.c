@@ -150,15 +150,16 @@ int main(void) {
     shows(text, "UID: 048B1FF1AD2680");
     shows(text, "Made: Week 42 of 2008");
     shows(text, "4F5931: Oyster");
-    shows(text, "Files in Oyster");
-    shows(text, "File 0: Standard");
+    shows(text, "Files read from: Oyster\n");
+    /* A page to each file, titled with its number. */
+    shows(text, "File 0\nType: Standard");
     shows(text, "Size: 8 bytes");
-    shows(text, "  Encryption: Encrypted\n  Access rights: 1111");
+    shows(text, "\nEncryption: Encrypted\nAccess rights: 1111\n  Read: Key 1");
     shows(text, "Read: Key 1");
     shows(text, "Contents: Locked");
-    shows(text, "File 7");
+    shows(text, "File 7\n");
     /* Nothing came off this card, so nothing may be shown as having done. */
-    check("every file says it is locked", occurrences(text, "  Contents: Locked\n") == 8);
+    check("every file says it is locked", occurrences(text, "\nContents: Locked\n") == 8);
     hides(text, "Could not be read");
 
     /* A card that keeps its directory to itself, and files that are not locked. */
@@ -214,11 +215,11 @@ int main(void) {
     shows(text, "Storage: Up to 8192 bytes");
     shows(text, "Listed by the card: No");
     shows(text, "ABCDEF: Unknown\n");
-    shows(text, "  Contents: DEADBEEF\n");
+    shows(text, "\nContents: DEADBEEF\n");
     shows(text, "Range: 0 to 5000");
     shows(text, "Records: 2 of 4, 16 bytes each");
     shows(text, "Contents: Could not be read");
-    shows(text, "File 4: Details locked");
+    shows(text, "File 4\nDetails: Locked\n");
     shows(text, "Write: Nobody");
     /* No free memory was reported, so no line may claim any. */
     hides(text, "Free space:");

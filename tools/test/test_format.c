@@ -16,6 +16,7 @@
  *     test_format <directory of demo .flipso files>
  */
 #include "format/flipso_format.h"
+#include "views/flipso_text_view.h"
 #include "itso/itso_operators.h"
 #include "card_data.h"
 #include "itso_i.h"
@@ -99,16 +100,108 @@ static bool shows(const FuriString* text, const char* needle) {
     return strstr(furi_string_get_cstr(text), needle) != NULL;
 }
 
+/** True when @p c is a heading's icon number rather than the start of its text. */
+static bool is_icon(char c) {
+    return (unsigned char)c > FLIPSO_TEXT_ICON_BASE && (unsigned char)c < '0';
+}
+
+/** Where the page titled @p title starts, at its "\e#", or NULL. */
+static const char* find_page(const FuriString* text, const char* title) {
+    const size_t want = strlen(title);
+    for(const char* p = furi_string_get_cstr(text); p;
+        p = strchr(p, '\f') ? strchr(p, '\f') + 1 : NULL) {
+        if(p[0] != '\e' || p[1] != '#') continue;
+        const char* t = is_icon(p[2]) ? p + 3 : p + 2;
+        if(strncmp(t, title, want) == 0 && t[want] == '\n') return p;
+    }
+    return NULL;
+}
+
+/**
+ * The lines of the page titled @p title, less its title row, or NULL when the
+ * screen has no such page. A heading's icon byte is skipped, so "History"
+ * finds the page whatever icon it carries. Four buffers, so a check can
+ * compare a few pages at once.
+ */
+static const char* page_of(const FuriString* text, const char* title) {
+    static char pages[4][4096];
+    static unsigned next;
+    const size_t want = strlen(title);
+    for(const char* p = furi_string_get_cstr(text); p;
+        p = strchr(p, '\f') ? strchr(p, '\f') + 1 : NULL) {
+        if(p[0] != '\e' || p[1] != '#') continue;
+        const char* t = p + 2;
+        if(is_icon(*t)) t++;
+        if(strncmp(t, title, want) != 0 || t[want] != '\n') continue;
+        const char* body = t + want + 1;
+        const char* end = strchr(body, '\f');
+        size_t n = end ? (size_t)(end - body) : strlen(body);
+        char* buf = pages[next++ % 4];
+        if(n >= sizeof(pages[0])) n = sizeof(pages[0]) - 1;
+        memcpy(buf, body, n);
+        buf[n] = '\0';
+        return buf;
+    }
+    return NULL;
+}
+
+/** True when the screen's pages are titled @p want, in order, as "One|Two|Three". */
+static bool titles_are(const FuriString* text, const char* want) {
+    char got[512] = "";
+    for(const char* p = furi_string_get_cstr(text); p;
+        p = strchr(p, '\f') ? strchr(p, '\f') + 1 : NULL) {
+        if(p[0] != '\e' || p[1] != '#') continue;
+        const char* t = p + 2;
+        if(is_icon(*t)) t++;
+        const char* nl = strchr(t, '\n');
+        size_t n = nl ? (size_t)(nl - t) : strlen(t);
+        if(got[0]) strncat(got, "|", sizeof(got) - strlen(got) - 1);
+        strncat(got, t, n < sizeof(got) - strlen(got) - 1 ? n : sizeof(got) - strlen(got) - 1);
+    }
+    if(strcmp(got, want) != 0) printf("    pages: %s\n    want:  %s\n", got, want);
+    return strcmp(got, want) == 0;
+}
+
+/** True when @p needle is on the page titled @p title. */
+static bool on_page(const FuriString* text, const char* title, const char* needle) {
+    const char* page = page_of(text, title);
+    return page && strstr(page, needle);
+}
+
+/** True when the page titled @p title opens with @p needle. */
+static bool page_starts(const FuriString* text, const char* title, const char* needle) {
+    const char* page = page_of(text, title);
+    return page && strncmp(page, needle, strlen(needle)) == 0;
+}
+
+/** Pages whose title carries @p icon: a journeys screen's tap pages carry the taps icon. */
+static int pages_with_icon(const FuriString* text, FlipsoIcon icon) {
+    char mark[4] = {'\e', '#', (char)(FLIPSO_TEXT_ICON_BASE + icon), '\0'};
+    int n = 0;
+    for(const char* p = furi_string_get_cstr(text); (p = strstr(p, mark)) != NULL; p++) {
+        n++;
+    }
+    return n;
+}
+
+/** True when @p needle appears on a page before Technical. */
+static bool before_technical(const FuriString* text, const char* needle) {
+    const char* found = strstr(furi_string_get_cstr(text), needle);
+    const char* heading = find_page(text, "Technical");
+    return found && (!heading || found < heading);
+}
+
 /** True when @p needle appears, and only under the screen's Technical heading. */
 static bool technical(const FuriString* text, const char* needle) {
-    const char* heading = strstr(furi_string_get_cstr(text), "\e#Technical\n");
+    const char* heading = find_page(text, "Technical");
     const char* found = strstr(furi_string_get_cstr(text), needle);
     return heading && found && found > heading;
 }
 
-/* Values that are names, and so keep the case they are given. */
+/* Values that are names, and so keep the case they are given: an operator's
+ * brand, and a folder on the SD card. */
 static bool flipso_test_is_name(const char* value) {
-    return strncmp(value, "c2c", 3) == 0;
+    return strncmp(value, "c2c", 3) == 0 || strncmp(value, "apps_data/", 10) == 0;
 }
 
 /**
@@ -116,6 +209,53 @@ static bool flipso_test_is_name(const char* value) {
  * that breaks each one. @p where names the screen for the report.
  */
 static void house_style(const char* where, const FuriString* text) {
+    /* The pages: each opens with its title, none is empty or ends in a blank
+     * line, the codes come last, and nothing fell through to the page that
+     * catches lines a product kind has nowhere for. */
+    const char* all = furi_string_get_cstr(text);
+    bool titled = strncmp(all, "\e#", 2) == 0, filled = true, tidy = true, last = true;
+    bool iconed = true;
+    char untitled[64] = "";
+    for(const char* p = all; p; p = strchr(p, '\f') ? strchr(p, '\f') + 1 : NULL) {
+        if(p != all && strncmp(p, "\e#", 2) != 0) titled = false;
+        /* Every page's title carries an icon, as every menu row does. */
+        const unsigned char icon = (unsigned char)p[2];
+        if(strncmp(p, "\e#", 2) == 0 &&
+           (icon <= FLIPSO_TEXT_ICON_BASE || icon >= FLIPSO_TEXT_ICON_BASE + FlipsoIconCount)) {
+            if(iconed)
+                snprintf(untitled, sizeof(untitled), "%.*s", (int)strcspn(p + 2, "\n"), p + 2);
+            iconed = false;
+        }
+        const char* nl = strchr(p, '\n');
+        const char* end = strchr(p, '\f');
+        if(!end) end = p + strlen(p);
+        if(!nl || nl + 1 >= end) filled = false;
+        if(nl && nl + 1 < end &&
+           (nl[1] == '\n' || (end - p >= 2 && end[-1] == '\n' && end[-2] == '\n')))
+            tidy = false;
+        if(p == find_page(text, "Technical") && strchr(p, '\f')) last = false;
+    }
+    char what_pages[320];
+    snprintf(what_pages, sizeof(what_pages), "%s: every page opens with its title", where);
+    check(what_pages, titled);
+    snprintf(
+        what_pages,
+        sizeof(what_pages),
+        "%s: every page's title has an icon%s%s",
+        where,
+        iconed ? "" : " - ",
+        untitled);
+    check(what_pages, iconed);
+    snprintf(what_pages, sizeof(what_pages), "%s: no page is empty", where);
+    check(what_pages, filled);
+    snprintf(
+        what_pages, sizeof(what_pages), "%s: no page starts or ends with a blank line", where);
+    check(what_pages, tidy);
+    snprintf(what_pages, sizeof(what_pages), "%s: Technical is the last page", where);
+    check(what_pages, last);
+    snprintf(what_pages, sizeof(what_pages), "%s: every line has a page of its own", where);
+    check(what_pages, page_of(text, "More") == NULL);
+
     const char* line = furi_string_get_cstr(text);
     char buf[256];
     bool lower = false, unlabelled = false, doubled = false, gbp = false;
@@ -128,7 +268,7 @@ static void house_style(const char* where, const FuriString* text) {
         memcpy(buf, line, len);
         buf[len] = '\0';
 
-        bool heading = buf[0] == '\e';
+        bool heading = buf[0] == '\e' || (buf[0] == '\f' && buf[1] == '\e');
         const char* colon = strstr(buf, ": ");
 
         if(!heading && colon) {
@@ -254,16 +394,17 @@ static void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
     flipso_format_taps(text, f, card);
     check(
         "a check-in names the operator whose gate it was",
-        shows(text, "Tap in\n  When: 18/09/2026 17:52\n  Tapped in with: Unknown (24585)\n"));
+        page_starts(text, "Tap in", "When: 18/09/2026 17:52\n") &&
+            on_page(text, "Tap in", "Tapped in with: Unknown (24585)\n"));
     /* The stub table knows no GWR stations, so the check is the shape, not the
      * names: a dated tap out with a destination and no fare line. */
     check(
         "a check-out with no amount is still a journey",
-        shows(text, "Tap out (latest)\n  When: 18/09/2026 18:49\n  From: ") &&
-            shows(text, "  To: ") && !shows(text, "  Fare: "));
+        page_starts(text, "Tap out", "When: 18/09/2026 18:49\nFrom: ") &&
+            on_page(text, "Tap out", "\nTo: ") && !shows(text, "Fare: "));
     check(
         "each record names the reader that wrote it, under Technical",
-        technical(text, "Tap out (latest)\n  When: 18/09/2026 18:49\n  Reader: FF00A3C7\n"));
+        technical(text, "Tap out\n  When: 18/09/2026 18:49\n  Reader: FF00A3C7\n"));
 
     furi_string_reset(text);
     flipso_format_card(text, f, card, NULL, false, 0);
@@ -310,7 +451,7 @@ static void demo_type2_full(const FlipsoFormat* f, const ItsoCard* card, bool nt
     FuriString* text = furi_string_alloc();
 
     flipso_format_card(text, f, card, NULL, false, 0);
-    check("a full-shell tag has a card number of its own", shows(text, "Card number\n633597 "));
+    check("a full-shell tag has a card number of its own", page_starts(text, "Card", "633597 "));
     check("its shell pages are locked", shows(text, "Locked pages: 4-11\n  Shell locked: Yes\n"));
     if(ntag) {
         check("CMD9 names its chip", shows(text, "Chip: NTAG215\n"));
@@ -352,7 +493,10 @@ static void demo_type2_full(const FlipsoFormat* f, const ItsoCard* card, bool nt
 
     furi_string_reset(text);
     flipso_format_taps(text, f, card);
-    check("both log records are journeys", shows(text, "(latest)\n") && card->tap_count == 2);
+    check(
+        "both log records are journeys, a page each",
+        card->tap_count == 2 &&
+            pages_with_icon(text, FlipsoIconTaps) == 2 + (card->log_entry_valid ? 1 : 0));
     furi_string_free(text);
 }
 
@@ -400,7 +544,8 @@ static void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
     check("a rail RouteCode reads as text", shows(text, "Route code: 00000\n"));
     check(
         "a rail journey ticket was sold by a station",
-        shows(text, "Operator: South Western Railway\nSold by: Station 5631\n"));
+        on_page(text, "Journey ticket", "Operator: South Western Railway\n") &&
+            on_page(text, "Purchase", "Sold by: Station 5631\n"));
     furi_string_reset(text);
     flipso_format_product(text, f, card, &card->products[2]);
     check(
@@ -557,11 +702,14 @@ static void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
             strstr(strchr(furi_string_get_cstr(text), '\n') + 1, "Test ticket: Yes\n") ==
                 strchr(furi_string_get_cstr(text), '\n') + 1);
     check(
-        "the railcard it is not valid without, next, with the number it carries",
-        shows(
+        "the railcard it is not valid without, on the first page, with the number it carries",
+        on_page(
             text,
-            "Journeys left: 1\nValid only with: 16-25 Railcard\n  Railcard number: Ends 4567\n"
-            "Operator: "));
+            "Reserved journey",
+            "Valid only with: 16-25 Railcard\n  Railcard number: Ends 4567\nOperator: "));
+    check(
+        "the journeys it has left lead its details",
+        page_starts(text, "Details", "Journeys left: 1\n"));
     check("a rail retailer is the station that sold it", shows(text, "Sold by: Station 5685\n"));
     check("a return of two journeys", shows(text, "Sold as: Return\n  Journeys sold: 2\n"));
     check(
@@ -570,10 +718,10 @@ static void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
     check("the return portion", shows(text, "Return: 03/10/2026 to 02/11/2026\n"));
     check("its own start is not a second Valid from", !shows(text, "Valid from: "));
     check(
-        "only the flags that are set, above Technical",
-        shows(
-            text,
-            "Duplicate: Yes\nSeat reservation required: Yes\nPart-way through a leg: Yes\n") &&
+        "only the flags that are set, each on its page",
+        on_page(text, "Purchase", "Duplicate: Yes\n") &&
+            on_page(text, "Restrictions", "Seat reservation required: Yes\n") &&
+            on_page(text, "Details", "Part-way through a leg: Yes\n") &&
             !shows(text, "Replacement: Yes"));
     check(
         "the clear ones under Technical",
@@ -614,24 +762,28 @@ static void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
             "Price paid: \xC2\xA3"
             "89.50\n  Paid by: "));
     check(
-        "the reservations under their own heading",
-        shows(
-            text,
-            "\e#Reservations\nBooking reference: ABC12345\nLast validated: 01/10/2026 08:02\n"
-            "  At: London Waterloo\n"));
+        "the booking reference leads the purchase",
+        page_starts(text, "Purchase", "Booking reference: ABC12345\n"));
     check(
-        "the outward leg, its padding gone and its window named",
-        shows(
+        "the last validation leads the history",
+        page_starts(text, "History", "Last validated: 01/10/2026 08:02\n  At: London Waterloo\n"));
+    check(
+        "the outward leg, its padding gone and its window named, coach and seat first",
+        page_starts(
             text,
-            "Leg 1: 01/10/2026 08:30\n  Train: GR1234\n  From: London Waterloo\n"
-            "  To: Station 1444\n  Reserved: Seat\n  Coach: C\n  Seat: 42\n"
-            "  Facing: Forwards\n  Feature: Window\n"));
+            "Leg 1",
+            "Departs: 01/10/2026 08:30\nFrom: London Waterloo\nTo: Station 1444\nCoach: C\n"
+            "Seat: 42\nReserved: Seat\nFacing: Forwards\nFeature: Window\nTrain: GR1234\n"));
     check(
         "the return leg, a shared upper berth with an attribute as it stands",
-        shows(
+        on_page(
             text,
-            "  Reserved: Sleeper berth\n  Coach: D\n  Berth: 17A\n  Facing: Airline style\n"
-            "  Feature: ZQXV\n  Bunk: Upper\n  Cabin shared: Yes\n"));
+            "Leg 2",
+            "Coach: D\nBerth: 17A\nReserved: Sleeper berth\nFacing: Airline style\n"
+            "Feature: ZQXV\nBunk: Upper\n  Cabin shared: Yes\n"));
+    check(
+        "the legs come straight after the first page",
+        find_page(text, "Leg 1") && find_page(text, "Leg 1") < find_page(text, "Restrictions"));
     check("every leg read", !shows(text, "Not read: "));
     check(
         "no type code left on the screen",
@@ -694,6 +846,102 @@ static void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
 static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     FuriString* text = furi_string_alloc();
 
+    /* Its pages, which between them have every kind of product but paper, in
+     * the order the holder reads them. */
+    static const struct {
+        uint8_t typ;
+        const char* pages;
+    } kinds[] = {
+        {ItsoTypPeriodTicket, "Period ticket|Passes|Conditions|Purchase|History|Technical"},
+        {ItsoTypJourneyTicket, "Journey ticket|Rides|Conditions|Purchase|History|Technical"},
+        {ItsoTypReservationTicket,
+         "Reserved journey|Leg 1|Leg 2|Restrictions|Route|Details|Purchase|History|Technical"},
+        {ItsoTypChargeToAccount2, "Charge to account|Account|History|Technical"},
+        {ItsoTypVoucher, "Voucher|History|Technical"},
+        {ItsoTypLoyalty1, "Loyalty|History|Technical"},
+        {ItsoTypTolling, "Toll pass|Technical"},
+    };
+    for(size_t k = 0; k < COUNT_OF(kinds); k++) {
+        for(uint8_t i = 0; i < card->product_count; i++) {
+            if(card->products[i].typ != kinds[k].typ) continue;
+            furi_string_reset(text);
+            flipso_format_product(text, f, card, &card->products[i]);
+            char what[128];
+            snprintf(what, sizeof(what), "a %s has its pages in order", kinds[k].pages);
+            check(what, titles_are(text, kinds[k].pages));
+        }
+    }
+    furi_string_reset(text);
+    flipso_format_payg(text, f, card);
+    check("the purse's pages", titles_are(text, "Pay as you go|Top-up|History|Technical"));
+    check(
+        "a purse names who sold it after whose it is",
+        on_page(text, "Pay as you go", "Operator: Southeastern\nSold by: National Rail purse\n"));
+    {
+        /* Two purses: each one's pages, and one Technical page for both, last. */
+        const ItsoProduct* purse = flipso_find_product(card, ItsoTypStoredTravelRights);
+        static ItsoProduct two[2];
+        two[0] = two[1] = *purse;
+        ItsoCard purses = *card;
+        purses.products = two;
+        purses.product_count = 2;
+        furi_string_reset(text);
+        flipso_format_payg(text, f, &purses);
+        house_style("two purses", text);
+        check(
+            "two purses share one Technical page, last",
+            titles_are(
+                text, "Pay as you go|Top-up|History|Pay as you go|Top-up|History|Technical") &&
+                on_page(text, "Technical", "\e#Pay as you go\nType code: 2.0\n") &&
+                on_page(text, "Technical", "\n\n\e#Pay as you go\nType code: 2.0\n"));
+    }
+    furi_string_reset(text);
+    flipso_format_id(text, f, card);
+    check(
+        "the ID and the entitlement, then their codes on one page",
+        titles_are(text, "ITSO ID|Holder|ID terms|Entitlement|Entitlement terms|Technical") &&
+            on_page(text, "Technical", "\e#ITSO ID\nType code: 16.1\n") &&
+            on_page(text, "Technical", "\n\n\e#Entitlement\nType code: 14.0\n"));
+    check(
+        "the ID's first page is who and what the holder is",
+        page_starts(text, "ITSO ID", "Name: JAMIE OKONKWO-LEE\nStatus: Active\n") &&
+            on_page(text, "ITSO ID", "Operator: SEFT Central Products\n"));
+    check("the holder's page", page_starts(text, "Holder", "Born: 14/05/1978\nGender: Male\n"));
+    furi_string_reset(text);
+    flipso_format_card(text, f, card, "Demo 01", true, 0);
+    check("the card's pages, the codes last", titles_are(text, "Card|Chip|Demo card|Technical"));
+    check(
+        "the card page has the number, the state and the issuer",
+        page_starts(
+            text,
+            "Card",
+            "633597 0289 0100 0016\nStatus: Active\nExpires: 31/08/2031\n"
+            "Operator: Southeastern\n"));
+    furi_string_reset(text);
+    flipso_format_summary(text, f, card);
+    check("the summary's pages", titles_are(text, "Summary|Tickets|Not valid"));
+    check(
+        "the card and the holder lead it, with their money and their pass",
+        page_starts(
+            text,
+            "Summary",
+            "Card: Active\nCard expires: 31/08/2031\nHolder: JAMIE OKONKWO-LEE\n"
+            "Pay as you go: \xC2\xA3"
+            "24.15\nITSO ID: Commuter\n") &&
+            on_page(text, "Summary", "Last tap: London Bridge\n"));
+    check(
+        "the tickets that can be used today are a page",
+        page_starts(text, "Tickets", "Period ticket: Until 31/03/2027\n"));
+    check(
+        "and the ones that cannot, another",
+        on_page(text, "Not valid", "Loyalty: Blocked\n") &&
+            !on_page(text, "Tickets", "Loyalty: Blocked\n"));
+    furi_string_reset(text);
+    flipso_format_taps(text, f, card);
+    check(
+        "the journeys: the last tap, a page a journey, then the readers",
+        titles_are(text, "Last tap|Tap in|Tap out|Tap out|Tap out|Technical"));
+
     flipso_format_summary(text, f, card);
     check("an ITSO ID is summed up by its concession", shows(text, "ITSO ID: Commuter\n"));
 
@@ -701,14 +949,45 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     flipso_format_taps(text, f, card);
     check(
         "the products a gate checked are one line",
-        shows(text, "  Products checked: Period ticket, Pay as you go, Journey ticket\n"));
+        shows(text, "\nProducts checked: Period ticket, Pay as you go, Journey ticket\n"));
+    check(
+        "the last tap says where it was",
+        page_starts(
+            text,
+            "Last tap",
+            "Inside ticket gates: Yes\nWhen: 21/09/2026 17:46\nAt: London Bridge\n"));
+    {
+        /* The place belongs to the newest record, so it is only said when that
+         * record is the entry's: not after an update that wrote none, and not
+         * when the entry is newer than the record. A copy borrows the card's
+         * arrays, so it is never reset. */
+        ItsoCard unrecorded = *card;
+        unrecorded.log_normal_mode = false;
+        FuriString* other = furi_string_alloc();
+        flipso_format_taps(other, f, &unrecorded);
+        check(
+            "an entry with no journey record names no place",
+            !on_page(other, "Last tap", "At: ") &&
+                on_page(other, "Last tap", "Journey details: Not recorded\n"));
+        ItsoCard later = *card;
+        later.log_dts += 60;
+        furi_string_reset(other);
+        flipso_format_taps(other, f, &later);
+        check("nor one newer than the newest record", !on_page(other, "Last tap", "At: "));
+        furi_string_free(other);
+    }
+    check(
+        "a journey's page leads with its times, in the order they happened",
+        strstr(
+            furi_string_get_cstr(text),
+            "\e#\x14Tap out\nIn: 21/09/2026 07:12\nOut: 21/09/2026 08:03\nJourney time: 51 min\n") !=
+            NULL);
     check(
         "a reader names its machine, then its operator, under Technical",
         technical(text, "  Tap-in reader: 01020304\n    Operator: "));
     check(
         "and the journey it belongs to keeps only where and when",
-        !shows(
-            text, "  Journey time: 1 hr 1 min\n  Tapped in with: Southeastern\n  Tapped in on: "));
+        !before_technical(text, "Tapped in on: ") && !before_technical(text, "reader: "));
     check("passback is called passback", shows(text, "Passback timeout: 20 min\n"));
     /* The gates wrote ITSO's own IIN, in BCD as every IIN is: ITSO's network,
      * not one outside it. */
@@ -731,7 +1010,7 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     flipso_format_payg(text, f, card);
     check(
         "the purse screen has its technical details",
-        shows(text, "\e#Technical\nType code: 2.0\n"));
+        page_starts(text, "Technical", "Type code: 2.0\n"));
     furi_string_reset(text);
     flipso_format_id(text, f, card);
     check(
@@ -776,31 +1055,92 @@ static void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
          * the VGXRef 3 extension after its one value record. */
         check(
             "the reserved journey is a return with a day out and a month back",
-            shows(
-                text,
-                "Sold as: Return\n  Journeys sold: 2\nOutward: 13/03/2026 only\n"
-                "Return: 13/03/2026 to 12/04/2026\n"));
+            on_page(text, "Details", "Sold as: Return\n  Journeys sold: 2\n") &&
+                on_page(
+                    text,
+                    "Reserved journey",
+                    "Outward: 13/03/2026 only\nReturn: 13/03/2026 to 12/04/2026\n"));
         check(
-            "it is valid only with its railcard, near the top",
-            shows(
+            "it is valid only with its railcard, on the first page",
+            on_page(
                 text,
-                "Journeys left: 0\nValid only with: Disabled Persons Railcard\n"
-                "  Railcard number: Ends 1372\nOperator: Southeastern\nSold by: Station 5230\n"));
+                "Reserved journey",
+                "Valid only with: Disabled Persons Railcard\n"
+                "  Railcard number: Ends 1372\nOperator: Southeastern\n") &&
+                page_starts(text, "Details", "Journeys left: 0\n") &&
+                on_page(text, "Purchase", "Sold by: Station 5230\n"));
         check(
             "it names the railcard product it goes with",
             shows(text, "Part of this ticket: Entitlement\n"));
         check(
-            "and its two seats, under their own heading",
-            shows(text, "\e#Reservations\nBooking reference: 8KQ2TX4M\n") &&
-                shows(text, "Leg 1: 13/03/2026 10:00\n") &&
-                shows(text, "Leg 2: 20/03/2026 14:00\n") && !shows(text, "Not read: "));
+            "and its two seats, a page each",
+            page_starts(text, "Purchase", "Booking reference: 8KQ2TX4M\n") &&
+                page_starts(text, "Leg 1", "Departs: 13/03/2026 10:00\n") &&
+                page_starts(text, "Leg 2", "Departs: 20/03/2026 14:00\n") &&
+                !page_of(text, "Leg 3") && !shows(text, "Not read: "));
         check(
             "with the discount's code and percentage under Technical",
             technical(text, "Discount code: DIS\n  Percentage: 33%\n"));
         check(
             "and its seats' positions in words",
-            shows(text, "  Feature: Table\n") && shows(text, "  Feature: Aisle\n"));
+            on_page(text, "Leg 1", "Feature: Table\n") &&
+                on_page(text, "Leg 2", "Feature: Aisle\n"));
     }
+    furi_string_free(text);
+}
+
+/** How many times @p needle appears in @p text. */
+static int occurrences_of(const FuriString* text, const char* needle) {
+    int n = 0;
+    for(const char* p = furi_string_get_cstr(text); (p = strstr(p, needle)) != NULL; p++) {
+        n++;
+    }
+    return n;
+}
+
+/* A paper carnet's pages, and its summary on one page as a ticket's is. */
+static void demo_fourteen(const FlipsoFormat* f, const ItsoCard* card) {
+    FuriString* text = furi_string_alloc();
+    flipso_format_product(text, f, card, &card->products[0]);
+    check(
+        "a paper ticket's pages",
+        titles_are(text, "Book of tickets|Conditions|Use|Purchase|Technical"));
+    check("the days a carnet was used are its use", page_starts(text, "Use", "Day used: "));
+    check("its operator ends its first page", on_page(text, "Book of tickets", "Operator: SPT"));
+    furi_string_reset(text);
+    flipso_format_summary(text, f, card);
+    check("a paper ticket's summary is one page", titles_are(text, "Summary"));
+    furi_string_free(text);
+}
+
+/* A card whose saved file remembers journeys the card has dropped. */
+static void demo_four(const FlipsoFormat* f, const ItsoCard* card) {
+    FuriString* text = furi_string_alloc();
+    flipso_format_taps(text, f, card);
+    uint8_t on_card = 0, past = 0;
+    for(uint8_t i = 0; i < card->tap_count; i++) {
+        if(card->taps[i].on_card) {
+            on_card++;
+        } else {
+            past++;
+        }
+    }
+    check(
+        "each journey the card holds has a page in the taps icon",
+        past > 0 && pages_with_icon(text, FlipsoIconTaps) == on_card + 1);
+    check(
+        "and each the file remembers one in the clock",
+        pages_with_icon(text, FlipsoIconPast) == past);
+    /* And says so in words, as a dropped product does. */
+    int said = 0;
+    for(const char* p = furi_string_get_cstr(text); (p = strchr(p, '\f')) != NULL; p++) {
+        if(p[1] == '\e' && p[2] == '#' && p[3] == (char)(FLIPSO_TEXT_ICON_BASE + FlipsoIconPast) &&
+           strstr(p, "\nOn card: No longer\n") == strchr(p, '\n')) {
+            said++;
+        }
+    }
+    check("every journey the file remembers says it is no longer on the card", said == past);
+    check("and none the card holds does", occurrences_of(text, "On card: No longer\n") == past);
     furi_string_free(text);
 }
 
@@ -829,7 +1169,9 @@ int main(int argc, char** argv) {
             "12.34"));
     check("the purse terms are labelled", shows(text, "Auto top-up: "));
     check("a top-up's detail is indented and labelled", shows(text, "  When below: \xC2\xA3"));
-    check("earlier transactions have a heading", shows(text, "Earlier on card"));
+    check(
+        "earlier transactions have a page of their own",
+        page_of(text, "History") && on_page(text, "History", "\n  When: "));
     check("each one says when", shows(text, "  When: "));
 
     furi_string_reset(text);
@@ -837,10 +1179,10 @@ int main(int argc, char** argv) {
     printf("\n%s\n", furi_string_get_cstr(text));
     check("the in/out state is where the holder is", shows(text, "Inside ticket gates: "));
     check("not a bare IN or OUT", !shows(text, ": IN\n") && !shows(text, ": OUT\n"));
-    check("a tap's time is labelled as every time is", shows(text, "  When: "));
-    check("with no other word for it", !shows(text, "  At: ") && !shows(text, "\nTime: "));
-    check("a tap out says which time is which", shows(text, "  Out: ") && shows(text, "  In: "));
-    check("and how long the journey took", shows(text, "  Journey time: "));
+    check("a tap's time is labelled as every time is", shows(text, "\nWhen: "));
+    check("with no other word for it", !shows(text, "\nTime: "));
+    check("a tap out says which time is which", shows(text, "\nOut: ") && shows(text, "\nIn: "));
+    check("and how long the journey took", shows(text, "\nJourney time: "));
     check("stations are named", shows(text, "London Waterloo"));
 
     furi_string_reset(text);
@@ -1196,6 +1538,17 @@ int main(int argc, char** argv) {
             shows(text, "Removable: Only by the operator\n"));
     }
 
+    /* About, with every table present and with none. */
+    furi_string_reset(text);
+    flipso_format_about(text, "1.0", 4009, 400000, 3);
+    house_style("about", text);
+    check(
+        "about is a page to each thing it says",
+        titles_are(text, "Flipso|Station names|Bus stop names|Operator names|Saved cards"));
+    furi_string_reset(text);
+    flipso_format_about(text, NULL, 0, 0, 0);
+    house_style("about, nothing installed", text);
+
     /* The card details screen for a DESFire Flipso cannot decode, which is
      * held to the same style as the ITSO screens. */
     static const uint8_t chip[FLIPSO_MEDIA_CHIP_LEN] = {
@@ -1227,7 +1580,16 @@ int main(int argc, char** argv) {
     printf("\n%s\n", furi_string_get_cstr(text));
     house_style("card details", text);
     check("the details open on the chip", shows(text, "Chip: MIFARE DESFire EV1"));
-    check("contents wrap between groups of bytes", shows(text, "  Contents: DEADBEEF 01020304\n"));
+    check(
+        "contents wrap between groups of bytes, a page to each file",
+        on_page(text, "File 0", "Contents: DEADBEEF 01020304\n"));
+    check(
+        "the files' application is named with the others",
+        on_page(text, "Applications", "Files read from: Oyster\n"));
+    check(
+        "a file the card would not describe says so",
+        page_starts(text, "File 2", "Details: Locked\n"));
+    check("a value file has its range", page_starts(text, "File 1", "Type: Value\nRange: "));
 
     furi_string_free(text);
     flipso_capture_free(capture);
@@ -1277,6 +1639,8 @@ int main(int argc, char** argv) {
             f.media = &demo_media;
             every_screen(entry->d_name, &f, &demo_card);
             if(strncmp(entry->d_name, "Demo 01", 7) == 0) demo_one(&f, &demo_card);
+            if(strncmp(entry->d_name, "Demo 04", 7) == 0) demo_four(&f, &demo_card);
+            if(strncmp(entry->d_name, "Demo 14", 7) == 0) demo_fourteen(&f, &demo_card);
             if(strncmp(entry->d_name, "Demo 08", 7) == 0) demo_type2_full(&f, &demo_card, true);
             if(strncmp(entry->d_name, "Demo 09", 7) == 0) demo_type2_full(&f, &demo_card, false);
             if(strncmp(entry->d_name, "Demo 07", 7) == 0) {

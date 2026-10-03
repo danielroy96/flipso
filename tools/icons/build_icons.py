@@ -182,20 +182,247 @@ ICONS["tag_10px"] = """
 ...####...
 """
 
+# --- 10x10: page titles -------------------------------------------------------
+#
+# Every page of a text screen carries an icon in its title. Where an icon above
+# already says what a page holds - the calendar for a season ticket's passes,
+# the clock for its history - the page uses it; these are for the pages nothing
+# above describes.
+
+# A hash: the Technical page is the codes and numbers nothing on the card names.
+ICONS["code_10px"] = """
+...#..#...
+...#..#...
+.########.
+...#..#...
+..#..#....
+..#..#....
+.########.
+..#..#....
+..#..#....
+..........
+"""
+
+# A chip with its pins, and the die inside: what the chip says about itself.
+ICONS["chip_10px"] = """
+...#..#...
+.########.
+.#......#.
+##.####.##
+.#.#..#.#.
+##.####.##
+.#......#.
+.########.
+...#..#...
+..........
+"""
+
+# A circle struck through: the tickets on a card that will not get the holder
+# through a gate - blocked, out of date, or gone from the card.
+ICONS["invalid_10px"] = """
+..######..
+.##.....#.
+#..#.....#
+#...#....#
+#....#...#
+#.....#..#
+#......#.#
+#.......##
+.#......#.
+..######..
+"""
+
+# A plus in a coin: adding money to a purse, which is what its top-up page,
+# its limits and its deposit are about.
+ICONS["topup_10px"] = """
+..######..
+.#......#.
+#...##...#
+#...##...#
+#.######.#
+#.######.#
+#...##...#
+#...##...#
+.#......#.
+..######..
+"""
+
+# Bars rising to a ceiling: fares adding up until they reach the cap.
+ICONS["cap_10px"] = """
+##########
+..........
+.......##.
+.......##.
+....##.##.
+....##.##.
+.##.##.##.
+.##.##.##.
+.##.##.##.
+.##.##.##.
+"""
+
+# A clipboard with a list on it: the terms a ticket or pass is used on - its
+# conditions, its restrictions, the terms an ID was issued on.
+ICONS["terms_10px"] = """
+...####...
+.###..###.
+.#.####.#.
+.#......#.
+.#.#.##.#.
+.#......#.
+.#.#.##.#.
+.#......#.
+.#.#.##.#.
+.########.
+"""
+
+# A shopping basket, slatted and narrowing to its foot: the purchase - who
+# sold the ticket, when and for how much. A basket rather than a bag, which at
+# this size is a padlock.
+ICONS["purchase_10px"] = """
+...####...
+..#....#..
+.#......#.
+##########
+#........#
+.#.#..#.#.
+.#.#..#.#.
+.#.#..#.#.
+..######..
+..........
+"""
+
+# Two places and the way between them: the route a ticket is held to.
+ICONS["route_10px"] = """
+.##.......
+.##.......
+.#........
+.#........
+.#######..
+.......#..
+.......#..
+.......#..
+.......##.
+.......##.
+"""
+
+# A seat seen from the side, its back to the right: a reserved seat on a leg.
+ICONS["seat_10px"] = """
+.......##.
+.......##.
+.......##.
+.......##.
+.......##.
+.########.
+.########.
+..#....#..
+..#....#..
+.###..###.
+"""
+
+# Four squares: the applications a DESFire lists.
+ICONS["apps_10px"] = """
+####.####.
+#..#.#..#.
+#..#.#..#.
+####.####.
+..........
+####.####.
+#..#.#..#.
+#..#.#..#.
+####.####.
+..........
+"""
+
+# A page with its corner folded: one file on a DESFire.
+ICONS["file_10px"] = """
+.#####....
+.#...##...
+.#...#.#..
+.#...####.
+.#......#.
+.#......#.
+.#......#.
+.#......#.
+.#......#.
+.########.
+"""
+
+# A train head on, on its rails, as the app icon is: the station names table.
+ICONS["train_10px"] = """
+..######..
+.#......#.
+.#.####.#.
+.#.####.#.
+.#......#.
+.#.#..#.#.
+.#......#.
+..######..
+.#......#.
+#........#
+"""
+
+# A bus side on - a row of windows over two wheels - so it is not taken for the
+# train beside it: the bus stop names table.
+ICONS["bus_10px"] = """
+..........
+#########.
+#........#
+#.##.##.##
+#.##.##.##
+#........#
+##########
+.##....##.
+.##....##.
+..........
+"""
+
+# A building with columns under a pediment: an operator, the company that runs
+# the trains or buses, which is what the operator names file names.
+ICONS["operator_10px"] = """
+....##....
+..######..
+##########
+.#.#..#.#.
+.#.#..#.#.
+.#.#..#.#.
+.#.#..#.#.
+.#.#..#.#.
+##########
+##########
+"""
+
+# --- 7x6: the scan screen -----------------------------------------------------
+
+# A U-turn arrow, the Flipper's own mark for its Back key: while the reader is
+# on, Back stops it rather than leaving the app, and the header says so beside
+# the title with this and "Stop". Drawn white on a black disc 11px across, so
+# it is small enough that its corners stay inside the circle.
+ICONS["back_7px"] = """
+.#.....
+######.
+.#....#
+......#
+.....#.
+..###..
+"""
+
 # --- 10x10: saving and deleting a card ---------------------------------------
 
 # A floppy disk, which has meant "save" for longer than it has existed as
-# hardware, and reads at 10px where a downward arrow into a tray does not.
+# hardware, and reads at 10px where a downward arrow into a tray does not. Its
+# three tells are kept at this size by drawing each in solid ink rather than
+# outline: the clipped corner, the metal shutter with its slot, and the label.
 ICONS["save_10px"] = """
-##########
-#.#....#.#
-#.#....#.#
-#.#....#.#
+#########.
+#.###.#..#
+#.###.#..#
+#.#####..#
 #........#
 #.######.#
 #.#....#.#
 #.#....#.#
-#.######.#
+#.#....#.#
 ##########
 """
 

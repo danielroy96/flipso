@@ -2,10 +2,12 @@
  * @file flipso_scan_view.c
  * @brief Draws the idle prompt and the card-detection screen.
  *
- * Everything is drawn with canvas primitives rather than bitmap assets: it keeps
- * the .fap small and avoids shipping icons for a single screen.
+ * The graphic is drawn with canvas primitives rather than bitmap assets, which
+ * keeps the .fap small; the header borrows the app's train and the Back key's
+ * arrow from the icons every other screen uses.
  */
 #include "flipso_scan_view.h"
+#include "flipso_icons.h"
 
 #include <furi.h>
 #include <gui/elements.h>
@@ -13,10 +15,17 @@
 /* The animation's own clock. It only runs while scanning, so an app left on the
  * idle screen is not woken ten times a second to draw a frame that never
  * changes. */
-#define FLIPSO_FRAME_MS    100
+#define FLIPSO_FRAME_MS      100
 /** Frames per wave step: a wave every ~300 ms. */
-#define FLIPSO_WAVE_PERIOD 3
-#define FLIPSO_WAVE_COUNT  3
+#define FLIPSO_WAVE_PERIOD   3
+#define FLIPSO_WAVE_COUNT    3
+/* The header, as the icon list and the text pages draw theirs: icon and title
+ * centred as one, over a rule on row 13. */
+#define FLIPSO_SCAN_RULE_Y   13
+#define FLIPSO_SCAN_ICON_GAP 3
+/* The Back key's mark: its arrow white on a black disc, as the firmware draws
+ * the arrows on its own buttons white on black. */
+#define FLIPSO_SCAN_BACK_R   5
 
 /* Unit circle from 140 to 220 degrees, scaled by 64. Drawing an arc from a table
  * avoids linking libm for three decorative curves. */
@@ -68,20 +77,40 @@ static void flipso_scan_view_draw(Canvas* canvas, void* model) {
 
     canvas_clear(canvas);
 
+    /* The app's train beside its name, centred as every other title is. */
+    static const char* const title = "Flipso";
     canvas_set_font(canvas, FontPrimary);
-    canvas_draw_str(canvas, 2, 10, "Flipso");
+    const int16_t icon_w = icon_get_width(&I_train_10px) + FLIPSO_SCAN_ICON_GAP;
+    const int16_t title_x = (128 - (icon_w + canvas_string_width(canvas, title))) / 2;
+    const int16_t band = FLIPSO_SCAN_RULE_Y;
+    canvas_draw_icon(canvas, title_x, (band - icon_get_height(&I_train_10px)) / 2, &I_train_10px);
+    canvas_draw_str_aligned(canvas, title_x + icon_w, 1, AlignLeft, AlignTop, title);
     if(m->scanning) {
         /* Back stops the reader rather than leaving the app, which nothing
-         * else on this screen says. The header is the one band with room. */
+         * else on this screen says. The header is the one band with room,
+         * and beside a centred title only for the Back key's arrow and a
+         * word. */
         canvas_set_font(canvas, FontSecondary);
-        canvas_draw_str_aligned(canvas, 126, 10, AlignRight, AlignBottom, "Back to stop");
+        const int16_t stop_w = canvas_string_width(canvas, "Stop");
+        const int16_t cx = 126 - stop_w - 3 - FLIPSO_SCAN_BACK_R;
+        const int16_t cy = (band - 1) / 2;
+        canvas_draw_disc(canvas, cx, cy, FLIPSO_SCAN_BACK_R);
+        canvas_set_color(canvas, ColorWhite);
+        canvas_draw_icon(
+            canvas,
+            cx - icon_get_width(&I_back_7px) / 2,
+            cy - icon_get_height(&I_back_7px) / 2,
+            &I_back_7px);
+        canvas_set_color(canvas, ColorBlack);
+        canvas_draw_str_aligned(canvas, 126, 10, AlignRight, AlignBottom, "Stop");
     }
-    canvas_draw_line(canvas, 0, 13, 127, 13);
+    canvas_draw_line(canvas, 0, FLIPSO_SCAN_RULE_Y, 127, FLIPSO_SCAN_RULE_Y);
 
     /* Graphic band: a smartcard with waves radiating towards it from the left.
      * The group is centred so the widest wave stays clear of the text below.
-     * Idle sits a little higher to leave room for the Scan button. */
-    const int16_t card_x = 54, card_y = m->scanning ? 17 : 15, card_w = 42, card_h = 24;
+     * The card stays put when the reader comes on, so only the waves and the
+     * words change. */
+    const int16_t card_x = 54, card_y = 17, card_w = 42, card_h = 24;
     canvas_draw_rframe(canvas, card_x, card_y, card_w, card_h, 3);
     canvas_draw_box(canvas, card_x + 5, card_y + 5, 9, 7); /* contact pad */
     canvas_draw_line(canvas, card_x + 19, card_y + 6, card_x + 36, card_y + 6);
@@ -102,6 +131,7 @@ static void flipso_scan_view_draw(Canvas* canvas, void* model) {
         canvas_draw_str_aligned(canvas, 64, 56, AlignCenter, AlignTop, "against the back");
     } else {
         /* Idle: the reader is off until the user asks for it. */
+        /* A row under the card, and clear of the buttons below. */
         canvas_draw_str_aligned(canvas, 64, 42, AlignCenter, AlignTop, "Ready to read a card");
         elements_button_center(canvas, "Scan"); /* occupies the bottom 12 rows */
         /* Saved cards share that band. It is the only other thing to do from

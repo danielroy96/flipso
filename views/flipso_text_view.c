@@ -1,6 +1,6 @@
 /**
  * @file flipso_text_view.c
- * @brief Word wrapping, drawing and input for the scrolling text panel.
+ * @brief Word wrapping, paging, drawing and input for the text panel.
  *
  * Wrapping happens in the draw callback because it is the only place a Canvas
  * exists, and the glyph widths it measures are what decide where a line breaks.
@@ -32,11 +32,26 @@
 /* Longest wrapped line we will assemble. No line of a 128px screen comes near
  * this; a word longer than it is broken like any word too wide to fit. */
 #define FLIPSO_TEXT_LINE_MAX    96
+/* A page's arrows: a triangle this wide, and twice this less one tall, at the
+ * edge of the title row. */
+#define FLIPSO_TEXT_ARROW_W     4
+/* The title starts this far in when the page has arrows to make room for. */
+#define FLIPSO_TEXT_ARROW_ROOM  (FLIPSO_TEXT_ARROW_W + 3)
+/* A page's title: the icon list's header, so every screen titles itself the
+ * same way - icon and text centred as one, over a rule on the row above this
+ * (FLIPSO_MENU_HEADER_BOTTOM). */
+#define FLIPSO_TEXT_TITLE_H     14
+/* Between the rule and the page's first line, which without it sits close
+ * enough under the rule to read as crowded. */
+#define FLIPSO_TEXT_TITLE_GAP   1
 
 typedef struct {
     FuriString* text;
+    uint16_t page; /**< The page shown, from 0. */
+    uint16_t pages; /**< Pages in the text: one more than its page breaks. */
     uint16_t scroll; /**< First wrapped line drawn, in lines from the top. */
-    uint16_t lines; /**< Total wrapped lines, counted by the last draw. */
+    uint16_t lines; /**< Wrapped lines the page scrolls, counted by the last draw. */
+    uint16_t rows; /**< Rows the page scrolls in, set by the last draw. */
     const Icon* const* icons; /**< Heading icons, numbered from 1. */
     uint8_t icon_count;
 } FlipsoTextModel;
@@ -48,6 +63,7 @@ struct FlipsoTextView {
 /** One draw of the whole text: where the window is, and how far we have got. */
 typedef struct {
     Canvas* canvas;
+    int32_t top; /**< Where the window starts, in pixels from the top. */
     uint16_t first; /**< First wrapped line inside the window. */
     uint16_t rows; /**< Rows the window holds. */
     uint16_t produced; /**< Wrapped lines so far, which the scrollbar needs. */
@@ -74,7 +90,7 @@ static void flipso_text_emit(
     uint16_t line_no = pass->produced++;
     if(line_no < pass->first || line_no >= pass->first + pass->rows) return;
 
-    int32_t top = (int32_t)(line_no - pass->first) * FLIPSO_TEXT_LINE_H;
+    int32_t top = pass->top + (int32_t)(line_no - pass->first) * FLIPSO_TEXT_LINE_H;
     if(icon) {
         uint16_t icon_h = icon_get_height(icon);
         int32_t offset = icon_h < FLIPSO_TEXT_LINE_H ? (FLIPSO_TEXT_LINE_H - icon_h) / 2 : 0;
@@ -196,41 +212,135 @@ static void flipso_text_wrap(
 #undef FLIPSO_TEXT_FLUSH
 }
 
+/** Where page @p page of @p text starts, and through @p end where it stops. */
+static const char* flipso_text_page(const char* text, uint16_t page, const char** end) {
+    const char* start = text;
+    for(uint16_t i = 0; i < page; i++) {
+        const char* next = strchr(start, FLIPSO_TEXT_PAGE);
+        if(!next) break;
+        start = next + 1;
+    }
+    const char* stop = strchr(start, FLIPSO_TEXT_PAGE);
+    *end = stop ? stop : start + strlen(start);
+    return start;
+}
+
+/** Split a "\e#" heading's body into its icon, if it names one, and its text. */
+static const Icon*
+    flipso_text_heading_icon(const FlipsoTextModel* m, const char** body, size_t* len) {
+    if(!*len || !m->icons) return NULL;
+    uint8_t number = (uint8_t)((uint8_t)(*body)[0] - FLIPSO_TEXT_ICON_BASE);
+    if(number < 1 || number > m->icon_count) return NULL;
+    (*body)++;
+    (*len)--;
+    return m->icons[number - 1];
+}
+
+/** A page arrow: a triangle pointing left from @p x, or right to it. */
+static void flipso_text_arrow(Canvas* canvas, int32_t x, bool left) {
+    /* Centred in the band above the rule, as the title is. */
+    const int32_t mid = (FLIPSO_TEXT_TITLE_H - 2) / 2;
+    for(int32_t i = 0; i < FLIPSO_TEXT_ARROW_W; i++) {
+        const int32_t col = left ? x + i : x - i;
+        canvas_draw_line(canvas, col, mid - i, col, mid + i);
+    }
+}
+
+/**
+ * The page's title row, drawn as the icon list draws its header: the icon and
+ * the heading centred as one group, cut short with dots if it would run into
+ * the arrows, a rule under it, and an arrow at each side that has another page.
+ */
+static void flipso_text_title(
+    Canvas* canvas,
+    const FlipsoTextModel* m,
+    const char* body,
+    size_t len,
+    const Icon* icon) {
+    const bool paged = m->pages > 1;
+    const int32_t margin = paged ? FLIPSO_TEXT_ARROW_ROOM : FLIPSO_TEXT_X;
+    const int32_t icon_w = icon ? icon_get_width(icon) + FLIPSO_TEXT_ICON_GAP : 0;
+    const int32_t room = FLIPSO_TEXT_SCREEN_W - 2 * margin - icon_w;
+
+    if(paged && m->page > 0) flipso_text_arrow(canvas, 0, true);
+    if(paged && m->page + 1 < m->pages) flipso_text_arrow(canvas, FLIPSO_TEXT_SCREEN_W - 1, false);
+
+    /* Titles are written to fit; one that does not is cut, with dots to say
+     * so, rather than drawn under an arrow. */
+    canvas_set_font(canvas, FontPrimary);
+    char buf[FLIPSO_TEXT_LINE_MAX];
+    size_t take = len < sizeof(buf) - 1 ? len : sizeof(buf) - 1;
+    memcpy(buf, body, take);
+    buf[take] = '\0';
+    if(flipso_glyphs_width(canvas, buf) > room) {
+        /* Room for the dots and the terminator after the cut. */
+        if(take > sizeof(buf) - 4) take = sizeof(buf) - 4;
+        while(take > 0) {
+            take--;
+            while(take > 0 && flipso_glyphs_is_continuation(body[take]))
+                take--;
+            memcpy(buf + take, "...", 4);
+            if(flipso_glyphs_width(canvas, buf) <= room) break;
+        }
+    }
+
+    const int32_t group_w = icon_w + flipso_glyphs_width(canvas, buf);
+    const int32_t x = (FLIPSO_TEXT_SCREEN_W - group_w) / 2;
+    if(icon) {
+        /* Centred in the band above the rule, which is where the text sits
+         * too - the icon is taller than the glyphs. */
+        const int32_t icon_h = icon_get_height(icon);
+        const int32_t band = FLIPSO_TEXT_TITLE_H - 1;
+        canvas_draw_icon(canvas, x, icon_h < band ? (band - icon_h) / 2 : 0, icon);
+    }
+    canvas_draw_str_aligned(canvas, x + icon_w, 1, AlignLeft, AlignTop, buf);
+    canvas_draw_line(
+        canvas, 0, FLIPSO_TEXT_TITLE_H - 1, FLIPSO_TEXT_SCREEN_W - 1, FLIPSO_TEXT_TITLE_H - 1);
+}
+
 static void flipso_text_view_draw(Canvas* canvas, void* model) {
     FlipsoTextModel* m = model;
 
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
 
+    const char* end;
+    const char* line =
+        flipso_text_page(m->text ? furi_string_get_cstr(m->text) : "", m->page, &end);
+
+    /* A page that opens with a heading keeps it at the top as the page's
+     * title, and scrolls the rest under it. */
     FlipsoTextPass pass = {
         .canvas = canvas,
+        .top = 0,
         .first = m->scroll,
         .rows = flipso_text_rows(),
         .produced = 0,
     };
+    if(end - line >= 2 && line[0] == '\e' && line[1] == '#') {
+        const char* nl = memchr(line, '\n', (size_t)(end - line));
+        const char* body = line + 2;
+        size_t body_len = (size_t)((nl ? nl : end) - body);
+        const Icon* icon = flipso_text_heading_icon(m, &body, &body_len);
+        flipso_text_title(canvas, m, body, body_len, icon);
+        line = nl ? nl + 1 : end;
+        pass.top = FLIPSO_TEXT_TITLE_H + FLIPSO_TEXT_TITLE_GAP;
+        pass.rows = (FLIPSO_TEXT_SCREEN_H - pass.top) / FLIPSO_TEXT_LINE_H;
+    }
 
-    /* Stopping at the terminator rather than after it means a text that ends
-     * in a newline, as every scene's does, has no blank row hanging off the
+    /* Stopping at the end rather than after it means a page that ends in a
+     * newline, as every scene's does, has no blank row hanging off the
      * bottom of it. */
-    const char* line = m->text ? furi_string_get_cstr(m->text) : "";
-    while(*line) {
-        const char* nl = strchr(line, '\n');
-        size_t len = nl ? (size_t)(nl - line) : strlen(line);
+    while(line < end) {
+        const char* nl = memchr(line, '\n', (size_t)(end - line));
+        size_t len = (size_t)((nl ? nl : end) - line);
 
         /* "\e#" turns the rest of the source line into a bold header, and a
          * byte after it that numbers an icon puts that icon in front. */
         bool bold = len >= 2 && line[0] == '\e' && line[1] == '#';
         const char* body = bold ? line + 2 : line;
         size_t body_len = bold ? len - 2 : len;
-        const Icon* icon = NULL;
-        if(bold && body_len && m->icons) {
-            uint8_t number = (uint8_t)((uint8_t)body[0] - FLIPSO_TEXT_ICON_BASE);
-            if(number >= 1 && number <= m->icon_count) {
-                icon = m->icons[number - 1];
-                body++;
-                body_len--;
-            }
-        }
+        const Icon* icon = bold ? flipso_text_heading_icon(m, &body, &body_len) : NULL;
 
         flipso_text_wrap(&pass, body, body_len, bold, icon);
 
@@ -241,13 +351,14 @@ static void flipso_text_view_draw(Canvas* canvas, void* model) {
     /* The wrapped total is only knowable once the canvas has measured it, so
      * the scrollbar and the input clamp both use what this pass counted. */
     m->lines = pass.produced;
+    m->rows = pass.rows;
 
     if(pass.produced > pass.rows) {
         elements_scrollbar_pos(
             canvas,
             FLIPSO_TEXT_SCREEN_W,
-            0,
-            FLIPSO_TEXT_SCREEN_H,
+            (uint16_t)pass.top,
+            (uint16_t)(FLIPSO_TEXT_SCREEN_H - pass.top),
             m->scroll,
             (uint16_t)(pass.produced - pass.rows + 1));
     }
@@ -260,8 +371,8 @@ static bool flipso_text_step(FlipsoTextView* instance, int16_t delta) {
         instance->view,
         FlipsoTextModel * model,
         {
-            uint16_t rows = flipso_text_rows();
             /* Nothing to scroll until a draw has counted the lines. */
+            uint16_t rows = model->rows ? model->rows : flipso_text_rows();
             uint16_t max = model->lines > rows ? (uint16_t)(model->lines - rows) : 0;
             int32_t next = (int32_t)model->scroll + delta;
             if(next < 0) next = 0;
@@ -273,14 +384,26 @@ static bool flipso_text_step(FlipsoTextView* instance, int16_t delta) {
     return moved;
 }
 
+/** Turn to the page @p delta away, at the top; nothing past either end. */
+static void flipso_text_turn(FlipsoTextView* instance, int16_t delta) {
+    with_view_model(
+        instance->view,
+        FlipsoTextModel * model,
+        {
+            int32_t next = (int32_t)model->page + delta;
+            if(next >= 0 && next < model->pages) {
+                model->page = (uint16_t)next;
+                model->scroll = 0;
+                model->lines = 0;
+            }
+        },
+        true);
+}
+
 static bool flipso_text_view_input(InputEvent* event, void* context) {
     FlipsoTextView* instance = context;
 
     if(event->type != InputTypeShort && event->type != InputTypeRepeat) return false;
-
-    /* A screen at a time keeps the last row of one page as the first of the
-     * next, so the eye has somewhere to pick up from. */
-    const int16_t page = (int16_t)(flipso_text_rows() - 1);
 
     switch(event->key) {
     case InputKeyUp:
@@ -290,10 +413,10 @@ static bool flipso_text_view_input(InputEvent* event, void* context) {
         flipso_text_step(instance, 1);
         return true;
     case InputKeyLeft:
-        flipso_text_step(instance, (int16_t)-page);
+        flipso_text_turn(instance, -1);
         return true;
     case InputKeyRight:
-        flipso_text_step(instance, page);
+        flipso_text_turn(instance, 1);
         return true;
     default:
         /* Back belongs to the scene manager, and OK does nothing here. */
@@ -312,7 +435,13 @@ FlipsoTextView* flipso_text_view_alloc(void) {
     view_set_input_callback(instance->view, flipso_text_view_input);
 
     with_view_model(
-        instance->view, FlipsoTextModel * model, { model->text = furi_string_alloc(); }, false);
+        instance->view,
+        FlipsoTextModel * model,
+        {
+            model->text = furi_string_alloc();
+            model->pages = 1;
+        },
+        false);
     return instance;
 }
 
@@ -344,8 +473,14 @@ void flipso_text_view_set_text(FlipsoTextView* instance, const char* text) {
         FlipsoTextModel * model,
         {
             furi_string_set_str(model->text, text);
+            model->page = 0;
+            model->pages = 1;
+            for(const char* c = text; (c = strchr(c, FLIPSO_TEXT_PAGE)) != NULL; c++) {
+                model->pages++;
+            }
             model->scroll = 0;
             model->lines = 0;
+            model->rows = 0;
         },
         true);
 }

@@ -25,6 +25,19 @@ void flipso_cat_datetime_struct(FuriString* out, const DateTime* dt, bool with_t
 /** Append a Unix time as a date, and optionally its time, in the user's formats. */
 void flipso_cat_timestamp(FuriString* out, uint32_t timestamp, bool with_time);
 
+/**
+ * Start a page: a page break, unless it is the screen's first, then its title.
+ * Every page opens with a heading, which the text view keeps as the title row.
+ */
+void flipso_cat_page(FuriString* out, FlipsoIcon icon, const char* title);
+
+/**
+ * A page of whatever @p body holds, under @p title, and @p body emptied for
+ * the next one. Nothing at all when @p body is empty: a screen leaves out the
+ * pages it has nothing to put on.
+ */
+void flipso_cat_page_from(FuriString* out, FlipsoIcon icon, const char* title, FuriString* body);
+
 /** "Label: Yes" or "Label: No". */
 void flipso_cat_flag(FuriString* out, const char* indent, const char* label, bool value);
 
@@ -115,6 +128,9 @@ void flipso_cat_last_use(
     const ItsoCard* card,
     const ItsoProduct* product,
     const char* place_label);
+
+/** The newest tap the card itself holds, or NULL. */
+const ItsoTap* flipso_latest_tap(const ItsoCard* card);
 
 /** "Label: Active" for a compact-shell ticket, from its one product. */
 void flipso_cat_ticket_state(

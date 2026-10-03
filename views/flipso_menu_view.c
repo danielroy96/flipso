@@ -10,8 +10,10 @@
 
 #define FLIPSO_MENU_HEADER_LEN      32
 #define FLIPSO_MENU_ROW_HEIGHT      16
-/* Cleared by the header rule when there is one, and the whole screen when not. */
-#define FLIPSO_MENU_HEADER_BOTTOM   13
+/* Cleared by the header rule when there is one, and the whole screen when not.
+ * The rule is on the row above this, where the scan screen draws its own, with
+ * two clear rows over it so the header's icon and descenders do not touch it. */
+#define FLIPSO_MENU_HEADER_BOTTOM   14
 #define FLIPSO_MENU_SCREEN_W        128
 #define FLIPSO_MENU_SCREEN_H        64
 /* The header is centred, so an over-wide one runs off both edges at once. Keep

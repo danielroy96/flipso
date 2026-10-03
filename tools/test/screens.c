@@ -6,7 +6,7 @@
  * tables through the real readers - screens.py links the packaged
  * stations.dat and data/naptan.dat in under the names the storage stub below
  * opens. So what this prints is what the Flipper shows, less the pixels, in a
- * second rather than a scroll through each screen on the device.
+ * second rather than paging through each screen on the device.
  *
  * Then it lists every operator number on the card, where it came from, whether
  * the table names it, and whether it is a number ITSO can issue at all: TS
@@ -182,7 +182,13 @@ static void operators(const ItsoCard* card) {
 /* ---- main --------------------------------------------------------------- */
 
 static void show(const char* title, FuriString* text) {
-    printf("==== %s ====\n%s\n", title, furi_string_get_cstr(text));
+    /* A page break as a blank line, so each page reads as a block under its
+     * title, the way Left and Right turn through them on the device. */
+    printf("==== %s ====\n", title);
+    for(const char* c = furi_string_get_cstr(text); *c; c++) {
+        putchar(*c == '\f' ? '\n' : *c);
+    }
+    putchar('\n');
     furi_string_reset(text);
 }
 
