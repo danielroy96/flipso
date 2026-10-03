@@ -1433,23 +1433,68 @@ def cmd_shot(args):
             f.close()
         time.sleep(0.4)
 
-    snapshot(port, args.out, scale=args.scale, invert=args.invert,
-             timeout=args.timeout, palette="amber" if args.amber else "screen")
+    qflipper = args.qflipper or args.amber
+    snapshot(port, args.out, scale=QFLIPPER_SCALE if qflipper else args.scale,
+             invert=args.invert, timeout=args.timeout,
+             palette="qflipper" if qflipper else "screen")
     return 0
 
 
 # Lit and unlit pixels as RGB. The screen palette is what the grey capture has
-# always been; amber is the Flipper's own backlit screen - black on #FF8200 -
-# which is what the README's screenshots use, so they match the hardware.
+# always been. qflipper is what qFlipper's Save Screenshot writes - black on its
+# theme's lightorange2, #FE8A2C (application/imports/Theme/Theme.qml, used by
+# components/StreamOverlay.qml) - which is what the README's screenshots are.
 PALETTES = {
     "screen": ((0x11, 0x11, 0x11), (0xE8, 0xE8, 0xE8)),
-    "amber": ((0x00, 0x00, 0x00), (0xFF, 0x82, 0x00)),
+    "qflipper": ((0x00, 0x00, 0x00), (0xFE, 0x8A, 0x2C)),
 }
+
+# qFlipper always saves at four times the screen (StreamOverlay.qml's
+# canvas.saveImage(url, 4)).
+QFLIPPER_SCALE = 4
+
+
+def libpng_filtered(rows: list, bpp: int = 3) -> bytes:
+    """Rows filtered as libpng 1.6 filters 8-bit truecolour by default, which is
+    how Qt's PNG writer leaves it: each of the five filters is tried on every
+    row and the one whose output has the smallest sum of absolute signed bytes
+    kept, the earlier on a tie. A filter is a choice the decoder never needs to
+    know, so this is only for output identical to qFlipper's to the byte."""
+    out = bytearray()
+    prev = bytes(len(rows[0]))
+    for row in rows:
+        n = len(row)
+        left = bytes(bpp) + row[:n - bpp]
+        upleft = bytes(bpp) + prev[:n - bpp]
+
+        def paeth(a, b, c):
+            p = a + b - c
+            pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+            return a if pa <= pb and pa <= pc else b if pb <= pc else c
+
+        candidates = (
+            bytes(row),
+            bytes((r - a) & 255 for r, a in zip(row, left)),
+            bytes((r - b) & 255 for r, b in zip(row, prev)),
+            bytes((r - ((a + b) >> 1)) & 255 for r, a, b in zip(row, left, prev)),
+            bytes((r - paeth(a, b, c)) & 255 for r, a, b, c in zip(row, left, prev, upleft)),
+        )
+        best = min(range(5), key=lambda f: (sum(v if v < 128 else 256 - v
+                                                for v in candidates[f]), f))
+        out += bytes([best]) + candidates[best]
+        prev = row
+    return bytes(out)
 
 
 def write_png(frame: bytes, path: str, scale: int = 3, invert: bool = False,
               palette: str = "screen"):
-    """The screen comes back as a column-major 1bpp bitmap, 8 rows per byte."""
+    """The screen comes back as a column-major 1bpp bitmap, 8 rows per byte.
+
+    The qflipper palette writes the file qFlipper's Save Screenshot would, byte
+    for byte: Qt's PNG writer is libpng with its default filtering and
+    compression, and a pHYs chunk of 2835 dots per metre - Qt's 72 dpi. Checked
+    by test_flipctl.py against a screenshot qFlipper saved.
+    """
     import struct
     import zlib
 
@@ -1458,24 +1503,31 @@ def write_png(frame: bytes, path: str, scale: int = 3, invert: bool = False,
     if invert:
         on, off = off, on
     on, off = bytes(on) * scale, bytes(off) * scale
-    rows = b""
+    rows = []
     for y in range(H):
         line = bytearray()
         base = (y // 8) * W
         bit = y % 8
         for x in range(W):
             line += on if (frame[base + x] >> bit) & 1 else off
-        rows += (b"\x00" + bytes(line)) * scale
+        rows += [bytes(line)] * scale
 
     def chunk(tag, payload):
         body = tag + payload
         return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
 
     png = b"\x89PNG\r\n\x1a\n"
-    # 8-bit truecolour: two colours do not need it, but a palette PNG buys a
-    # few hundred bytes at the cost of a second code path.
+    # 8-bit truecolour: two colours do not need it, but it is what Qt writes
+    # for qFlipper's RGB32 canvas, and one code path serves both palettes.
     png += chunk(b"IHDR", struct.pack(">IIBBBBB", W * scale, H * scale, 8, 2, 0, 0, 0))
-    png += chunk(b"IDAT", zlib.compress(rows, 9))
+    if palette == "qflipper":
+        png += chunk(b"pHYs", struct.pack(">IIB", 2835, 2835, 1))
+        # libpng's defaults: zlib level 6, and the filtered strategy it uses
+        # whenever rows are filtered.
+        z = zlib.compressobj(6, zlib.DEFLATED, 15, 8, zlib.Z_FILTERED)
+        png += chunk(b"IDAT", z.compress(libpng_filtered(rows)) + z.flush())
+    else:
+        png += chunk(b"IDAT", zlib.compress(b"".join(b"\x00" + r for r in rows), 9))
     png += chunk(b"IEND", b"")
     with open(path, "wb") as fh:
         fh.write(png)
@@ -1945,8 +1997,10 @@ def build_parser():
     s.add_argument("--settle", type=float, default=0.3)
     s.add_argument("--scale", type=int, default=3)
     s.add_argument("--invert", action="store_true")
-    s.add_argument("--amber", action="store_true",
-                   help="black on the Flipper's amber, as the README's screenshots are")
+    s.add_argument("--qflipper", action="store_true",
+                   help="the file qFlipper's Save Screenshot writes, byte for byte: "
+                        "black on #FE8A2C at 4x - what the README's screenshots are")
+    s.add_argument("--amber", action="store_true", help="the same as --qflipper")
     s.add_argument("--timeout", type=float, default=20.0)
     s.set_defaults(func=cmd_shot)
 
