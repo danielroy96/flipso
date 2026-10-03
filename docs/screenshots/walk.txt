@@ -1,0 +1,23 @@
+# The README's and the Apps Catalog's screenshots: the demo cards, captured as
+# qFlipper's Save Screenshot writes them. Retake them all after a UI change with
+#
+#   tools/flipper/flipctl walk docs/screenshots --steps-file docs/screenshots/walk.txt \
+#       --launch --qflipper --named-only --sheet <scratchpad>/readme.png
+#
+# and Read the sheet: it numbers every step, named or not, so a route that has
+# drifted with a menu change shows up as the wrong screen in the right place.
+# Each line is one step from the scan screen of a fresh launch; NAME=keys saves
+# that frame as NAME.png. Only the demo cards appear, so no real card's number
+# or holder is in a published image.
+
+home=ok                     # scanning: "Hold a card or ticket against the back"
+back                        # the reader off again
+right down ok               # About, Demo cards: the list, at Demo 01
+menu=ok                     # Demo 01's card menu
+card=down ok
+payg=back down ok
+products=back down down down ok
+product-detail=ok           # the period ticket
+back back back down ok      # the list again, and Demo 02's card menu
+id=down down down ok
+journeys=back down ok

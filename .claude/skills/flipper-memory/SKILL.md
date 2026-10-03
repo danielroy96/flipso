@@ -55,15 +55,34 @@ Three numbers matter:
 `--cost` closes the running app to get a clean baseline, so do not use it while
 the user is mid-way through something on the device.
 
-## Checking for a leak
-
-Repeat the suspect path and watch the heap return to where it started:
+## What each screen costs
 
 ```bash
-tools/flipper/flipctl mem                                   # baseline
-tools/flipper/flipctl keys ok @2 back @1 ok @2 back @1 ok @2 back
-tools/flipper/flipctl mem                                   # should match
+tools/flipper/flipctl walk <scratch>/m --launch 'right down ok' ok 'down down down ok' ok
 ```
+
+A walk prints the free heap, the low-water mark and the largest block after
+every step, with a screenshot of the screen it was read on - here the scan
+screen, the demo list, Demo 01's card menu, its product list and a product.
+That is the table past sessions built by hand from `keys` and `mem` calls, a
+scratch `measure.sh` among them. Add `--no-heap` when only the pictures
+matter; a reading costs 0.2 s.
+
+## Checking for a leak
+
+Get to the screen, then repeat the suspect path and watch the heap return to
+where it started:
+
+```bash
+tools/flipper/flipctl walk <scratch>/to --launch 'right down ok'   # to the demo list
+tools/flipper/flipctl walk <scratch>/leak ok back --repeat 5       # open and close Demo 01
+```
+
+It ends with the free heap at the end of each repeat and the drift from the
+first to the last. `--repeat` repeats every step it is given, which is why the
+navigation is a walk of its own. Compare repeats with each other, not with the
+idle figure: the text panel keeps its longest string until the app exits
+(CLAUDE.md), so the first open of a long screen costs once and then holds.
 
 Then exit the app entirely and confirm the heap comes back to the idle figure —
 that is the test for teardown, and it catches anything the scene manager did not
@@ -75,7 +94,10 @@ firmware state), so compare within one session, never against a number written
 down earlier.
 
 Much of that spread is the screenshot. `flipctl shot` works over an RPC
-session, and the memory that session takes stays allocated after it. Measured on
+session, and the memory that session takes stays allocated after it. A walk's
+frames all come from one RPC session: on 2026-10-03 thirty of them in a row
+moved the free heap by under 100 bytes, which came back when the session
+closed, so readings within one walk compare. Measured on
 2026-09-26 at the desktop after closing Flipso: 138,904 bytes free with no
 screenshot since boot, 113,600 with one. So take the idle figure and the
 after-exit figure on the same side of a screenshot, or a ~25 KB gap reads as a

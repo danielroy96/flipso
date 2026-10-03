@@ -76,6 +76,15 @@ tools/spec/itso_spec.py page 5 51                          # one whole page
 Parts 1, 2, 4, 5 and 10 are searched when no `--part` is given. The layout
 tables survive text extraction well enough to read field offsets off them.
 
+Rail fills several TS 1000-5 fields its own way - a ProductRetailer that is a
+retailing NLC, railcards, reservations - and says how in RDG's RSPS3002, "ITSO
+in National Rail Specification". `--part rsps3002` searches it; it comes from
+the Wayback Machine, because RDG's own link now returns a web page.
+
+```bash
+tools/spec/itso_spec.py grep 'bit 15' --part rsps3002
+```
+
 **Offsets in the TS 1000-5 IPE and value-record tables are absolute from the
 start of the data group.** A value record's own byte N is table offset N+2,
 because the 2-byte VG header precedes it. Getting this wrong shifts every field

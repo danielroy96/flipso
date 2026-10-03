@@ -14,15 +14,17 @@ loop, the hardware, and the things that have wasted time before.
 
 | What | Command |
 | --- | --- |
-| Decoder tests on this machine | `tools/test/run.sh` |
+| Decoder tests on this machine | `tools/test/run.sh` (one line; `-v` for all of it) |
 | Compile only | `tools/flipper/flipctl deploy --build-only` |
 | Check / fix formatting | `ufbt lint` / `ufbt format` |
 | Build, install and launch on the Flipper | `tools/flipper/flipctl deploy` |
 | Check the environment and the device | `tools/flipper/flipctl doctor` |
 | Prove a card can be tapped right now | `tools/flipper/flipctl arm` |
 | Read a card left lying on the reader | `tools/flipper/flipctl scan` |
+| Walk the UI: keys, a frame and the heap per step, one contact sheet | `tools/flipper/flipctl walk OUT ok right --until-same` |
+| Retake the README's screenshots | `flipctl walk docs/screenshots --steps-file docs/screenshots/walk.txt ...` (see the file) |
 | Every screen of a saved card, on this machine | `tools/test/screens.py card.flipso` |
-| Search the ITSO spec | `tools/spec/itso_spec.py grep PATTERN` |
+| Search the ITSO spec, or rail's RSPS3002 | `tools/spec/itso_spec.py grep PATTERN [--part rsps3002]` |
 | Check HEAD against the Apps Catalog | `tools/catalog/validate.sh` |
 | Refresh the IDE's index of the sources | `tools/ide/compdb.py` |
 
@@ -30,7 +32,8 @@ Slash commands wrap the common ones: `/deploy`, `/drive`, `/watch`, `/mem`,
 `/test`, `/dump`, `/doctor`. Skills carry the detail: **flipper-hardware** for
 anything involving the device, **flipso-decoder** for card data and the ITSO
 spec, **flipper-memory** for heap work and crashes, **new-card** for taking a
-card Flipso has not seen from the reader to a committed operator entry.
+card Flipso has not seen from the reader to a committed operator entry,
+**flipso-review** for a full review of the app or the branch.
 
 Prefer the host tests. The decoder (`itso/`) builds on macOS under ASan and
 UBSan, so a hypothesis about card bytes can be tested in about a second.
@@ -232,7 +235,10 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
   switched off. Only `arm` proves the field.
 - **Never send keys without a screenshot showing Flipso first.** Keys go to
   whatever owns the screen, and at the desktop they open menus and other apps.
-  After any launch, `flipctl shot` and look before `flipctl keys`.
+  After any launch, `flipctl shot` and look before `flipctl keys`. `flipctl
+  walk` captures frame 00 before its first key and refuses outright when no
+  app is running, but read frame 00 on its sheet all the same: the loader
+  names Flipso in states where the desktop has the screen.
 - **Every reboot is visible on the desk and looks like a crash.** `flipctl`
   reboots on its own to recover (`wedged ... rebooting`); when it does, or when
   you run `flipctl reboot`, tell the user, and treat a second one in a session

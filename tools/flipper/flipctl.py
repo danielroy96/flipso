@@ -1434,9 +1434,344 @@ def cmd_shot(args):
         time.sleep(0.4)
 
     qflipper = args.qflipper or args.amber
+    if args.text:
+        # The pixels as text, for a question a picture cannot settle: how many
+        # rows lie between a glyph and a rule, whether two baselines agree.
+        s = Session(Flipper(port), port)
+        try:
+            frame = s.frame()
+        finally:
+            s.close()
+        write_png(frame, args.out, scale=QFLIPPER_SCALE if qflipper else args.scale,
+                  invert=args.invert, palette="qflipper" if qflipper else "screen")
+        print(f"captured {args.out}")
+        print(frame_text(frame, args.text))
+        return 0
     snapshot(port, args.out, scale=QFLIPPER_SCALE if qflipper else args.scale,
              invert=args.invert, timeout=args.timeout,
              palette="qflipper" if qflipper else "screen")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Walking the UI in one session
+#
+# `keys` and `shot` each open the port, sync the CLI and close it again, and a
+# shot opens a second, RPC, connection on top: about 3 s a call. Checking a
+# screen meant a key call and a shot call per page, and a heap figure a third,
+# so a walk through one paged product was a dozen calls and a dozen turns -
+# 101 past calls ran several shots by hand, and walk.sh, montage.py and
+# measure.sh were each written more than once in the scratchpad to stitch them
+# together. A walk opens the port once. Keys and frames go over RPC - 20 ms
+# and 35 ms, measured 2026-10-03 - and the session drops to the CLI only for
+# `free`, which RPC does not offer.
+
+WALK_KEYS = {"up": "UP", "down": "DOWN", "left": "LEFT", "right": "RIGHT",
+             "ok": "OK", "back": "BACK"}
+WALK_RPC_LIMIT_S = 10.0
+# How long a frame must hold to count as settled. The scan screen's waves
+# change every 0.29 s (measured 2026-10-03), so anything shorter takes a frame
+# of the animation for the end of a redraw.
+WALK_STILL_S = 0.4
+
+
+class WalkTimeout(Exception):
+    pass
+
+
+class Session:
+    """Keys, frames and heap readings over one open port."""
+
+    def __init__(self, f: Flipper, port: str):
+        self.f, self.port, self.proto = f, port, None
+
+    def _guard(self, fn, *a):
+        """One RPC exchange, bounded. A halted device answers nothing, and the
+        protobuf library then reads empty replies for ever."""
+        import signal
+
+        def on_alarm(signum, frame):
+            raise WalkTimeout()
+
+        signal.signal(signal.SIGALRM, on_alarm)
+        signal.alarm(int(WALK_RPC_LIMIT_S))
+        try:
+            return fn(*a)
+        finally:
+            signal.alarm(0)
+
+    def rpc(self):
+        if self.proto is not None:
+            return self.proto
+        from flipperzero_protobuf.flipper_proto import FlipperProto
+
+        s = self.f.s
+        s.reset_input_buffer()
+        s.timeout = 5.0
+        s.write(b"start_rpc_session\r")
+        s.read_until(b"\n")
+        self.proto = FlipperProto(serial_port=s, in_session=True)
+        return self.proto
+
+    def cli(self):
+        """Leave RPC for the text CLI on the same port. A clean stop leaves
+        the endpoint up - no drop, no reconnect - and the CLI answers the
+        next line with a prompt."""
+        if self.proto is None:
+            return
+        s = self.f.s
+        try:
+            self._guard(self.proto.rpc_stop_session)
+        except AttributeError:
+            # The library's own bookkeeping, after the device has acknowledged
+            # the stop: it only knows how to do this for a port it opened.
+            pass
+        self.proto = None
+        s.timeout = 2.0
+        s.write(b"\r\n")
+        s.read_until(PROMPT)
+        s.timeout = 0.2
+
+    def frame(self) -> bytes:
+        return self._guard(self.rpc().rpc_gui_snapshot_screen)
+
+    def key(self, name: str, kind: str = "short"):
+        """Press, then Short or Long, then Release: the GUI drops a Short for a
+        key it never saw go down (see Flipper.key)."""
+        p, key = self.rpc(), WALK_KEYS[name]
+        for t in ("PRESS", kind.upper(), "RELEASE"):
+            self._guard(p.rpc_gui_send_input_event_request, key, t)
+
+    def heap(self) -> dict:
+        self.cli()
+        return self.f.heap()
+
+    def close(self):
+        try:
+            self.cli()
+        except Exception:
+            pass
+        self.f.close()
+
+
+def frame_pixel(frame: bytes, x: int, y: int) -> bool:
+    return bool((frame[(y // 8) * 128 + x] >> (y % 8)) & 1)
+
+
+def frame_text(frame: bytes, crop: str = "0,0,128,64") -> str:
+    """The screen, or a crop of it as x,y,w,h, one character a pixel with a
+    ruler every ten columns and rows numbered."""
+    x0, y0, w, h = (int(v) for v in crop.split(","))
+    xs = range(max(0, x0), min(128, x0 + w))
+    out = ["    " + "".join(str((x // 10) % 10) if x % 10 == 0 else " " for x in xs),
+           "    " + "".join(str(x % 10) for x in xs)]
+    for y in range(max(0, y0), min(64, y0 + h)):
+        out.append(f"{y:3} " + "".join("#" if frame_pixel(frame, x, y) else "." for x in xs))
+    return "\n".join(out)
+
+
+# 3x5 digits for the frame numbers on a contact sheet.
+SHEET_DIGITS = ("111101101101111", "010110010010111", "111001111100111",
+                "111001111001111", "101101111001001", "111100111001111",
+                "111100111101111", "111001001001001", "111101111101111",
+                "111101111001111")
+
+
+def write_sheet(frames: list, labels: list, path: str, cols: int = 3, scale: int = 2):
+    """Tile frames into one PNG, each numbered above its top-left corner, so a
+    whole walk is one image to look at rather than one per screen."""
+    import struct
+    import zlib
+
+    W, H, gap, band = 128 * scale, 64 * scale, 6 * scale, 8 * scale
+    cols = max(1, min(cols, len(frames)))
+    rows_n = (len(frames) + cols - 1) // cols
+    width = cols * W + (cols + 1) * gap
+    height = rows_n * (H + band) + (rows_n + 1) * gap
+    bg, on, off, ink = (0xFF, 0xFF, 0xFF), *PALETTES["screen"], (0x60, 0x60, 0x60)
+    img = [bytearray(bytes(bg) * width) for _ in range(height)]
+
+    def put(x, y, rgb):
+        img[y][x * 3:x * 3 + 3] = bytes(rgb)
+
+    for n, frame in enumerate(frames):
+        ox = gap + (n % cols) * (W + gap)
+        oy = gap + (n // cols) * (H + band + gap)
+        for i, ch in enumerate(labels[n]):
+            if not ch.isdigit():
+                continue
+            glyph = SHEET_DIGITS[int(ch)]
+            for gy in range(5):
+                for gx in range(3):
+                    if glyph[gy * 3 + gx] == "1":
+                        for dy in range(scale):
+                            for dx in range(scale):
+                                put(ox + (i * 4 + gx) * scale + dx, oy + (1 + gy) * scale + dy, ink)
+        oy += band
+        for y in range(H):
+            line = img[oy + y]
+            for x in range(128):
+                rgb = bytes(on if frame_pixel(frame, x, y // scale) else off) * scale
+                line[(ox + x * scale) * 3:(ox + (x + 1) * scale) * 3] = rgb
+
+    def chunk(tag, payload):
+        body = tag + payload
+        return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    png = b"\x89PNG\r\n\x1a\n"
+    png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress(b"".join(b"\x00" + bytes(r) for r in img), 9))
+    png += chunk(b"IEND", b"")
+    with open(path, "wb") as fh:
+        fh.write(png)
+
+
+def parse_steps(args) -> list:
+    """(name or None, [key items]) per step, from the command line and --steps-file."""
+    lines = list(args.steps)
+    if args.steps_file:
+        with open(args.steps_file) as fh:
+            for line in fh:
+                line = line.split("#", 1)[0].strip()
+                if line:
+                    lines.append(line)
+    steps = []
+    for line in lines:
+        name, sep, keys = line.partition("=")
+        if not sep or " " in name.strip() or not name.strip():
+            name, keys = None, line
+        items = [] if keys.strip() in ("", "-") else keys.split()
+        for item in items:
+            if item.startswith("@"):
+                try:
+                    float(item[1:])
+                except ValueError:
+                    die(f"walk: {item!r} in step {line!r} is not a wait - '@1.5' is")
+            elif item.partition(":")[0].lower() not in WALK_KEYS:
+                die(f"walk: unknown key {item!r} in step {line!r} - "
+                    f"keys are {' '.join(WALK_KEYS)}, 'ok:long', '@1.5'")
+        steps.append((name.strip() if name else None, items))
+    return steps
+
+
+def cmd_walk(args):
+    steps = parse_steps(args)
+    port = find_port()
+    require_free_port(port, force=args.force)
+    if not cli_alive(port):
+        print("state: HALTED - the CLI is silent\n\n" + HALTED_ADVICE)
+        return 2
+    if args.launch:
+        port, message = ensure_usable(port, args)
+        if message != "ready":
+            die(f"walk: {message} - nothing sent")
+    os.makedirs(args.out, exist_ok=True)
+    qflipper = args.qflipper
+    scale = QFLIPPER_SCALE if qflipper else 3
+    palette = "qflipper" if qflipper else "screen"
+
+    f = Flipper(port)
+    if not args.launch and steps and any(items for _, items in steps) and f.app_running() is None:
+        f.close()
+        die("walk: no app is running, so the keys would go to the desktop - "
+            "pass --launch, or `flipctl ready` first")
+    s = Session(f, port)
+    sheet, labels, heaps = [], [], []
+    count = 0
+
+    def settle(before: bytes) -> bytes:
+        """The frame once it has stopped changing. A key that opens a saved
+        card redraws only after the file has loaded, so a fixed wait is either
+        too short for that or wasted on a menu move. A key that changes nothing
+        - Right on the last page - gives up after --settle-max.
+
+        A screen that never settles is animated - the scan screen's waves -
+        and gets the frame with the most ink seen, which for a looping
+        animation is the same frame every time, so retaken screenshots agree."""
+        deadline = time.time() + args.settle_max
+        time.sleep(0.15)
+        last = s.frame()
+        since = time.time()
+        seen = [last]
+        while time.time() < deadline:
+            time.sleep(0.1)
+            cur = s.frame()
+            if cur != last:
+                last, since = cur, time.time()
+                seen.append(cur)
+            elif cur != before and time.time() - since >= WALK_STILL_S:
+                return cur
+        moving = [fr for fr in seen if fr != before]
+        if len(set(moving)) > 1:
+            return max(moving, key=lambda fr: sum(bin(b).count("1") for b in fr))
+        return last
+
+    def record(frame: bytes, name, keys: str, rep: int, prev):
+        nonlocal count
+        label = f"{count:02d}"
+        fname = f"{name}.png" if name else f"{label}.png"
+        if name or not args.named_only:
+            write_png(frame, os.path.join(args.out, fname), scale=scale, palette=palette)
+        else:
+            fname = "-"
+        line = f"  {label}  {keys:<28.28}"
+        if not args.no_heap:
+            h = s.heap()
+            heaps.append((rep, h.get("Free heap size", 0)))
+            line += (f"  free {h.get('Free heap size', 0):>7,}"
+                     f"  low {h.get('Minimum heap size', 0):>7,}"
+                     f"  block {h.get('Maximum heap block', 0):>7,}")
+        if prev is not None and frame == prev:
+            line += "  [unchanged]"
+        print(f"{line}  {fname}", flush=True)
+        if args.text:
+            print(frame_text(frame, args.text))
+        sheet.append(frame)
+        labels.append(label)
+        count += 1
+
+    try:
+        prev = s.frame()
+        record(prev, None, "(start)", 0, None)
+        for rep in range(1, args.repeat + 1):
+            if args.repeat > 1:
+                print(f"repeat {rep}/{args.repeat}")
+            for i, (name, items) in enumerate(steps):
+                last_step = i == len(steps) - 1
+                runs = args.max if (last_step and args.until_same) else 1
+                for _ in range(runs):
+                    for item in items:
+                        if item.startswith("@"):
+                            time.sleep(float(item[1:]))
+                            continue
+                        key, _, kind = item.partition(":")
+                        s.key(key.lower(), kind or "short")
+                        time.sleep(args.settle)
+                    frame = settle(prev) if items else s.frame()
+                    if args.until_same and last_step and frame == prev:
+                        break
+                    record(frame, name, " ".join(items) or "-", rep, prev)
+                    prev = frame
+    except WalkTimeout:
+        s.f.close()
+        if not cli_alive(port):
+            die("walk: the device stopped answering mid-walk, and so does the "
+                "CLI.\n\n" + HALTED_ADVICE, code=2)
+        die("walk: an RPC exchange did not answer - the device is busy. "
+            "Screenshot and retry, or `flipctl reboot`.")
+    finally:
+        s.close()
+
+    path = args.sheet or os.path.join(args.out, "sheet.png")
+    write_sheet(sheet, labels, path, cols=args.cols)
+    print(f"sheet: {path} ({len(sheet)} frames)")
+    if args.repeat > 1 and heaps:
+        ends = [next(free for r, free in reversed(heaps) if r == rep)
+                for rep in range(1, args.repeat + 1)]
+        print("free heap at the end of each repeat: " + ", ".join(f"{e:,}" for e in ends))
+        drift = ends[-1] - ends[0]
+        print(f"drift from the first repeat to the last: {drift:+,} bytes"
+              + ("  (steady)" if drift == 0 else ""))
     return 0
 
 
@@ -2002,7 +2337,55 @@ def build_parser():
                         "black on #FE8A2C at 4x - what the README's screenshots are")
     s.add_argument("--amber", action="store_true", help="the same as --qflipper")
     s.add_argument("--timeout", type=float, default=20.0)
+    s.add_argument("--text", nargs="?", const="0,0,128,64", metavar="X,Y,W,H",
+                   help="also print the pixels as text, optionally a crop of them")
     s.set_defaults(func=cmd_shot)
+
+    s = sub.add_parser(
+        "walk", formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="send keys and capture after each step, in one session, with the "
+             "free heap - every page of a screen as one contact sheet",
+        description="Each STEP is a key sequence; the screen is captured once it "
+                    "settles after each, and once before the first. Frames go to "
+                    "OUT/NN.png, or OUT/NAME.png for a step written NAME=keys, and "
+                    "all of them to OUT/sheet.png.",
+        epilog="examples:\n"
+               "  flipctl walk OUT --launch 'right' 'ok' 'ok'      # About, demo list, Demo 01\n"
+               "  flipctl walk OUT ok right --until-same           # open a row, every page\n"
+               "  flipctl walk OUT ok back --repeat 5              # leak check: open, close\n"
+               "  flipctl walk docs/screenshots --steps-file docs/screenshots/walk.txt \\\n"
+               "      --launch --qflipper --named-only --sheet /tmp/readme.png  # README shots")
+    s.add_argument("out", help="directory for the frames and sheet.png")
+    s.add_argument("steps", nargs="*", metavar="STEP",
+                   help="keys for one step: 'down down ok', 'ok:long', '@1.5' waits; "
+                        "NAME=keys names the frame; '-' captures without a key")
+    s.add_argument("--steps-file", metavar="FILE",
+                   help="more steps, one a line, '#' starts a comment")
+    s.add_argument("--launch", action="store_true",
+                   help="relaunch the app first, so the walk starts at the scan screen")
+    s.add_argument("--until-same", action="store_true",
+                   help="repeat the last step until the screen stops changing - "
+                        "Right through every page")
+    s.add_argument("--max", type=int, default=30,
+                   help="most repeats of the last step with --until-same (default: 30)")
+    s.add_argument("--repeat", type=int, default=1,
+                   help="run all the steps N times and report the heap drift - a leak check")
+    s.add_argument("--no-heap", action="store_true", help="skip the free-heap reading per step")
+    s.add_argument("--qflipper", action="store_true",
+                   help="write each frame as qFlipper's Save Screenshot would")
+    s.add_argument("--named-only", action="store_true",
+                   help="write only the NAME=keys frames (the sheet still has all)")
+    s.add_argument("--cols", type=int, default=3, help="contact sheet columns (default: 3)")
+    s.add_argument("--sheet", metavar="PATH", help="where the contact sheet goes "
+                                                   "(default: OUT/sheet.png)")
+    s.add_argument("--settle", type=float, default=0.2, help="pause between keys (default: 0.2)")
+    s.add_argument("--settle-max", type=float, default=2.0,
+                   help="longest wait for the screen to change after a step (default: 2)")
+    s.add_argument("--text", nargs="?", const="0,0,128,64", metavar="X,Y,W,H",
+                   help="also print each frame's pixels as text, optionally cropped")
+    s.add_argument("--no-reboot", action="store_true",
+                   help="with --launch, fail rather than rebooting")
+    s.set_defaults(func=cmd_walk)
 
     s = sub.add_parser("crash", help="check for, or catch, a device crash")
     s.add_argument("--watch", type=float, default=0,
@@ -2038,7 +2421,14 @@ def build_parser():
 
 
 def main():
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args, extra = parser.parse_known_args()
+    # argparse stops filling a nargs="*" positional at the first option, so
+    # `walk OUT --no-heap ok back` would reject its own steps. They are steps.
+    if extra and args.sub == "walk" and not any(e.startswith("--") for e in extra):
+        args.steps += extra
+    elif extra:
+        parser.error("unrecognized arguments: " + " ".join(extra))
     try:
         rc = args.func(args)
     except CliSilent as exc:

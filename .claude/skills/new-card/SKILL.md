@@ -239,9 +239,18 @@ tools/flipper/flipctl scan --shot <scratch>/after.png; echo "SCAN=$?"
 ```
 
 The screenshot should show the brand in the title bar. Then walk a few
-screens on the device, with a screenshot before each key press. At least
-check the card screen's issuer and one product, since station names on the
-device come from the SD-card table rather than the host copy.
+screens on the device. At least check the card screen's issuer and one
+product, since station names on the device come from the SD-card table rather
+than the host copy. `scan` leaves the card menu up, so one walk does it:
+
+```bash
+tools/flipper/flipctl walk <scratch>/after 'down ok' right --until-same
+```
+
+That opens the Card row and pages to its end, all on `<scratch>/after/sheet.png`
+with frame 00 the menu it started from; `back` and further rows reach a
+product the same way. Saving the card stays a key at a time with a screenshot
+between (step 2), because it writes the user's file.
 
 ## 7. Review and commit
 

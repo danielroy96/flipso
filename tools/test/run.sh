@@ -1,6 +1,34 @@
 #!/bin/sh
 # Build and run the ITSO decoder tests on the host, under ASan and UBSan.
+#
+#   tools/test/run.sh       one line on success; on failure every [FAIL] line
+#                           and the end of the log, where a compiler error or
+#                           a sanitiser report lands
+#   tools/test/run.sh -v    everything, as it happens (CI runs this)
+#
+# The full output is some 7,000 lines, nearly all [PASS] and screen renders.
+# Read whole it cost a session tens of thousands of tokens, and the habit that
+# grew up instead - `run.sh | grep FAIL` - reports grep's exit status, not the
+# suite's, so a build that failed before any test ran read as a pass.
 set -e
+if [ "$1" != "-v" ]; then
+  T=${TMPDIR:-/tmp}
+  LOG=$(mktemp "${T%/}/flipso-run.XXXXXX")
+  start=$(date +%s)
+  if "$0" -v >"$LOG" 2>&1; then
+    echo "run.sh: $(grep -c '\[PASS\]' "$LOG") checks passed in" \
+      "$(($(date +%s) - start))s - full output in $LOG"
+    exit 0
+  else
+    status=$?
+  fi
+  # Each failure with the detail lines indented under it ("got X, wanted Y").
+  awk '/\[FAIL\]/ { p = 1; print; next } p && /^      / { print; next } { p = 0 }' "$LOG"
+  echo "--- the last 40 lines of $LOG"
+  tail -40 "$LOG"
+  echo "run.sh: FAILED (exit $status) - full output in $LOG"
+  exit $status
+fi
 cd "$(dirname "$0")"
 ROOT=../..
 

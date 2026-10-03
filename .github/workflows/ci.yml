@@ -21,7 +21,7 @@ jobs:
       # clang rather than the runner's default gcc, to match the Apple clang the
       # suite is written against on macOS.
       - name: tools/test/run.sh
-        run: tools/test/run.sh
+        run: tools/test/run.sh -v
         env:
           CC: clang
 

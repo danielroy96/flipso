@@ -23,6 +23,33 @@ spec = importlib.util.spec_from_file_location("flipctl", HERE / "flipctl.py")
 flipctl = importlib.util.module_from_spec(spec)
 sys.modules["flipctl"] = flipctl
 spec.loader.exec_module(flipctl)
+
+
+class Clock:
+    """Virtual time: sleep() moves the clock on instead of waiting.
+
+    flipctl paces itself with real sleeps - settle times, retry back-off, the
+    grace a poller gets - and the scripted ports here answer at once, so with
+    the real clock this file spent 13 s of run.sh's 22 asleep. Every deadline
+    loop in flipctl sleeps between reads, so virtual time still runs out.
+    """
+
+    def __init__(self):
+        import time as real
+        self._real = real
+        self.now = real.time()
+
+    def time(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+flipctl.time = Clock()
 # patch() replaces the liveness check, so keep the real one to test directly.
 real_cli_alive = flipctl.cli_alive
 
@@ -430,6 +457,45 @@ def main():
         flipctl.write_png(bytes(menu), tmp.name, scale=4, palette="qflipper")
         check("a qFlipper shot is the file qFlipper saves, to the byte",
               open(tmp.name, "rb").read() == data)
+
+    # walk: steps from the command line and from a file, named or not.
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tmp:
+        tmp.write("# a comment\nmenu=ok   # Demo 01\n\nright down ok\n-\n")
+    args = argparse.Namespace(steps=["ok:long @1.5", "x=right"], steps_file=tmp.name)
+    steps = flipctl.parse_steps(args)
+    os.unlink(tmp.name)
+    check("walk reads steps from the line, then the file, skipping comments",
+          steps == [(None, ["ok:long", "@1.5"]), ("x", ["right"]),
+                    ("menu", ["ok"]), (None, ["right", "down", "ok"]), (None, [])])
+    err = io.StringIO()
+    real_err, sys.stderr = sys.stderr, err
+    try:
+        flipctl.parse_steps(argparse.Namespace(steps=["down dwon"], steps_file=None))
+        died = False
+    except SystemExit:
+        died = True
+    sys.stderr = real_err
+    check("a misspelt key stops the walk before anything is sent",
+          died and "dwon" in err.getvalue())
+
+    # The pixels as text: what a picture cannot settle is which row a rule is on.
+    text = flipctl.frame_text(bytes(frame), "0,8,8,3").splitlines()
+    check("frame text numbers the rows and marks lit pixels",
+          text[3] == "  9 .....#..")
+    check("and crops to what was asked", len(text) == 2 + 3 and len(text[2]) == 4 + 8)
+
+    # The contact sheet is one PNG of every frame, in order.
+    with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+        flipctl.write_sheet([bytes(frame)] * 4, ["00", "01", "02", "03"], tmp.name,
+                            cols=3, scale=1)
+        data = open(tmp.name, "rb").read()
+        rows = decode(data)
+    width = int.from_bytes(data[16:20], "big")
+    check("a sheet of four frames is three across and two down",
+          width == 3 * 128 + 4 * 6 and len(rows) == 2 * (64 + 8) + 3 * 6)
+    # The first frame starts one gap in, under an 8-row band for its number.
+    check("and each frame keeps its pixels",
+          tuple(rows[6 + 8 + 9][(6 + 5) * 3:(6 + 5) * 3 + 3]) == flipctl.PALETTES["screen"][0])
 
     print("FAILED" if failures else "All flipctl recovery tests passed")
     return 1 if failures else 0
