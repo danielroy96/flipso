@@ -8,15 +8,24 @@ Walk through this part of Flipso on the connected Flipper: $ARGUMENTS
 
 Method:
 
-1. Screenshot first to see where the device already is. If it is not Flipso -
-   the dolphin, or any other app - do not send keys: they would go to the
-   desktop. Run `tools/flipper/flipctl ready`, check it exited 0, and
-   screenshot again.
-2. Send keys with `tools/flipper/flipctl keys ...` (`up down left right ok back`,
-   `ok:long` for a long press, `@1.5` to wait).
-3. Screenshot after each meaningful step, write the PNGs into the scratchpad,
-   and Read them so you can actually see the screens.
-4. Show the user the screenshots that matter, and say what each one is.
+1. Work out the route from the scan screen as a list of steps - each step a
+   key sequence (`up down left right ok back`, `ok:long`, `@1.5` to wait).
+   From the scan screen, `'right down ok'` is the demo card list and a further
+   `ok` opens Demo 01; Right and Left turn a text screen's pages.
+2. Run it as one walk, into the scratchpad:
 
-Do not spam Back to leave the app — use `tools/flipper/flipctl close`. See the
+   ```bash
+   tools/flipper/flipctl walk <scratch>/drive --launch 'right down ok' ok ...
+   ```
+
+   `--launch` starts from a fresh scan screen; leave it off to carry on from
+   where the device is (the walk refuses if no app is running).
+   `--until-same` repeats the last step until the screen stops changing:
+   `ok right --until-same` opens a row and captures every page.
+3. Read `<scratch>/drive/sheet.png`. Frame 00 is the screen before any key:
+   if it is not Flipso, nothing after it means anything.
+4. Show the user the frames that matter, and say what each one is. The walk
+   prints the free heap at every step too; mention it if it moves oddly.
+
+Do not spam Back to leave the app - use `tools/flipper/flipctl close`. See the
 **flipper-hardware** skill.

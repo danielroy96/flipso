@@ -213,6 +213,44 @@ If it still fails, the device screen has the answer. Take a screenshot.
 
 ## Drive the UI
 
+Looking at more than one screen is a walk: one call, one port session, a
+frame after every step and a contact sheet of them all.
+
+```bash
+tools/flipper/flipctl walk <scratch>/w --launch 'right down ok' ok ok right --until-same
+```
+
+That relaunches to the scan screen, then About, Demo cards, Demo 01's card
+menu, its Summary, and Right until the page stops changing - every page of
+the Summary, numbered, on `<scratch>/w/sheet.png`. Read the sheet, not the
+frames one by one. Each step also prints the free heap, the low-water mark
+and the largest block, and flags a step whose screen did not change - a key
+that did nothing, or the last page.
+
+- **A step** is a key sequence, quoted when it has spaces. The frame is taken
+  once the screen has held still for 0.4 s, so there is no `@` wait to guess
+  after opening a card; `@N` still works inside a step. `NAME=keys` saves that
+  frame as `NAME.png`; `-` captures without a key.
+- **Frame 00 is the screen before any key.** Check it on the sheet before
+  trusting the rest. Without `--launch` the walk refuses when no app is
+  running, so keys never go to the desktop that way, but the loader can name
+  Flipso while the desktop has the screen (see "An app stuck in startup").
+- **`--repeat N`** runs the steps N times and reports the heap drift: get to
+  the screen in one walk, then `walk OUT ok back --repeat 5` is a leak check
+  (see flipper-memory).
+- **`--steps-file`** reads steps from a file, one a line;
+  `docs/screenshots/walk.txt` is the README's.
+- **`--text X,Y,W,H`** prints each frame's pixels as text (so does `shot
+  --text`). Use it for the questions a picture cannot settle - whether a
+  glyph sits on the baseline, how many rows lie between text and a rule.
+
+Measured on 2026-10-03: keys over RPC take 20 ms and a frame 35 ms, against
+about 3 s for each separate `keys` or `shot` call, which open and sync the
+port every time. A walk through the eight README screens, launch
+included, took 30 s in one call; by hand it was six calls and as many turns.
+
+For a single key or capture, `keys` and `shot` are still there:
+
 ```bash
 tools/flipper/flipctl keys down down ok            # navigate
 tools/flipper/flipctl keys ok:long                 # long press
@@ -246,7 +284,8 @@ changes.
   (libpng's default filters and compression, a 72 dpi pHYs chunk). The
   README's screenshots in `docs/screenshots/` are qFlipper's, so take any
   replacement with this, straight to its final path, from the demo cards so no
-  real card number or name is in it. `test_flipctl.py` re-encodes
+  real card number or name is in it - `docs/screenshots/walk.txt` retakes
+  the whole set in one walk, and its header has the command. `test_flipctl.py` re-encodes
   `tools/flipper/testdata/qflipper_menu.png`, a file qFlipper saved, and checks
   it comes out identical, and on
   2026-10-03 live captures of the Demo 01 menu and product list matched
