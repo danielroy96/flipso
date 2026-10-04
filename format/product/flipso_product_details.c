@@ -99,6 +99,11 @@ void flipso_cat_product_details(
     if(count_label) {
         furi_string_cat_printf(count, "%s: %lu\n", count_label, (unsigned long)product->count);
     }
+    /* TYP 25 MaxValue25: the most the voucher buys, which is what it is worth.
+     * A journey ticket's ride value shares the element and is a term of use. */
+    if(kind == FlipsoKindVoucher) {
+        flipso_cat_money(count, "", "Worth up to", &ticket->unit_value);
+    }
     if(product->count_kind == ItsoCountTransactions && purse->has_charge_period) {
         furi_string_cat_printf(
             count,
@@ -265,9 +270,18 @@ void flipso_cat_product_details(
     /* A paper ticket keeps no journey log, so when or where it was last used
      * is what its first page has in place of a last tap. */
     flipso_cat_last_use(main, f, card, product, NULL);
-    /* A voucher's renewal is all there is to say about how it is used. */
+    /* A toll pass's renewal is all there is to say about how it is used. A
+     * voucher's AutoRenewQuantity2 counts the uses each renewal adds (TS
+     * 1000-5 table 36), and is a detail of the renewal. */
     if(product->auto_renew) {
         furi_string_cat(kind == FlipsoKindOther ? main : left, "Auto-renew: On\n");
+        if(kind == FlipsoKindVoucher && ticket->renew_quantity) {
+            furi_string_cat_printf(
+                left,
+                "  Renewal adds: %u use%s\n",
+                ticket->renew_quantity,
+                ticket->renew_quantity == 1 ? "" : "s");
+        }
     }
 
     /* --- Whose it is, last on the first page. --- */

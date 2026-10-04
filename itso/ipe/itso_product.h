@@ -94,9 +94,9 @@ typedef enum {
 } ItsoSoldAs;
 
 /**
- * The terms a TYP 22 period ticket, TYP 23 journey ticket or TYP 24 reserved
- * journey is sold on (TS 1000-5 tables 27, 27a, 3.27, 31, 31a, 31b and 136),
- * and what its live value record says about it now.
+ * The terms a TYP 22 period ticket, TYP 23 journey ticket, TYP 24 reserved
+ * journey or TYP 25 voucher is sold on (TS 1000-5 tables 27, 27a, 3.27, 31,
+ * 31a, 31b, 136 and 36), and what its live value record says about it now.
  *
  * The ticket family's ItsoTerms: a Space Saving IPE (TYP 27-29) fills the
  * elements it shares with them. They share most of these elements, at offsets
@@ -104,7 +104,10 @@ typedef enum {
  */
 typedef struct {
     ItsoMoney amount_paid; /**< AmountPaid; not valid when the card records none. */
-    ItsoMoney ride_value; /**< TYP 23 ValueOfRideJourney: nominal value of one ride. */
+    /** What one use is worth: TYP 23 ValueOfRideJourney, the nominal value of
+     *  a ride; TYP 25 MaxValue25, the most a voucher buys. Each in a currency
+     *  of its own. */
+    ItsoMoney unit_value;
     uint32_t photocard; /**< TYP 23 PhotocardNumber; 0 when not recorded. */
     /** Revisions 1 and 2 of TYP 22: ValidityStartDTS; TYP 24: OutPortionValidFrom.
      *  0 if unset. */
@@ -134,10 +137,14 @@ typedef struct {
     uint16_t stock_duration; /**< Revision 3 ExpiryDateSPDuration, days. */
     uint16_t vat; /**< AmountPaidVATSalesTax in 0.01% steps. */
     uint8_t valid_days; /**< ValidOnDayCode, ITSO_DOW_*. */
-    uint8_t renew_quantity; /**< AutoRenewQuantity1: passes or days per renewal. */
+    /** AutoRenewQuantity1: passes or days per renewal; TYP 25's
+     *  AutoRenewQuantity2: uses. */
+    uint8_t renew_quantity;
     uint8_t travel_class; /**< EN1545 AccommodationClassCode. */
     uint8_t validity_code; /**< Owner-defined; zero is the null condition. */
     uint8_t promotion_code; /**< Owner-defined. */
+    uint8_t service_id; /**< TYP 25 ServiceID, owner-defined: which car park, which meal. */
+    uint8_t user_defined; /**< TYP 25 UserDefined, owner-defined. */
     uint8_t adults;
     uint8_t children;
     uint8_t concessions;
@@ -249,10 +256,10 @@ typedef struct {
 
 /** Which ItsoTerms a type fills. */
 typedef enum {
-    ItsoFamilyOther, /**< None: loyalty, vouchers, tolling and anything unknown. */
+    ItsoFamilyOther, /**< None: loyalty, tolling and anything unknown. */
     ItsoFamilyPurse, /**< ItsoPurseTerms: TYP 2, 4 and 5. */
     ItsoFamilyId, /**< ItsoIdTerms: TYP 14 and 16. */
-    ItsoFamilyTicket, /**< ItsoTicketTerms: TYP 22, 23, 24 and 27-29. */
+    ItsoFamilyTicket, /**< ItsoTicketTerms: TYP 22-25 and 27-29. */
 } ItsoFamily;
 
 /**

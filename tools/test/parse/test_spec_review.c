@@ -124,7 +124,7 @@ void spec_review_fields(void) {
         t->time_limit == 91 && t->max_transfers == 1);
     check(
         "the ride value takes its own currency code",
-        t->ride_value.value == 6000 && t->ride_value.currency == 1);
+        t->unit_value.value == 6000 && t->unit_value.currency == 1);
     check(
         "and the price paid its own",
         t->amount_paid.value == 1200 && t->amount_paid.currency == 0);
@@ -135,6 +135,32 @@ void spec_review_fields(void) {
             strcmp(loc_text(&p.to), "Station 1444") == 0);
     check("TYP23Flags print receipt", p.print_flags == ITSO_PRINT_RECEIPT);
     check("AutoRenewQuantity", t->renew_quantity == 2);
+
+    /* TYP 25: the voucher's dataset, and uses rather than rides. */
+    parse_group(&p, ItsoTypVoucher, true, voucher_group, sizeof(voucher_group));
+    t = itso_product_ticket(&p);
+    check("a voucher's terms are read", t->valid);
+    check("TYP25Flags print ticket", p.print_flags == ITSO_PRINT_TICKET);
+    check("a voucher's PassbackTime", p.has_passback && p.passback == 15);
+    check(
+        "a voucher's IssueDate",
+        strcmp(fmt_unix(itso_date_to_unix(t->issue_date)), "2026-09-01 00:00") == 0);
+    check(
+        "a voucher's ValidityStartDTS",
+        strcmp(fmt_unix(itso_dts_to_unix(t->valid_from_dts)), "2026-09-02 07:30") == 0);
+    check("a voucher's ExpiryTime runs past midnight", t->expiry_time == 1500);
+    check("ServiceID and UserDefined", t->service_id == 42 && t->user_defined == 7);
+    check(
+        "MaxValue25 takes its own currency code",
+        t->unit_value.valid && t->unit_value.value == 800 && t->unit_value.currency == 1);
+    check(
+        "and the price paid its own, by card at 20%",
+        t->amount_paid.value == 2500 && t->amount_paid.currency == 0 && t->paid_mop == 3 &&
+            t->vat == 2000);
+    check("AutoRenewQuantity2", t->renew_quantity == 5);
+    check(
+        "uses left, auto-renewing", p.count_kind == ItsoCountUses && p.count == 4 && p.auto_renew);
+    check("Uses left", strcmp(itso_count_name(p.count_kind), "Uses left") == 0);
 
     /* TYP 22 revision 3 IdentityDocumentID, after the route and locations. */
     parse_group(

@@ -140,7 +140,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         {ItsoTypReservationTicket,
          "Reserved journey|Leg 1|Leg 2|Restrictions|Route|Details|Purchase|History|Technical"},
         {ItsoTypChargeToAccount2, "Charge to account|Account|History|Technical"},
-        {ItsoTypVoucher, "Voucher|History|Technical"},
+        {ItsoTypVoucher, "Voucher|Conditions|Purchase|History|Technical"},
         {ItsoTypLoyalty1, "Loyalty|History|Technical"},
         {ItsoTypTolling, "Toll pass|Technical"},
     };

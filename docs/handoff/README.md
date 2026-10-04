@@ -1,10 +1,10 @@
 # Feature handoffs
 
 Each file here is a self-contained brief for one feature. The first four came
-out of the code review of 2026-09-27. The TYP briefs came out of the review
-of Flipso against TS 1000-5 on 2026-09-29: those IPE types are still reported
-from their directory entry and value record alone. (A third, TYP 24, has
-shipped.) Start a session
+out of the code review of 2026-09-27. The TYP brief came out of the review
+of Flipso against TS 1000-5 on 2026-09-29: that IPE type is still reported
+from its directory entry and value record alone. (The TYP 24 and TYP 25
+briefs from the same review have shipped.) Start a session
 with:
 
 > Build the feature in `docs/handoff/<file>.md`.
@@ -29,5 +29,4 @@ Every brief assumes the working rules in `CLAUDE.md` — in particular:
 | [days-remaining.md](days-remaining.md) | "Days left" on expiries, and the current pass in the Summary | Small |
 | [operators-file-docs.md](operators-file-docs.md) | Make `operators.txt` discoverable, and say when it was cut short | Small |
 | [save-failed-reads.md](save-failed-reads.md) | Save the raw data of a card that would not decode, for bug reports | Medium |
-| [typ25-voucher.md](typ25-voucher.md) | Decode the TYP 25 voucher's dataset: terms, value, price, service | Small |
 | [typ26-tolling.md](typ26-tolling.md) | Decode the TYP 26 toll pass's dataset: vehicle class, dates, passback | Small |

@@ -1,6 +1,7 @@
 /**
  * @file flipso_product_ticket.c
- * @brief The terms a TYP 22 period or TYP 23 journey ticket was sold on, and its price.
+ * @brief The terms a TYP 22 period ticket, TYP 23 journey ticket or TYP 25 voucher was
+ * sold on, and its price.
  */
 #include "flipso_product_i.h"
 
@@ -53,7 +54,7 @@ void flipso_cat_ticket_terms(FlipsoPages* p, const ItsoProduct* product) {
                 t->time_limit / 2,
                 (t->time_limit & 1) ? " 30 s" : "");
         }
-        flipso_cat_money(left, "", "Value of a ride", &t->ride_value);
+        flipso_cat_money(left, "", "Value of a ride", &t->unit_value);
     }
 
     /* Below 1440 the time falls on the expiry date itself; from 1440 it is the
@@ -83,8 +84,9 @@ void flipso_cat_ticket_terms(FlipsoPages* p, const ItsoProduct* product) {
     }
 
     /* AutoRenewQuantity1 counts passes in stored-pass mode and days otherwise
-     * (rules 5 and 6 of TS 1000-5 clause 2.9.1.4). */
-    if(product->auto_renew && t->renew_quantity) {
+     * (rules 5 and 6 of TS 1000-5 clause 2.9.1.4). A voucher's counts uses,
+     * and flipso_cat_product_details() shows it beside its auto-renew. */
+    if(product->auto_renew && t->renew_quantity && product->typ != ItsoTypVoucher) {
         const bool one = t->renew_quantity == 1;
         furi_string_cat_printf(
             left,

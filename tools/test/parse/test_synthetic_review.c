@@ -87,8 +87,8 @@ void synthetic_review(ItsoCard* card) {
         check(
             "journey mode group",
             t->has_mode_group && t->mode == ItsoJourneyModeStoredJourneys &&
-                t->max_transfers == 2 && t->time_limit == 120 && t->ride_value.valid &&
-                t->ride_value.value == 250);
+                t->max_transfers == 2 && t->time_limit == 120 && t->unit_value.valid &&
+                t->unit_value.value == 250);
         check(
             "journey locations still land after the terms",
             j->from.valid && strcmp(loc_text(&j->from), "Station 5631") == 0);

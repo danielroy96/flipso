@@ -63,6 +63,7 @@ void itso_ipe_reservation_dataset(ItsoProduct* product, const uint8_t* data, siz
 void itso_ipe_reservation_value(ItsoProduct* product, const uint8_t* newest);
 
 /* itso_ipe_voucher.c */
+void itso_ipe_voucher_dataset(ItsoProduct* product, const uint8_t* data, size_t len);
 void itso_ipe_voucher_value(ItsoProduct* product, const uint8_t* newest);
 
 /**

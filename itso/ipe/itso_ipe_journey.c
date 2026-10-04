@@ -72,7 +72,7 @@ static void itso_parse_journey_terms(
         t->time_limit = data[fixed + 2];
         int32_t ride = format_rev >= 3 ? (int32_t)itso_bits(data, (uint32_t)(fixed + 3) * 8, 32) :
                                          itso_uint16(data + fixed + 3);
-        if(ride) itso_decode_money(ride, data[fixed + group - 1] & 0x0F, &t->ride_value);
+        if(ride) itso_decode_money(ride, data[fixed + group - 1] & 0x0F, &t->unit_value);
         t->has_mode_group = true;
     }
 }

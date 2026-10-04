@@ -21,6 +21,8 @@ static FlipsoKind flipso_kind(const ItsoProduct* product) {
         return FlipsoKindId;
     case ItsoTypEntitlement:
         return FlipsoKindEntitlement;
+    case ItsoTypVoucher:
+        return FlipsoKindVoucher;
     default:
         return product->space_saving ? FlipsoKindPaper : FlipsoKindOther;
     }
@@ -75,6 +77,11 @@ FlipsoPages* flipso_pages_alloc(const ItsoProduct* product) {
         break;
     case FlipsoKindEntitlement:
         s[FlipsoSlotLeft] = s[FlipsoSlotPurchase] = FlipsoPageRules;
+        break;
+    case FlipsoKindVoucher:
+        /* Uses left and how it renews are what a voucher is, so they are its
+         * first page; it covers no travellers, so anything about who is terms. */
+        s[FlipsoSlotLeft] = FlipsoPageMain;
         break;
     case FlipsoKindOther:
         s[FlipsoSlotPurchase] = FlipsoPageMain;
@@ -159,6 +166,9 @@ void flipso_pages_emit(
         break;
     case FlipsoKindEntitlement:
         flipso_pages_put(out, p, FlipsoPageRules, FlipsoIconTerms, "Entitlement terms");
+        break;
+    case FlipsoKindVoucher:
+        flipso_pages_put(out, p, FlipsoPageRules, FlipsoIconTerms, "Conditions");
         break;
     case FlipsoKindOther:
         flipso_pages_put(out, p, FlipsoPageLeft, FlipsoIconInfo, "Details");

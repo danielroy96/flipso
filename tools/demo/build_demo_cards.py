@@ -267,14 +267,28 @@ def card_the_key():
                      charge_tail(23, date_stamp(2026, 9, 6), legs=1, flags=0b0010)),
     ], format_rev=1)
 
-    # ---- E7: a voucher, which the decoder reports from its directory entry and
-    # its value record alone - there is no TYP 25 dataset parser.
-    voucher = Bits(16)
-    voucher.put(0, 6, 4)
-    voucher.put(6, 6, 0)
+    # ---- E7: a voucher (TS 1000-5 table 36) for the station car park at
+    # Tunbridge Wells, four days' parking at up to GBP 12.50 a day, renewing
+    # by four more each time - which AutoRenewQuantity2, bitmap bit 1, says.
+    voucher = Bits(24)
+    voucher.put(0, 6, 6)                         # IPELength = 6 blocks = 24 bytes
+    voucher.put(6, 6, 0b000010)                  # IPEBitMap: AutoRenewQuantity2
     voucher.put(12, 4, 1)
     voucher.buf[2] = 0                           # RemoveDate: removable at expiry
     voucher.putb(3, (289).to_bytes(2, "big"))
+    voucher.buf[5] = 0b01000000                  # TYP25Flags: print a receipt
+    voucher.put(50, 6, 0)                        # PassbackTime: the reader's own
+    voucher.put(58, 14, date_stamp(2026, 6, 1))  # IssueDate
+    voucher.put(72, 24, dts(2026, 6, 1, 11, 0))  # ValidityStartDTS
+    voucher.put(101, 11, 1439)                   # ExpiryTime: 23:59
+    voucher.buf[14] = 3                          # ServiceID: the car park
+    voucher.putb(15, (1250).to_bytes(2, "big"))  # MaxValue25: GBP 12.50
+    voucher.buf[17] = 0                          # both in sterling
+    voucher.putb(18, (4000).to_bytes(2, "big"))  # AmountPaid: GBP 40.00
+    voucher.put(160, 4, 3)                       # AmountPaidMethodOfPayment: card
+    voucher.put(164, 12, 2000)                   # AmountPaidVATSalesTax: 20.00%
+    voucher.buf[22] = 0                          # UserDefined
+    voucher.buf[23] = 4                          # AutoRenewQuantity2: four uses
     voucher_values = value_group([
         value_record(1, 2, dts(2026, 6, 1, 11, 0), voucher_tail(4, auto_renew=True)),
         value_record(7, 3, dts(2026, 9, 11, 8, 44), voucher_tail(3, auto_renew=True)),
