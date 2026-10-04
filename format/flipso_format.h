@@ -5,7 +5,7 @@
  * Each screen of a card is a set of pages of "Label: Value" lines, turned with
  * Left and Right, and all of them are built here from an ItsoCard and the
  * lookup tables, so that the words the user reads can be tested on the host
- * like the decoder behind them: tools/test/test_format.c renders the synthetic
+ * like the decoder behind them: tools/test/screen_text/ renders the synthetic
  * cards and checks what comes out. The scenes only hand the result to the text
  * view.
  *

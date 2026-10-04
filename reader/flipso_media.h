@@ -12,7 +12,7 @@
  * contents are locked.
  *
  * This is the data model, kept free of the NFC stack so that it builds and is
- * tested on the host: flipso_reader.c fills it in, and flipso_format.c turns
+ * tested on the host: flipso_desfire_media.c fills it in, and flipso_format_media.c turns
  * it into the screen. Sizes are capped rather than grown, so a card with more
  * applications or files than we keep is reported as truncated rather than
  * silently shortened.

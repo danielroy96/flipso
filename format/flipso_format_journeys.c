@@ -4,6 +4,14 @@
  */
 #include "flipso_format_i.h"
 
+const ItsoTap* flipso_latest_tap(const ItsoCard* card) {
+    /* Newest first, so the first on-card record is the newest. */
+    for(uint8_t i = 0; i < card->tap_count; i++) {
+        if(card->taps[i].on_card) return &card->taps[i];
+    }
+    return NULL;
+}
+
 /** What a record was, "Tap out", which titles its page and its Technical entry. */
 static const char* flipso_tap_title(const ItsoTap* tap) {
     return itso_transaction_name(tap->transaction_type);

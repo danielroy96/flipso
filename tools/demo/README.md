@@ -65,8 +65,9 @@ card, as Demo 07 is. Then:
   ISAMs - so nothing from the real card, least of all its route, is copied;
 - check it with `tools/test/screens.py` and `tools/test/replay.py`, and against
   the real card's screens, which should differ only in the values;
-- pin the lines only it produces in `tools/test/test_format.c`, as `demo_seven()`
-  and `demo_type2_full()` do, and bump the card count there;
+- pin the lines only it produces in `tools/test/screen_text/test_demo_screens.c`, as
+  `demo_seven()` and `demo_type2_full()` do, and bump the card count in
+  `test_demo_cards.c`;
 - run `new_encodings.py` on the real card again: it should say nothing is new.
 
 ## What they are not

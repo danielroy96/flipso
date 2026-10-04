@@ -19,7 +19,7 @@ Users can name unknown operators (and brand their cards) with
 1. **README**: a short "Operator names" section under Getting started — what the
    file is for, where it goes, the one-line format `<number>,<name>[,<brand>]`,
    and a link to `operators.example.txt`.
-2. **About screen** (`flipso_format_about()` in `format/flipso_format.c`): add the
+2. **About screen** (`flipso_format_about()` in `format/flipso_format_about.c`): add the
    format, e.g. `One per line: number,name`. Keep lines short; the text view
    wraps, but a long unbroken example reads badly on 128 px.
 3. **Truncation**: have `flipso_operators_alloc()` record that it stopped at
@@ -36,7 +36,7 @@ Users can name unknown operators (and brand their cards) with
 - `tools/test/test_operators.c`: a file with more than the cap sets the
   truncated flag; one at or under it does not.
 - `flipso_format_about()` is host-testable now — add a check in
-  `test_format.c` that the format line is present.
+  `tools/test/screen_text/test_about_media.c` that the format line is present.
 
 ## Done when
 

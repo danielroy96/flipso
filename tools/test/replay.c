@@ -63,24 +63,31 @@ static void show_extras(const ItsoProduct* p, const uint8_t* group, size_t len, 
             (unsigned long)p->value_isam,
             itso_isam_oid(p->value_isam));
     if(p->has_cpicc) printf("      %-12s %u (0x%04X)\n", "CPICC", p->cpicc, p->cpicc);
-    if(p->has_holder_id) printf("      %-12s %lu\n", "holder ID", (unsigned long)p->holder_id);
-    if(p->has_secondary_holder)
-        printf("      %-12s %lu\n", "2nd holder", (unsigned long)p->secondary_holder_id);
-    if(p->language) {
+    if(itso_product_id(p)->has_holder_id)
+        printf("      %-12s %lu\n", "holder ID", (unsigned long)itso_product_id(p)->holder_id);
+    if(itso_product_id(p)->has_secondary_holder)
+        printf(
+            "      %-12s %lu\n",
+            "2nd holder",
+            (unsigned long)itso_product_id(p)->secondary_holder_id);
+    if(itso_product_id(p)->language) {
         char code[3];
         printf(
             "      %-12s %u = %s\n",
             "language",
-            p->language,
-            itso_language_code(p->language, code) ? code : "?");
+            itso_product_id(p)->language,
+            itso_language_code(itso_product_id(p)->language, code) ? code : "?");
     }
-    if(p->rounding) printf("      %-12s 0x%X\n", "rounding", p->rounding);
-    if(p->has_half_days) printf("      %-12s 0x%04X\n", "half days", p->half_days);
+    if(itso_product_id(p)->rounding)
+        printf("      %-12s 0x%X\n", "rounding", itso_product_id(p)->rounding);
+    if(itso_product_id(p)->has_half_days)
+        printf("      %-12s 0x%04X\n", "half days", itso_product_id(p)->half_days);
     if(p->has_deposit) show_money("deposit", &p->deposit);
-    if(p->has_shell_deposit) show_money("shell dep.", &p->shell_deposit);
+    if(itso_product_id(p)->has_shell_deposit)
+        show_money("shell dep.", &itso_product_id(p)->shell_deposit);
     if(p->has_passback && p->passback) printf("      %-12s %u min\n", "passback", p->passback);
 
-    const ItsoTicketTerms* t = &p->ticket;
+    const ItsoTicketTerms* t = itso_product_ticket(p);
     if(t->valid) {
         printf(
             "      %-12s flags 0x%04X, days 0x%02X, class %u, validity %u, promo %u\n",
@@ -115,7 +122,7 @@ static void show_extras(const ItsoProduct* p, const uint8_t* group, size_t len, 
     if(p->vgx_ref) {
         printf("      %-12s VGXRef %u\n", "extension", p->vgx_ref);
         ItsoCapping cap;
-        if(itso_parse_capping(group, len, sector, p->balance.currency, &cap)) {
+        if(itso_parse_capping(group, len, sector, itso_product_purse(p)->balance.currency, &cap)) {
             printf("      %-12s strategy %u\n", "capping", cap.strategy);
             for(int a = 0; a < ITSO_CAP_ACCUMULATORS; a++) {
                 const ItsoCapAccumulator* c = &cap.acc[a];
@@ -198,7 +205,7 @@ int main(void) {
         const ItsoSpaceSaving* ss = &card.space;
         for(uint8_t p = 0; p < card.product_count; p++) {
             const ItsoProduct* product = &card.products[p];
-            const ItsoTicketTerms* t = &product->ticket;
+            const ItsoTicketTerms* t = itso_product_ticket(product);
             printf(
                 "  E%u  %s (TYP %u.%u), owner OID %u%s, %s\n",
                 product->dir_index,
@@ -396,7 +403,7 @@ int main(void) {
             product->oid,
             product->oid_extended ? " (extended)" : "");
         printf("      %-12s %s\n", "status", itso_status_name(product->status));
-        show_money("balance", &product->balance);
+        show_money("balance", &itso_product_purse(product)->balance);
         show_location("from", &product->from);
         show_location("to", &product->to);
         /* Every value record, not only the live one: the others are what the

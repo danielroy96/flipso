@@ -158,8 +158,8 @@ decode:
   layout says: a misread offset, or a scheme reusing the field. Check the
   layout with `itso_spec.py` before calling it either.
 - **Wording.** Anything a person would read as wrong counts: "1 days", a
-  doubled label, an unexplained raw number. `test_format.c` holds screens to
-  the house style, but it only knows the demo cards.
+  doubled label, an unexplained raw number. `tools/test/screen_text/` holds screens
+  to the house style, but it only knows the demo cards.
 
 For each thing that looks wrong, look up the field before changing anything:
 
@@ -172,7 +172,8 @@ tools/spec/itso_spec.py page 5 51
 Offsets in the TS 1000-5 tables are absolute from the start of the data
 group; see flipso-decoder for that and the other traps. A real decode bug
 follows flipso-decoder's order: a failing case in `tools/test/` first, then
-the fix. A wording bug gets a `check()` in `test_format.c`.
+the fix. A wording bug gets a `check()` in the `tools/test/screen_text/` file for
+its screen.
 
 Report what you checked and found. For anything left as it is, say why:
 "decodes as the spec lays it out, but the value is outside every OID range"
@@ -214,10 +215,10 @@ one"):
   difference in which lines appear is a field you missed. On the GWR card
   that caught an unset concession class and an ID that should have been
   unused.
-- **Pin it.** Add a `demo_<n>()` in `tools/test/test_format.c` checking the
-  lines only the new shape produces, as `demo_seven()` does. Bump the card
-  count there (`cards == N`), because every demo card is also held to the
-  house style on every screen.
+- **Pin it.** Add a `demo_<n>()` in `tools/test/screen_text/test_demo_screens.c`
+  checking the lines only the new shape produces, as `demo_seven()` does, and
+  call it from `test_demo_cards.c`. Bump the card count there (`cards == N`),
+  because every demo card is also held to the house style on every screen.
 - **Close the loop.** `new_encodings.py` on the real card should now say
   "Nothing new". Add a row for the card to the table in `tools/demo/README.md`.
 

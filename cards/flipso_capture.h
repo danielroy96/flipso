@@ -16,7 +16,7 @@
  * replay it without the card or the Flipper.
  *
  * Pure computation over byte buffers, with no firmware dependency, so the whole
- * save/load round trip is testable on the host - see tools/test/test_capture.c.
+ * save/load round trip is testable on the host - see tools/test/capture/.
  */
 #pragma once
 

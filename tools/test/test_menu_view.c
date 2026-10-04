@@ -6,6 +6,7 @@
  * window sits after a wrap, whether a long label terminates - are tested here.
  * Rendering goes to an ASCII framebuffer so the layout can be eyeballed too.
  */
+#include "test.h"
 #include "flipso_menu_view.h"
 #include "flipso_glyphs.h"
 
@@ -13,13 +14,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-static int failures = 0;
-
-static void check(const char* what, int ok) {
-    printf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
-    if(!ok) failures++;
-}
 
 static const Icon icon_a = {10, 10, 'a'};
 /* The header's warning triangle, which is drawn beside the title rather than

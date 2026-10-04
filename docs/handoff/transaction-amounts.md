@@ -26,13 +26,13 @@ Fare paid
 
 ## Where the code is
 
-- `format/flipso_format_product.c`: `flipso_cat_value_record()` renders one record,
+- `format/product/flipso_product_history.c`: `flipso_cat_value_record()` renders one record,
   `flipso_cat_value_history()` walks them (newest first, split into
   "Earlier on card" and "Off card" sections). The live record is
   `product->value_history[0]` and is shown as the headline balance, not in the
   history — its amount belongs on the "Last transaction" line
   (`flipso_cat_last_transaction()`).
-- `itso/itso.h`: `ItsoValueRecord` — `amount` (balance after, `ItsoMoney`),
+- `itso/ipe/itso_product.h`: `ItsoValueRecord` — `amount` (balance after, `ItsoMoney`),
   `count` / `has_count` (rides, passes, points), `ts` (the 12-bit TS#), `dts`.
 - `product->balance_is_spend` is set for TYP 4 (charge to account): the amount
   counts *up*, so a positive difference is spend, not a top-up.
@@ -41,7 +41,7 @@ Fare paid
 
 - Difference = this record's value minus the next-older record's. Only show it
   when the two records are **consecutive writes**: TS# of the newer equals the
-  older's + 1 modulo 4096 (see `itso_ts_newer()` in `itso_parse.c`). A saved
+  older's + 1 modulo 4096 (see `itso_ts_newer()` in `itso/ipe/itso_value.c`). A saved
   card's history can have gaps (records that rolled off between reads), and a
   difference across a gap would be the sum of several transactions presented as
   one. When they are not consecutive, show nothing rather than a wrong number.
@@ -57,7 +57,7 @@ Fare paid
 
 ## Tests
 
-- `tools/test/test_format.c`: pin a history with consecutive records showing the
+- `tools/test/screen_text/`: pin a history with consecutive records showing the
   amount, a gap showing none, and TYP 4 showing spend with the right sign.
 - Demo card 4 ("past reads") has a long purse history with off-card records —
   use it to check the gap rule on real-looking data.

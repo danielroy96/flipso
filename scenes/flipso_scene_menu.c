@@ -119,7 +119,8 @@ void flipso_scene_menu_on_enter(void* context) {
     const ItsoProduct* purse = flipso_find_product(&app->card, ItsoTypStoredTravelRights);
     if(purse) {
         char balance[24] = "";
-        if(purse->balance.valid) itso_format_money(&purse->balance, balance, sizeof(balance));
+        const ItsoPurseTerms* terms = itso_product_purse(purse);
+        if(terms->balance.valid) itso_format_money(&terms->balance, balance, sizeof(balance));
         flipso_menu_view_add_tagged_item(
             menu, "Pay as you go", balance, &I_purse_10px, FlipsoMenuItemPayg);
     }

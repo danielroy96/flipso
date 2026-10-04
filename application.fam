@@ -11,24 +11,30 @@ App(
     fap_description="Read UK ITSO public transport smartcards",
     fap_weburl="https://github.com/danielroy96/flipso",
     # Listed explicitly: a bare "*.c" is matched recursively and would pull in the
-    # host-side decoder tests under tools/.
+    # host-side decoder tests under tools/. fbt tries each pattern from every
+    # directory in the tree, so "dir/*.c" takes the files of any directory called
+    # dir - no directory under tools/ may share a name with one listed here, which
+    # tools/test/lint_sources.py checks - but not dir/'s subdirectories, which are
+    # listed one by one.
     sources=[
         "flipso.c",
         "reader/flipso_reader.c",
+        "reader/flipso_desfire.c",
+        "reader/flipso_desfire_media.c",
+        "reader/flipso_transport.c",
         "reader/flipso_scan_session.c",
         "reader/flipso_cmd2.c",
         "reader/flipso_type2.c",
         "reader/flipso_media.c",
-        "cards/flipso_capture.c",
-        "cards/flipso_saved.c",
+        "cards/*.c",
         "lookup/flipso_operators.c",
         "lookup/flipso_stations.c",
         "lookup/flipso_naptan.c",
-        "format/flipso_format.c",
-        "format/flipso_format_product.c",
-        "format/flipso_format_card.c",
-        "format/flipso_format_journeys.c",
+        "format/*.c",
+        "format/product/*.c",
         "itso/*.c",
+        "itso/media/*.c",
+        "itso/ipe/*.c",
         "scenes/*.c",
         "views/*.c",
     ],

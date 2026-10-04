@@ -2,9 +2,9 @@
  * @file flipso_media.c
  * @brief The unauthenticated DESFire card description: its model and helpers.
  *
- * Pure computation over the struct flipso_reader.c fills in: no NFC, no GUI, so
+ * Pure computation over the struct flipso_desfire_media.c fills in: no NFC, no GUI, so
  * it is exercised on the host by tools/test/test_media.c. What the screen says
- * about it is flipso_format.c's, like every other screen.
+ * about it is format/flipso_format_media.c's, like every other screen.
  */
 #include "flipso_media.h"
 

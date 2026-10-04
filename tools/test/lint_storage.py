@@ -24,7 +24,10 @@ CLOSE = re.compile(r"(storage_file_close|storage_dir_close|file_stream_close|"
 EXIT = re.compile(r"\b(return|continue|break|goto)\b")
 
 problems = []
-sources = [p for d in ("", "reader", "cards", "lookup", "format") for p in ROOT.glob(d + "/*.c" if d else "*.c")] + list(ROOT.glob("scenes/*.c")) + list(ROOT.glob("views/*.c"))
+# Every app source, at any depth; the host tools under tools/ are not the app.
+SKIP = ("tools", "build", "dist")
+sources = [p for p in sorted(ROOT.rglob("*.c"))
+           if p.relative_to(ROOT).parts[0] not in SKIP and not p.relative_to(ROOT).parts[0].startswith(".")]
 for path in sources:
     text = path.read_text()
     for m in OPEN.finditer(text):

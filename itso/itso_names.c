@@ -457,13 +457,6 @@ const char* itso_language_name(uint8_t code) {
     }
 }
 
-uint16_t itso_isam_oid(uint32_t isam) {
-    uint16_t top = (uint16_t)(isam >> 19); /* The 13 bits every OID has. */
-    if(!(isam & (1UL << 18))) return top;
-    if(!(isam & (1UL << 17))) return (uint16_t)(0x2000 | top);
-    return (uint16_t)(((isam & (1UL << 16)) ? 0xE000 : 0x6000) | top);
-}
-
 /*
  * SPT Glasgow Subway station numbering.
  *

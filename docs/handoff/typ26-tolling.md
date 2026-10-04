@@ -36,10 +36,14 @@ record byte 10 and TYP26ValueFlags bit 0 (auto-renew) is record byte 11.
 
 ## Where the code is
 
-- `itso/itso_parse.c`: add a case to the `itso_parse_ipe()` switch for a new
-  `itso_parse_tolling_ipe()`. Fill `ItsoTicketTerms` (`issue_date`,
-  `valid_from_dts`, `renew_quantity`, and set `t->valid`), `product->passback`
-  / `has_passback`, and `print_defined` / `print_flags`.
+- `itso/ipe/itso_ipe_voucher.c` (or a new `itso_ipe_tolling.c`, if it grows): a
+  new `itso_ipe_tolling_dataset()`, declared in `itso_ipe_i.h` and named as
+  TYP 26's dataset decoder in the table in `itso/ipe/itso_ipe.c`, with its
+  family moved from `ItsoFamilyOther` to `ItsoFamilyTicket` - the screens read
+  ticket terms through `itso_product_ticket()`, which shows another family's
+  product none. Fill `product->terms.ticket` (`issue_date`, `valid_from_dts`,
+  `renew_quantity`, and set `t->valid`), `product->passback` / `has_passback`,
+  and `print_defined` / `print_flags`.
 - TYP26Class must **not** go into `ItsoTicketTerms::travel_class`.
   `flipso_cat_ticket_terms()` renders that through `itso_class_name()` as
   "Standard" or "First", which would be wrong here. Give it a field of its own.
@@ -48,7 +52,7 @@ record byte 10 and TYP26ValueFlags bit 0 (auto-renew) is record byte 11.
   as `flipso_decode_capping()` does for the capping extension. The second
   costs no memory, and is the better choice unless the bytes turn out to
   matter.
-- `format/flipso_format_product.c`: the class as "Vehicle class: 3" under the terms,
+- `format/product/flipso_product_ticket.c`: the class as "Vehicle class: 3" under the terms,
   and UserDefined under Technical through `flipso_cat_code_bytes()` (text if
   printable, else hex). "Renewal adds: N rides" already works once
   `renew_quantity` is set, and `product->auto_renew` comes from the value
@@ -66,9 +70,9 @@ record byte 10 and TYP26ValueFlags bit 0 (auto-renew) is record byte 11.
 - `tools/test/build_card.py`: add a `tolling_group` (dataset with bit 1 set,
   and a value group using `voucher_tail()`, which is table 42's shape too).
   Emit it.
-- `tools/test/test_parse.c`: check each field through `parse_group()`, and add
+- `tools/test/parse/test_spec_review.c`: check each field through `parse_group()`, and add
   the group to the exact-length truncation loop in `spec_review_fields()`.
-- `tools/test/test_format.c`: pin "Vehicle class" and the print flags in
+- `tools/test/screen_text/test_spec_screens.c`: pin "Vehicle class" and the print flags in
   `spec_review()`, and check that no "Class: Standard" line appears.
 - `tools/demo/build_demo_cards.py`: Demo 01's E11 is a toll pass (a
   hypothetical Dartford Crossing one) with a directory entry and no product

@@ -2,9 +2,9 @@
  * @file flipso_format_i.h
  * @brief What the flipso_format*.c files share with each other and nobody else.
  *
- * The screens are built across several files, one per screen or group of
- * screens, and these are the line builders more than one of them uses. Every
- * one follows the house style flipso_format.h sets out.
+ * The screens are built across several files, one per screen, and a product's
+ * screen across the files in product/; these are the line builders more than
+ * one of them uses. Every one follows the house style flipso_format.h sets out.
  */
 #pragma once
 
@@ -128,6 +128,36 @@ void flipso_cat_last_use(
     const ItsoCard* card,
     const ItsoProduct* product,
     const char* place_label);
+
+/** "0A1B2C": bytes as hex, with nothing between them. */
+void flipso_cat_hex(FuriString* out, const uint8_t* data, size_t len);
+
+/**
+ * Owner-defined bytes: as text when they are printable ASCII, else as hex, and
+ * "None" when they are all zeros.
+ */
+void flipso_cat_code_bytes(FuriString* out, const uint8_t* data, size_t len);
+
+/**
+ * A user-defined element (TS 1000-1's UD) as it stands: text when it is
+ * printable, a number when it is short enough to be one, else hex; "None" when
+ * it is all zeros.
+ */
+void flipso_cat_ud(FuriString* out, const uint8_t* data, size_t len);
+
+/** "Label: <UD element>". */
+void flipso_cat_ud_line(
+    FuriString* out,
+    const char* indent,
+    const char* label,
+    const uint8_t* data,
+    size_t len);
+
+/**
+ * The few lines of chip description worth showing beside a decoded ITSO card:
+ * what chip it is, its UID, storage and when it was made.
+ */
+void flipso_cat_chip_summary(FuriString* out, const FlipsoMedia* media);
 
 /** The newest tap the card itself holds, or NULL. */
 const ItsoTap* flipso_latest_tap(const ItsoCard* card);

@@ -5,7 +5,7 @@
  * application list were captured with libfreefare's mifare-desfire-info, and
  * whose eight files are all behind TfL's keys. The capture is at
  * https://gist.github.com/ryanamaral/8ca0d7b80c3442ee46c7f94ad1ed30bd, and it
- * is also where the application identifier in flipso_reader.c comes from. That is the card the screen exists for, so it is the
+ * is also where the application identifier in flipso_desfire_media.c comes from. That is the card the screen exists for, so it is the
  * card the rendering is pinned to: every number on screen has to be the one the
  * card reported, and a locked file has to say so rather than look empty.
  *
@@ -13,12 +13,11 @@
  * and does hand over file contents, which exercises the branches the Oyster
  * never reaches.
  */
+#include "test.h"
 #include "format/flipso_format.h"
 #include "reader/flipso_media.h"
 
 #include <stdio.h>
-
-static int failures = 0;
 
 /* The screen builders link against the lookup tables; a DESFire's description
  * asks none of them anything, so they answer nothing. */
@@ -44,11 +43,6 @@ const char* flipso_naptan_atco(FlipsoNaptan* instance, const char* atco) {
     (void)instance;
     (void)atco;
     return NULL;
-}
-
-static void check(const char* what, int ok) {
-    printf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
-    if(!ok) failures++;
 }
 
 static void shows(const FuriString* text, const char* needle) {

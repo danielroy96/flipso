@@ -49,6 +49,8 @@ import re
 import subprocess
 import sys
 
+import sources
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 
@@ -192,11 +194,7 @@ def main():
     cmd = [os.environ.get("CC", "cc"), "-std=gnu11", "-Wall", "-Wextra",
            "-Wno-unused-parameter", "-fsanitize=address,undefined",
            "-I", os.path.join(ROOT, "itso"), "-I", HERE,
-           os.path.join(HERE, "replay.c"),
-           os.path.join(ROOT, "itso", "itso_parse.c"),
-           os.path.join(ROOT, "itso", "itso_util.c"),
-           os.path.join(ROOT, "itso", "itso_names.c"),
-           "-o", binary]
+           os.path.join(HERE, "replay.c")] + sources.sources("itso") + ["-o", binary]
     build = subprocess.run(cmd, capture_output=True, text=True)
     if build.returncode != 0:
         print(build.stdout + build.stderr, file=sys.stderr)

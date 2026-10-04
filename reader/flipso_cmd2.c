@@ -22,7 +22,7 @@
  *     second in the sector the Sector Chain Table links from there.
  */
 #include "flipso_cmd2.h"
-#include "flipso_reader.h"
+#include "flipso_transport.h"
 
 #include <furi.h>
 #include <toolbox/bit_buffer.h>
@@ -527,5 +527,5 @@ FlipsoReaderStatus flipso_cmd2_read(
         .lost = flipso_cmd2_source_lost,
         .context = &cmd2_source,
     };
-    return flipso_reader_read_groups(card, capture, &source);
+    return flipso_transport_read_groups(card, capture, &source);
 }

@@ -45,27 +45,37 @@ TYP25ValueFlags bit 0 (auto-renew) is record byte 11. Nothing to change there.
 
 ## Where the code is
 
-- `itso/itso_parse.c`: `itso_parse_ipe()` dispatches by type. Add a case
-  calling a new `itso_parse_voucher_ipe()`. `itso_parse_journey_terms()` is the
-  closest model: the same kind of fixed offsets, filling `ItsoTicketTerms`.
-- `itso/itso.h`: `ItsoTicketTerms` already has `issue_date`, `valid_from_dts`,
+- `itso/ipe/itso_ipe_voucher.c`: TYP 25 and 26 have a value-record decoder
+  there and no dataset decoder. Add an `itso_ipe_voucher_dataset()`, declare it
+  in `itso_ipe_i.h`, and give TYP 25's row in the table in `itso/ipe/itso_ipe.c`
+  it as its dataset decoder. `itso_parse_journey_terms()` in
+  `itso_ipe_journey.c` is the closest model: the same kind of fixed offsets,
+  filling `ItsoTicketTerms` through `&product->terms.ticket`.
+- TYP 25's row in that table must also move from `ItsoFamilyOther` to
+  `ItsoFamilyTicket`. A product's terms are a union of one family's
+  (`ItsoTerms`), and the screens read them through `itso_product_ticket()`,
+  which gives any other family's product nothing set - so ticket terms written
+  for a voucher of the wrong family would never be shown.
+- `itso/ipe/itso_product.h`: `ItsoTicketTerms` already has `issue_date`, `valid_from_dts`,
   `expiry_time`, `amount_paid`, `paid_mop`, `vat` and `renew_quantity`. Reuse
   them, and set `t->valid` so `flipso_cat_ticket_terms()` shows them.
-  `ItsoProduct` has `max_value` for MaxValue25 (priced in MaxValueCurrencyCode,
-  not in the value record's currency) and `print_defined` / `print_flags` for
-  the two print flags. ServiceID and UserDefined need two new bytes. Every byte
-  in `ItsoProduct` is paid for per product, so keep them to `uint8_t`.
+  `ItsoPurseTerms::max_value` is a purse's, so MaxValue25 (priced in
+  MaxValueCurrencyCode, not in the value record's currency) needs an
+  `ItsoMoney` of its own in `ItsoTicketTerms`; `print_defined` / `print_flags`
+  on `ItsoProduct` take the two print flags. ServiceID and UserDefined need two
+  new bytes. The ticket terms are the largest of the three families', so every
+  byte added to them is paid for by every product: keep them to `uint8_t`.
 - `itso/itso_names.c`: `itso_count_name()`. A voucher's counter is
   "CountUsesAvailable", but `itso_decode_value_record()` gives it
   `ItsoCountRides`, so it shows as "Rides left". Add an `ItsoCountUses`
   ("Uses left") and use it for TYP 25. Check the Summary and product list
   still read naturally.
-- `format/flipso_format_product.c`: `flipso_cat_ticket_terms()` shows the terms once
+- `format/product/flipso_product_ticket.c`: `flipso_cat_ticket_terms()` shows the terms once
   `t->valid` is set. Its "Renewal adds" line picks passes or days. A voucher
   adds uses, so give it a third wording. MaxValue25 fits the "Spending limit"
-  line in `flipso_cat_purse_terms()`, or a line of its own ("Worth up to").
+  line in `flipso_cat_purse_terms()` (`flipso_product_purse.c`), or a line of its own ("Worth up to").
   ServiceID and UserDefined belong under Technical, beside the validity and
-  promotion codes.
+  promotion codes, in `flipso_product_technical.c`.
 
 ## Design notes
 
@@ -83,11 +93,11 @@ TYP25ValueFlags bit 0 (auto-renew) is record byte 11. Nothing to change there.
 - `tools/test/build_card.py`: add a `voucher_group` with every element set,
   including bitmap bit 1, and a value group. Emit it in the `card_data.h` list
   at the bottom.
-- `tools/test/test_parse.c`: decode it with `parse_group()` (see
+- `tools/test/parse/test_spec_review.c`: decode it with `parse_group()` (see
   `spec_review_fields()`) and check every field. Add it to the truncation loop
   there: every length from 1 to the full group, each an exact-length
   allocation, so ASan sees an over-read.
-- `tools/test/test_format.c`: pin the new lines in `spec_review()` with
+- `tools/test/screen_text/test_spec_screens.c`: pin the new lines in `spec_review()` with
   `product_screen()`.
 - `tools/demo/build_demo_cards.py`: Demo 01's E7 voucher has a 16-byte dataset,
   too short for table 36 (23 bytes mandatory). Rebuild it as a real one, then

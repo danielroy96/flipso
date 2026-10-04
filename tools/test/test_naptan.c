@@ -11,6 +11,7 @@
  * builder's smallest useful output is a whole ATCO area. A real table is checked
  * at the end if one has been built into this directory.
  */
+#include "test.h"
 #include "lookup/flipso_naptan.h"
 
 #include <stdint.h>
@@ -74,13 +75,6 @@ uint16_t storage_file_read(struct File* file, void* buffer, uint16_t size) {
 }
 
 /* ---- test --------------------------------------------------------------- */
-
-static int failures = 0;
-
-static void check(const char* what, int ok) {
-    printf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
-    if(!ok) failures++;
-}
 
 static void write_file(const char* path, const void* data, size_t size) {
     FILE* out = fopen(path, "wb");

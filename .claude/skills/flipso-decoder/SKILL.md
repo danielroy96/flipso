@@ -9,6 +9,34 @@ description: Debug and extend the ITSO card decoder in itso/ - a card that will 
 this machine, so a hypothesis about card bytes is tested in a second instead of
 a reflash-and-tap cycle. Keep it that way — no `furi.h` in `itso/`.
 
+## Where things are
+
+The decoder follows the layers of the spec; `itso/itso.h` is the one header
+the rest of the app includes, and its comment maps the parts.
+
+- `itso/media/` - the card as storage: the shell (`itso_shell.c`), the
+  directory and sector chains (`itso_directory.c`), the Type 2 layouts
+  (`itso_type2.c` for CMD9/CMD10, `itso_cmd4.c` for paper tickets).
+- `itso/ipe/` - what a product holds. `itso_ipe.c` decodes the elements every
+  IPE shares and holds the **table of types**: each TYP's family of terms, and
+  its dataset decoder and value-record-tail decoder, in `itso_ipe_<kind>.c`. `itso_value.c` is the
+  Value Record Data Group; capping (`itso_capping.c`), reservations
+  (`itso_ipe_reservation.c`) and Space Saving (`itso_space_saving.c`) beside it.
+- `itso/itso_log.c` the taps, `itso_location.c` LOC1-LOC4, `itso_card.c` the
+  card's lifecycle, `itso_names.c` the names of codes.
+
+A new IPE type is a new `itso/ipe/itso_ipe_<kind>.c` with its decoders
+declared in `itso_ipe_i.h`, one row in the table in `itso_ipe.c`, its fields in
+`ipe/itso_product.h`, and its screen in a `format/product/flipso_product_<kind>.c`.
+
+What only one family of types holds - a purse's limits, an ID's holder, a
+ticket's terms - is in that family's member of the union `ItsoProduct::terms`,
+and the table's family column says which member a type fills. Decoders write
+`&product->terms.<family>`; everything else reads `itso_product_purse()`,
+`itso_product_id()` or `itso_product_ticket()`, which give a product of another
+family nothing set rather than its bytes, and `run.sh` fails a screen that reads
+`terms` directly. A field two families share goes on `ItsoProduct` itself.
+
 ## The order to work in
 
 1. **Reproduce on the host.** If the bytes are already captured, run them
@@ -120,8 +148,10 @@ in the record, and the result looks plausible rather than obviously broken.
 
 ## Testing
 
-`tools/test/run.sh` builds and runs four suites under ASan and UBSan: the
-decoder, the station table, card media, and the icon list view.
+`tools/test/run.sh` builds and runs every host suite under ASan and UBSan. The
+decoder's is `tools/test/parse/`: a short `test_parse.c` that runs the
+synthetic card step by step and then one file per medium, product type and
+kind of hostile input. Add a decoder case to the file for its topic.
 
 Make the fuzz buffers **exactly** as long as the data claims to be. An earlier
 sweep used `uint8_t body[128]` while telling the decoder the dataset was much

@@ -6,6 +6,7 @@
  * rather than searched. Built under ASan/UBSan, so an off-the-end read from a
  * corrupt header is a test failure rather than a subtle one on the device.
  */
+#include "test.h"
 #include "lookup/flipso_stations.h"
 
 #include <stdio.h>
@@ -69,13 +70,6 @@ uint16_t storage_file_read(struct File* file, void* buffer, uint16_t size) {
 }
 
 /* ---- test --------------------------------------------------------------- */
-
-static int failures = 0;
-
-static void check(const char* what, int ok) {
-    printf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
-    if(!ok) failures++;
-}
 
 static void write_file(const char* path, const void* data, size_t size) {
     FILE* out = fopen(path, "wb");
