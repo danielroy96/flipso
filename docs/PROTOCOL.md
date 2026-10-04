@@ -713,7 +713,7 @@ Beyond that:
 | TYP 22 — Period ticket (rev 1, 2, 3) | Validity start (DTS in rev 1–2, date and time in rev 3), from/to locations — or, when both are absent, that the area is the operator's to define — passes remaining, expiry of the active pass and of the unused stock, auto-renew and what it adds, stored-pass mode; days and AM/PM periods it is valid (ValidOnDayCode and TYP22Flags together), off-peak, transferable, end time, pass length and unit, party size, class, issue date, amount paid with payment and VAT, CPICC, validity and promotion codes, RouteCode, print flags; in rev 3, what a top-up does with expired passes (TreatmentOfExpiredSP) and the identity document it is valid only with, as a number, text or another product on the card, at the top of its screen and on the Summary |
 | TYP 23 — Journey ticket (rev 1, 2, 3) | Origin, destination, rides remaining, transfers made, auto-renew, used flag, stored-ride expiry (rev 3); issue date, validity start (rev 3), end time, class, party size, amount paid with payment and VAT, photocard number, CPICC, validity and promotion codes, RouteCode, print flags, and the mode group — how rides are counted (rev 3 adds return pairs), transfer and time limits, ride value in its own currency code |
 | TYP 24 — Reserved journey (rev 2) | The railcard it is valid only with, and the railcard number, on the first page and on the Summary; journeys remaining, transfers remaining (one total), part-used flag; single, return or either-way and journeys sold; outward and return portions, each a start and a period in days; origin, destination and their alternatives, Route, the station or operator that sold it; TYP24Flags (test ticket first, the others only when set, the clear ones under Technical); days it may be used and days restrictions apply, the operator it is limited to, class, party size, amount paid and how; the eight optional groups - associated products, out-of-station interchanges, break of journey and other transfers, valid times, specific trains, routing points, and under Technical the discount code, percentage and code type, and the supplement codes - the passenger's name and gender, ticket number, FTOT, restriction code and ID type; and the reserved legs of its VGXRef 3 extension: the kind of place, coach, seat or berth, which way it faces and where it is (below) |
-| TYP 25 — Voucher | Vouchers remaining and auto-renew only; the dataset is not decoded ([handoff](handoff/typ25-voucher.md)) |
+| TYP 25 — Voucher | Uses remaining and auto-renew, with the uses each renewal adds (AutoRenewQuantity2); issue date, validity start, expiry time, the most it buys (MaxValue25, in its own currency), amount paid with payment and VAT, ServiceID and UserDefined, print flags, passback |
 | TYP 26 — Tolling | Rides remaining and auto-renew only; the dataset is not decoded ([handoff](handoff/typ26-tolling.md)) |
 | TYP 27 — Period ticket (space saving) | Issue date, price paid and currency, adult or child, class, passback, off-peak and weekday restrictions, expiry time, where it is valid (fare code, fare value, or a LOC4 of origin, destination and via), last use, both event codes, photocard number, the expiry offset from the directory date, the InstanceID, and blocking by a zero Seal |
 | TYP 28 — Carnet of day passes (space saving) | As TYP 27 without the child flag, photocard or events, and with a LOC3 area; passes left (counting the expiry-day pass), the day each used pass was used, validity on the day of issue and of expiry |
@@ -982,9 +982,11 @@ LocDefType 212 carries several stops and names the first, counting the rest.
 - CMD9 and CMD10 are decoded from the specification alone: no real card of
   either has been read. A CMD10's one-way transaction counter is not read (see
   above), so a retired CMD10 is not flagged as one.
-- TYP 25 (vouchers) and TYP 26 (tolling) are reported from their directory
-  entry and value record alone; their datasets are not decoded. Briefs for
-  each are in [docs/handoff](handoff/README.md).
+- TYP 26 (tolling) is reported from its directory entry and value record
+  alone; its dataset is not decoded. The brief is in
+  [docs/handoff](handoff/README.md).
+- TYP 25 (vouchers) is decoded from the specification alone: no real one has
+  been read.
 - TYP 24 (reserved journeys) is decoded from the specification alone: no real
   one has been read, and table 136 leaves several codings undefined - see
   [Reserved journeys](#reserved-journeys). Its reservations and optional

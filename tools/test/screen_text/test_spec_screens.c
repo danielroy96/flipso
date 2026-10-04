@@ -140,6 +140,26 @@ void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
             "Value of a ride: \xE2\x82\xAC"
             "60.00\n"));
 
+    product_screen(text, f, card, &p, ItsoTypVoucher, true, voucher_group, sizeof(voucher_group));
+    check("a voucher counts uses", shows(text, "Uses left: 4\n"));
+    check(
+        "what a voucher is worth, in its own currency",
+        shows(
+            text,
+            "Worth up to: \xE2\x82\xAC"
+            "8.00\n"));
+    check("a voucher renews by uses", shows(text, "Auto-renew: On\n  Renewal adds: 5 uses\n"));
+    check(
+        "a voucher's issue date and price",
+        shows(
+            text,
+            "Issued: 01/09/2026\nPrice paid: \xC2\xA3"
+            "25.00\n  Paid by: Card\n  VAT: 20.00%\n"));
+    check("a voucher runs past midnight", shows(text, "Ends at: 01:00 the day after expiry\n"));
+    check(
+        "a voucher's codes, under Technical",
+        shows(text, "Service code: 42\nOwner data: 7\n") && shows(text, "Print ticket: Yes\n"));
+
     product_screen(
         text,
         f,

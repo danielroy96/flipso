@@ -373,6 +373,8 @@ const char* itso_count_name(ItsoCountKind kind) {
         return "Coupons left";
     case ItsoCountJourneys:
         return "Journeys left";
+    case ItsoCountUses:
+        return "Uses left";
     default:
         return NULL;
     }

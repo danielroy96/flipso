@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from itso_build import (  # noqa: E402
     Bits, bcd, charge_tail, date_stamp, dir_entry, dts, instance_and_seal, journey_tail,
     capping_vgx, isam, log_entry, loc1, loyalty_tail, loc2, luhn, nlc, pad, period_tail, purse_tail,
-    put_secrc, rail_retailer, reservation_tail, reservation_vgx, tt_record, tt_record_rev4, type2_page_memory,
+    put_secrc, rail_retailer, reservation_tail, voucher_tail, reservation_vgx, tt_record, tt_record_rev4, type2_page_memory,
     typ24_dataset, typ27_dataset, typ28_dataset, typ29_dataset, value_group,
     value_record, directory, isrn, shell_dataset, split_sectors, type2_full_page_memory)
 
@@ -463,6 +463,34 @@ ipe23r3.putb(41, b"00700")  # RouteCode
 ipe23r3.putb(46, loc1(203, nlc("1072")))
 ipe23r3.putb(52, loc1(203, nlc("1444")))
 journey_rev3_group = bytes(ipe23r3.buf) + instance_and_seal()
+
+# A voucher (TS 1000-5 table 36), every element set and bitmap bit 1's
+# AutoRenewQuantity2 after them. MaxValue25 is priced in a currency of its own
+# - euro, scaled by ten - and the price paid in sterling.
+ipe25 = Bits(24)
+ipe25.put(0, 6, 6)          # IPELength = 6 blocks = 24 bytes
+ipe25.put(6, 6, 0b000010)   # IPEBitMap: AutoRenewQuantity2
+ipe25.put(12, 4, 1)         # IPEFormatRevision = 1
+ipe25.buf[2] = 255
+ipe25.putb(3, (0x0123).to_bytes(2, "big"))  # ProductRetailer
+ipe25.buf[5] = 0b00100000   # TYP25Flags: print ticket
+ipe25.put(50, 6, 15)        # PassbackTime
+ipe25.put(58, 14, date_stamp(2026, 9, 1))      # IssueDate
+ipe25.put(72, 24, dts(2026, 9, 2, 7, 30))      # ValidityStartDTS
+ipe25.put(101, 11, 1500)    # ExpiryTime: 01:00 the next day
+ipe25.buf[14] = 42          # ServiceID
+ipe25.putb(15, (80).to_bytes(2, "big"))     # MaxValue25: EUR 8.00
+ipe25.buf[17] = 0b01010000  # MaxValue in euro x 10, AmountPaid in sterling
+ipe25.putb(18, (2500).to_bytes(2, "big"))   # AmountPaid: GBP 25.00
+ipe25.put(160, 4, 3)        # AmountPaidMethodOfPayment: card
+ipe25.put(164, 12, 2000)    # AmountPaidVATSalesTax: 20.00%
+ipe25.buf[22] = 7           # UserDefined
+ipe25.buf[23] = 5           # AutoRenewQuantity2
+voucher_group = (
+    pad(bytes(ipe25.buf) + instance_and_seal(), 64) +
+    value_group([value_record(1, 2, dts(2026, 9, 2, 7, 30), voucher_tail(5, auto_renew=True)),
+                 value_record(7, 3, dts(2026, 9, 9, 8, 15), voucher_tail(4, auto_renew=True))],
+                format_rev=1) + instance_and_seal())
 
 # A period ticket at revision 3 carrying the IdentityDocumentID its bitmap bit
 # 2 adds (table 3.27): after the route and both locations, a three-bit type, a
@@ -941,6 +969,7 @@ with open("card_data.h", "w") as f:
     f.write(carr("entitlement_rev1_group", entitlement_rev1_group))
     f.write(carr("entitlement_rev2_group", entitlement_rev2_group))
     f.write(carr("journey_rev3_group", journey_rev3_group))
+    f.write(carr("voucher_group", voucher_group))
     f.write(carr("period_rev3_id_group", period_rev3_id_group))
     f.write(carr("period_rev3_long_id_group", period_rev3_long_id_group))
     f.write(carr("reservation_group", reservation_group))

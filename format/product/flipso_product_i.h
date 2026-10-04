@@ -35,7 +35,8 @@ typedef enum {
     FlipsoKindAccount, /**< TYP 4 and 5: charge to account. */
     FlipsoKindId, /**< TYP 16: the ITSO ID. */
     FlipsoKindEntitlement, /**< TYP 14. */
-    FlipsoKindOther, /**< Loyalty, vouchers, tolls and anything else. */
+    FlipsoKindVoucher, /**< TYP 25: a car park or a meal bought with a ticket. */
+    FlipsoKindOther, /**< Loyalty, tolls and anything else. */
 } FlipsoKind;
 
 /**

@@ -85,6 +85,12 @@ void flipso_cat_product_technical(
     if(ticket->promotion_code) {
         furi_string_cat_printf(out, "Promotion code: %u\n", ticket->promotion_code);
     }
+    /* A voucher's ServiceID says which car park or which meal it is for, by
+     * the owner's own numbering; zero is as much a service as any other. */
+    if(product->typ == ItsoTypVoucher && ticket->valid) {
+        furi_string_cat_printf(out, "Service code: %u\n", ticket->service_id);
+        furi_string_cat_printf(out, "Owner data: %u\n", ticket->user_defined);
+    }
     /* IdentityDocumentID's coding, when it is one table 3.27 leaves RFU: the
      * line above has shown its bytes. */
     if(ticket->has_id_doc &&

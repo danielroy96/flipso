@@ -139,7 +139,7 @@ typedef enum {
  */
 typedef enum {
     ItsoCountNone,
-    ItsoCountRides, /**< TYP 23/25/26: rides or tickets left. */
+    ItsoCountRides, /**< TYP 23 and 26: rides or tickets left. */
     ItsoCountPasses, /**< TYP 22: unactivated passes left. */
     ItsoCountTransactions, /**< TYP 5: charge transactions used this period. */
     ItsoCountPoints, /**< TYP 3: loyalty points held. */
@@ -147,6 +147,9 @@ typedef enum {
     /** TYP 24 JourneysRemaining: a return sold as one ticket counts two (table
      *  139), so "rides" would undercount what the holder bought. */
     ItsoCountJourneys,
+    /** TYP 25 CountUsesAvailable (table 38): a voucher buys a car park or a
+     *  meal, not a ride. */
+    ItsoCountUses,
 } ItsoCountKind;
 
 /* DAYOFWEEK, TS 1000-5 annex A.6: Monday is the most significant bit and the
