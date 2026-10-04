@@ -187,7 +187,8 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             on_page(text, "Technical", "\n\n\e#Entitlement\nType code: 14.0\n"));
     check(
         "the ID's first page is who and what the holder is",
-        page_starts(text, "ITSO ID", "Name: JAMIE OKONKWO-LEE\nStatus: Active\n") &&
+        page_starts(
+            text, "ITSO ID", "Name: JAMIE OKONKWO-LEE\nExpires: 31/08/2031\nStatus: Active\n") &&
             on_page(text, "ITSO ID", "Operator: SEFT Central Products\n"));
     check("the holder's page", page_starts(text, "Holder", "Born: 14/05/1978\nGender: Male\n"));
     furi_string_reset(text);

@@ -239,7 +239,9 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
         itso_parse_type2(&t2, cmd4_spent, sizeof(cmd4_spent));
         furi_string_reset(text);
         flipso_format_summary(text, f, &t2);
-        check("a ticket with no rides left is used up", shows(text, "Ticket: Used up\n"));
+        check(
+            "a ticket with no rides left is used up, said once",
+            shows(text, "Multi-use ticket: Used up\n") && !shows(text, "Ticket: Used up\n"));
 
         itso_card_reset(&t2);
         itso_parse_type2(&t2, cmd4_blocked, sizeof(cmd4_blocked));

@@ -149,4 +149,46 @@ void product_lines(const FlipsoFormat* f, const ItsoCard* card, FuriString* text
             "255 is the operator's to remove, not the holder's",
             shows(text, "Removable: Only by the operator\n"));
     }
+
+    /* A period ticket with no passes in stock is good until the one in use
+     * ends, and used up after that - however far off its own expiry is. */
+    {
+        const ItsoProduct* period = NULL;
+        for(uint8_t i = 0; i < card->product_count && !period; i++) {
+            if(card->products[i].typ == ItsoTypPeriodTicket) period = &card->products[i];
+        }
+        check("the synthetic card has a period ticket", period != NULL);
+        ItsoProduct ticket = period ? *period : card->products[0];
+        const ItsoDate today = (ItsoDate)((f->now - (itso_date_to_unix(1) - 86400)) / 86400);
+        ticket.status = ItsoProductStatusActive;
+        ticket.expiry = today + 400;
+        ticket.count_kind = ItsoCountPasses;
+        ticket.count = 0;
+        ticket.terms.ticket.has_current_expiry = true;
+        ticket.terms.ticket.current_expiry = today - 1;
+        furi_string_reset(text);
+        flipso_format_product(text, f, card, &ticket);
+        check(
+            "no passes left and the last one over is used up",
+            shows(text, "Status: Used up\n") && !shows(text, "Status: Active\n"));
+        check(
+            "and its row says so",
+            flipso_product_tag(&ticket, f->now) &&
+                strcmp(flipso_product_tag(&ticket, f->now), "Used up") == 0);
+
+        ticket.terms.ticket.current_expiry = today;
+        furi_string_reset(text);
+        flipso_format_product(text, f, card, &ticket);
+        check(
+            "no passes left but one still running is active",
+            shows(text, "Status: Active\n") && flipso_product_tag(&ticket, f->now) == NULL);
+
+        ticket.terms.ticket.current_expiry = today - 1;
+        ticket.count = 2;
+        furi_string_reset(text);
+        flipso_format_product(text, f, card, &ticket);
+        check(
+            "a pass ended with more in stock is active",
+            shows(text, "Status: Active\n") && !flipso_product_used_up(&ticket, f->now));
+    }
 }

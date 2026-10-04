@@ -52,6 +52,22 @@ FlipsoIcon flipso_product_icon(const ItsoProduct* product) {
     }
 }
 
+bool flipso_product_used_up(const ItsoProduct* product, ItsoUnixTime now) {
+    if(product->count != 0) return false;
+    if(product->count_kind == ItsoCountRides || product->count_kind == ItsoCountCoupons ||
+       product->count_kind == ItsoCountJourneys) {
+        return true;
+    }
+    /* A period ticket with no passes in stock is still good for the rest of
+     * the one in use (TS 1000-5 TYP 22, ExpiryDateCurrent), and only used up
+     * once that has ended too. Its own expiry is when the unused passes would
+     * have lapsed, which says nothing once there are none. */
+    const ItsoTicketTerms* ticket = itso_product_ticket(product);
+    return product->count_kind == ItsoCountPasses && ticket->has_current_expiry &&
+           !itso_date_open(ticket->current_expiry) &&
+           itso_date_expired(ticket->current_expiry, now);
+}
+
 const char* flipso_product_tag(const ItsoProduct* product, ItsoUnixTime now) {
     /* Off the card comes first, because it is the one thing not true of the
      * card in front of the user: whether it was blocked or expired when it
@@ -59,6 +75,7 @@ const char* flipso_product_tag(const ItsoProduct* product, ItsoUnixTime now) {
     if(!product->on_card) return "Off card";
     if(product->status == ItsoProductStatusBlocked) return "Blocked";
     if(itso_date_expired(product->expiry, now)) return "Expired";
+    if(flipso_product_used_up(product, now)) return "Used up";
     if(product->status == ItsoProductStatusUnused) return "Unused";
     return NULL;
 }
@@ -206,7 +223,7 @@ void flipso_cat_ticket_state(
         furi_string_cat_printf(out, "%s: Expired ", label);
         flipso_cat_date(out, product->expiry);
         furi_string_push_back(out, '\n');
-    } else if(itso_count_name(product->count_kind) && product->count == 0) {
+    } else if(flipso_product_used_up(product, now)) {
         furi_string_cat_printf(out, "%s: Used up\n", label);
     } else {
         furi_string_cat_printf(out, "%s: Active\n", label);
