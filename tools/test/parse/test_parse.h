@@ -71,6 +71,7 @@ void log_sectors(void);
 
 void spec_review_fields(void); /* test_spec_review.c */
 void reservation_ticket(void); /* test_reservation.c */
+void value_changes(const ItsoCard* card); /* test_value_change.c */
 void rail_profile(void); /* test_rail_profile.c */
 void bus_stop_locations(void); /* test_locations.c */
 void location_rendering(void);

@@ -158,6 +158,17 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     flipso_format_payg(text, f, card);
     check("the purse's pages", titles_are(text, "Pay as you go|Top-up|History|Technical"));
     check(
+        "the purse's history says what each transaction did",
+        page_starts(
+            text,
+            "History",
+            "Last transaction: Multi-leg journey\n  When: 19/09/2026 12:31\n"
+            "  Amount: -\xC2\xA3"
+            "3.50\nFare paid\n  When: 18/09/2026 08:12\n  Amount: -\xC2\xA3"
+            "3.55\n  Balance: \xC2\xA3"
+            "27.65\nTop-up\n  When: 12/08/2026 18:05\n  Balance: \xC2\xA3"
+            "31.20\n"));
+    check(
         "a purse names who sold it after whose it is",
         on_page(text, "Pay as you go", "Operator: Southeastern\nSold by: National Rail purse\n"));
     {
@@ -420,5 +431,38 @@ void demo_four(const FlipsoFormat* f, const ItsoCard* card) {
     }
     check("every journey the file remembers says it is no longer on the card", said == past);
     check("and none the card holds does", occurrences_of(text, "On card: No longer\n") == past);
+
+    /* Its purse's history runs on into the file's, with TS# 206 missing: the
+     * fare after the gap has a balance and no amount. */
+    furi_string_reset(text);
+    flipso_format_payg(text, f, card);
+    check(
+        "the last transaction is an auto top-up, signed",
+        page_starts(
+            text,
+            "History",
+            "Last transaction: Auto top-up\n  When: 20/09/2026 18:31\n  Amount: +\xC2\xA3"
+            "15.00\n"));
+    check(
+        "the amount runs across from the card to the file",
+        page_starts(
+            text,
+            "Off card",
+            "Fare paid\n  When: 01/09/2026 08:01\n  Amount: -\xC2\xA3"
+            "3.55\n"));
+    check(
+        "a fare after a gap in TS# has no amount",
+        on_page(
+            text,
+            "Off card",
+            "Fare paid\n  When: 31/07/2026 17:40\n  Balance: \xC2\xA3"
+            "14.90\n"));
+    check(
+        "nor does the oldest record",
+        on_page(
+            text,
+            "Off card",
+            "Top-up\n  When: 02/06/2026 12:15\n  Balance: \xC2\xA3"
+            "22.00\n"));
     furi_string_free(text);
 }

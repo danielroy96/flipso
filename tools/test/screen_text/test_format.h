@@ -78,6 +78,10 @@ void product_screen(
 void reservation_screen(const FlipsoFormat* f, const ItsoCard* card);
 void paper_ticket_screens(const FlipsoFormat* f, FuriString* text);
 void product_lines(const FlipsoFormat* f, const ItsoCard* card, FuriString* text);
+void value_history_screens(
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    FuriString* text); /* test_value_history.c */
 void about_screens(FuriString* text); /* test_about_media.c */
 void media_screens(FuriString* text);
 void demo_cards(const char* directory, FlipsoFormat f); /* test_demo_cards.c */

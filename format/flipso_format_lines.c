@@ -92,6 +92,19 @@ void flipso_cat_money(
     furi_string_cat_printf(out, "%s%s: %s\n", indent, label, text);
 }
 
+/** "Label: +£1.23" or "Label: -£1.23": a change, which says which way it went. */
+void flipso_cat_money_change(
+    FuriString* out,
+    const char* indent,
+    const char* label,
+    const ItsoMoney* money) {
+    if(!money->valid) return;
+    char text[FLIPSO_MONEY_LEN];
+    itso_format_money(money, text, sizeof(text));
+    /* itso_format_money() already writes a minus; zero has no sign to show. */
+    furi_string_cat_printf(out, "%s%s: %s%s\n", indent, label, money->value > 0 ? "+" : "", text);
+}
+
 /** "Label: dd/mm/yyyy". */
 void flipso_cat_date_line(FuriString* out, const char* indent, const char* label, ItsoDate date) {
     furi_string_cat_printf(out, "%s%s: ", indent, label);

@@ -935,6 +935,20 @@ sorting a history by time would show the ride being restored as often as spent.
 TS# is the order; a wrap of the 12-bit counter takes 4096 transactions, and the
 timestamp separates the two records that could then collide.
 
+A record holds the balance *after* its transaction, never the amount, so what a
+fare cost or a top-up added is worked out (`itso_value_change()`): this
+record's balance or counter minus the one before it, shown signed as
+**Amount:** (`-£3.55`, `+£20.00`) or, for a counter, **Change:** (`-1`). The
+live record's goes on the **Last transaction** line. It is only worked out
+across two consecutive writes - a TS# one ahead of the other, modulo 4096 -
+because a saved card's history can skip records that rolled off between
+reads, and the difference across a gap is several transactions presented as
+one. The oldest record, a pair whose DTS runs backwards (a lap of the counter
+apart), and a pair in different currencies show none either; nor does a TYP 5,
+whose count of transactions a new charge period clears, maybe in the same
+write as a fare. A TYP 4 counts spend up, so its difference is turned round to
+say what the transaction did to the holder's money, as a purse's does.
+
 Locations are rendered from the encoding the card uses: rail NLC codes, NaPTAN
 and ATCO bus stop codes, zone numbers and bit maps, fare stages and service
 numbers. Rail codes are resolved to station names and bus stop codes to stop

@@ -51,6 +51,12 @@ void flipso_cat_money(
     const char* indent,
     const char* label,
     const ItsoMoney* money);
+/** "Label: +£1.23" or "Label: -£1.23": a change, which says which way it went. */
+void flipso_cat_money_change(
+    FuriString* out,
+    const char* indent,
+    const char* label,
+    const ItsoMoney* money);
 
 /** "Label: dd/mm/yyyy". */
 void flipso_cat_date_line(FuriString* out, const char* indent, const char* label, ItsoDate date);

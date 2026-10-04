@@ -26,7 +26,6 @@ Every brief assumes the working rules in `CLAUDE.md` — in particular:
 
 | Brief | What it adds | Size |
 | --- | --- | --- |
-| [transaction-amounts.md](transaction-amounts.md) | The amount of each transaction in a balance history, worked out from consecutive balances | Small |
 | [days-remaining.md](days-remaining.md) | "Days left" on expiries, and the current pass in the Summary | Small |
 | [operators-file-docs.md](operators-file-docs.md) | Make `operators.txt` discoverable, and say when it was cut short | Small |
 | [save-failed-reads.md](save-failed-reads.md) | Save the raw data of a card that would not decode, for bug reports | Medium |

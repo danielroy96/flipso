@@ -48,6 +48,10 @@ void itso_ipe_purse_dataset(ItsoProduct* product, const uint8_t* data, size_t le
         break;
 
     case ItsoTypChargeToAccount1:
+        /* What the type is rather than what the record says, so a history
+         * kept by a file is labelled as spend when the live record is not
+         * there to say so. */
+        purse->balance_is_spend = true;
         if(len < 16) return;
         itso_decode_money(itso_uint16(data + 6), currency, &purse->max_value);
         purse->has_limits = true;

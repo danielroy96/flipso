@@ -238,8 +238,9 @@ def card_the_key():
     loyalty.buf[2] = 30
     loyalty.putb(3, (289).to_bytes(2, "big"))
     loyalty_values = value_group([
-        value_record(1, 44, dts(2026, 7, 2, 10, 15), loyalty_tail(4250)),
-        value_record(9, 45, dts(2026, 9, 14, 19, 2), loyalty_tail(5100, user=321)),
+        # Points earned on a fare, then 850 of them redeemed.
+        value_record(7, 44, dts(2026, 7, 2, 10, 15), loyalty_tail(5100)),
+        value_record(9, 45, dts(2026, 9, 14, 19, 2), loyalty_tail(4250, user=321)),
     ], format_rev=1)
 
     # ---- E6: charge to account, TYP 5 (TS 1000-5 table 15)
@@ -696,9 +697,11 @@ def card_history():
         value_record(5, 211, dts(2026, 9, 20, 18, 31),
                      purse_tail(2645, flags=0b001)),
     ], format_rev=1)
+    # TS#206, a GBP 3.55 fare in July, was written and written over between two
+    # reads, so no file ever saw it: the history has a gap there, and the fare
+    # after it has a balance but no amount, which would be two fares as one.
     purse_history = b"".join([
         value_record(4, 205, dts(2026, 6, 2, 12, 15), purse_tail(2200)),
-        value_record(7, 206, dts(2026, 7, 6, 8, 2), purse_tail(1845)),
         value_record(7, 207, dts(2026, 7, 31, 17, 40), purse_tail(1490)),
         value_record(10, 208, dts(2026, 8, 14, 13, 5), purse_tail(1740)),
         value_record(7, 209, dts(2026, 9, 1, 8, 1), purse_tail(1385)),
@@ -801,7 +804,7 @@ def card_history():
     gone_period.putb(34, loc1(203, b"5685"))     # Woking
     gone_period.putb(40, loc1(203, b"5598"))     # London Waterloo
     gone_period_values = value_group([
-        value_record(1, 60, dts(2026, 1, 5, 7, 30),
+        value_record(13, 60, dts(2026, 1, 5, 7, 30),
                      period_tail(3, 0b01, date_stamp(2026, 3, 31), date_stamp(2026, 2, 4))),
         value_record(13, 61, dts(2026, 2, 5, 7, 32),
                      period_tail(2, 0b01, date_stamp(2026, 3, 31), date_stamp(2026, 3, 7))),

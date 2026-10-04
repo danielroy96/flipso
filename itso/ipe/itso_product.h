@@ -516,6 +516,28 @@ uint8_t itso_previous_value_records(
 void itso_parse_value_history(ItsoProduct* product, const uint8_t* data, size_t len);
 
 /**
+ * What the transaction in value record @p index did: its balance or counter
+ * minus the one in the record written just before it.
+ *
+ * A card keeps the value after each transaction, never the amount, so the
+ * amount is the difference between two records - and only between two writes
+ * in a row. A saved card's history can skip records that rolled off between
+ * reads, and the difference across the gap would be several transactions
+ * presented as one, so a pair whose TS# are not consecutive has no amount.
+ * Nor does the oldest record, a pair written out of time order, two balances
+ * in different currencies, or a TYP 5, whose count a new charge period clears.
+ *
+ * Money is signed for the holder: negative when they paid, whichever way the
+ * card counts - a TYP 4's spend to date goes up when the holder pays, so its
+ * difference is turned round. A counter's change is as the card counts it.
+ *
+ * @param index into ItsoProduct::value_history, newest first.
+ * @param[out] change money already scaled, or counts.
+ * @return false when there is no amount to give.
+ */
+bool itso_value_change(const ItsoProduct* product, uint8_t index, int32_t* change);
+
+/**
  * Mark a product, and everything it has decoded so far, as no longer on the
  * card.
  *

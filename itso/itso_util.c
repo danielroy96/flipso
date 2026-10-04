@@ -113,7 +113,12 @@ void itso_format_money(const ItsoMoney* money, char* out, size_t len) {
 
     if(money->currency > 1) {
         /* Tokens have no minor unit and no symbol we can rely on. */
-        snprintf(out, len, "%ld token%s", (long)money->value, money->value == 1 ? "" : "s");
+        snprintf(
+            out,
+            len,
+            "%ld token%s",
+            (long)money->value,
+            (money->value == 1 || money->value == -1) ? "" : "s");
         return;
     }
 
