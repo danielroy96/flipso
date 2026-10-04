@@ -33,6 +33,7 @@ int main(int argc, char** argv) {
     synthetic_screens(&f, &card, text);
     paper_ticket_screens(&f, text);
     product_lines(&f, &card, text);
+    value_history_screens(&f, &card, text);
     about_screens(text);
     media_screens(text);
     furi_string_free(text);

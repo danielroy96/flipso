@@ -4,25 +4,53 @@
  */
 #include "flipso_product_i.h"
 
+/**
+ * What the transaction in value record @p index did, worked out from the record
+ * before it: "  Amount: -£3.55", or "  Change: -1" for a counter. Nothing when
+ * itso_value_change() has no amount to give.
+ */
+static void flipso_cat_value_change(FuriString* out, const ItsoProduct* product, uint8_t index) {
+    int32_t change;
+    if(!itso_value_change(product, index, &change)) return;
+    const ItsoValueRecord* record = &product->value_history[index];
+
+    /* Always signed, whichever way it went: a fare and a top-up of the same
+     * size are otherwise the same line. */
+    if(!record->has_count) {
+        const ItsoMoney amount = {
+            .value = change, .currency = record->amount.currency, .valid = true};
+        flipso_cat_money_change(out, "  ", "Amount", &amount);
+    } else if(itso_count_name(product->count_kind)) {
+        /* A counter with no name has no line of its own for the change to explain. */
+        furi_string_cat_printf(out, "  Change: %s%ld\n", change > 0 ? "+" : "", (long)change);
+    }
+}
+
 /** What the product's newest value record says the last transaction was. */
 void flipso_cat_last_transaction(FuriString* out, const ItsoProduct* product) {
     if(!product->value_parsed) return;
     furi_string_cat_printf(
         out, "Last transaction: %s\n", itso_transaction_name(product->value_txn));
     if(product->value_dts) flipso_cat_datetime_line(out, "  ", "When", product->value_dts);
+    /* The live record is the newest in the history, unless a file remembers
+     * one newer still or the live one could not be kept; then the amount at
+     * the head of the history is some other transaction's. */
+    const ItsoValueRecord* head = &product->value_history[0];
+    if(head->ts == product->value_ts && head->dts == product->value_dts) {
+        flipso_cat_value_change(out, product, 0);
+    }
 }
 
-/** One transaction, as three short lines. */
-static void flipso_cat_value_record(
-    FuriString* out,
-    const ItsoProduct* product,
-    const ItsoValueRecord* record) {
+/** One transaction, as short lines: what it was, when, what it did, and what was left. */
+static void flipso_cat_value_record(FuriString* out, const ItsoProduct* product, uint8_t index) {
     const ItsoPurseTerms* purse = itso_product_purse(product);
-    /* Three short lines rather than one wide one: a date and time is sixteen
+    const ItsoValueRecord* record = &product->value_history[index];
+    /* Short lines rather than one wide one: a date and time is sixteen
      * characters, which leaves nothing for what happened or for what the
      * balance became. */
     furi_string_cat_printf(out, "%s\n", itso_transaction_name(record->txn));
     flipso_cat_datetime_line(out, "  ", "When", record->dts);
+    flipso_cat_value_change(out, product, index);
 
     /* has_count first: the counter and the balance share their room, so the
      * balance is only there to be read when the counter is not. */
@@ -61,6 +89,6 @@ void flipso_cat_value_history(FlipsoPages* p, const ItsoProduct* product) {
         const ItsoValueRecord* record = &product->value_history[i];
         const bool off_card = split && !record->on_card;
         flipso_cat_value_record(
-            flipso_pages_at(p, off_card ? FlipsoSlotOffCard : FlipsoSlotHistory), product, record);
+            flipso_pages_at(p, off_card ? FlipsoSlotOffCard : FlipsoSlotHistory), product, i);
     }
 }

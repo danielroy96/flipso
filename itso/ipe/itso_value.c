@@ -332,6 +332,43 @@ void itso_parse_value_history(ItsoProduct* product, const uint8_t* data, size_t 
     }
 }
 
+bool itso_value_change(const ItsoProduct* product, uint8_t index, int32_t* change) {
+    /* TS 1000-5 table 17: a TYP 5 counts the transactions of a charge period,
+     * and a POST clears the count when a new period starts - in the same write
+     * as the fare that started it, for all a record says. A difference across
+     * that is the size of the old period, not a transaction. */
+    if(product->typ == ItsoTypChargeToAccount2) return false;
+    if(index + 1 >= product->value_history_count) return false;
+    const ItsoValueRecord* newer = &product->value_history[index];
+    const ItsoValueRecord* older = &product->value_history[index + 1];
+
+    /* TS 1000-2 clause 7.2.4.2: each write takes the next TS#, modulo 4096. */
+    if(newer->ts != ((older->ts + 1) & 0x0FFF)) return false;
+    /* The history is ordered by TS# alone, so a record a saved file kept from
+     * a lap of the counter ago could sit beside one that follows it by number
+     * and not by time. Two records in the same minute are in order. */
+    if(itso_dts_to_unix(newer->dts) < itso_dts_to_unix(older->dts)) return false;
+    if(newer->has_count != older->has_count) return false;
+
+    int64_t diff;
+    if(newer->has_count) {
+        diff = (int64_t)newer->count - (int64_t)older->count;
+    } else {
+        if(!newer->amount.valid || !older->amount.valid) return false;
+        if(newer->amount.currency != older->amount.currency) return false;
+        diff = (int64_t)newer->amount.value - (int64_t)older->amount.value;
+    }
+    /* TS 1000-5 table 12: a TYP 4 counts spend up, so a fare raises it. Turned
+     * round, the change says what the transaction did to the holder's money,
+     * as a purse's does. */
+    if(product->typ == ItsoTypChargeToAccount1) diff = -diff;
+    /* Two saturated amounts can differ by more than 32 bits hold. */
+    if(diff > INT32_MAX) diff = INT32_MAX;
+    if(diff < INT32_MIN) diff = INT32_MIN;
+    *change = (int32_t)diff;
+    return true;
+}
+
 void itso_product_free(ItsoProduct* product) {
     free(product->value_history);
     product->value_history = NULL;

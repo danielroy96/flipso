@@ -38,6 +38,9 @@ int main(void) {
     reservation_ticket();
     rail_profile();
 
+    printf("\n== Transaction amounts ==\n");
+    value_changes(&card);
+
     printf("\n== Robustness ==\n");
     bus_stop_locations();
     location_rendering();
