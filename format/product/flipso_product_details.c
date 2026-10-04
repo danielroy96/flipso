@@ -16,8 +16,8 @@ static bool flipso_same_date(ItsoDate a, ItsoDate b) {
 /**
  * Everything a screen says about one product but its codes, each line on the
  * page it belongs to (see FlipsoSlot). The first page answers what a holder
- * asks first - is it good, for where, until when, with what, and whose - and
- * its lines are written in that order; the rest are written in the order they
+ * asks first - for where, until when, whether it still is, with what, and
+ * whose - and its lines are written in that order; the rest are written in the order they
  * read on their own pages.
  *
  * Shared by the purse, ID and product screens, so a product reads the same
@@ -111,26 +111,6 @@ void flipso_cat_product_details(
         flipso_cat_date_line(count, "  ", "Count last reset", purse->last_reset);
     }
 
-    /* --- Whether it is good. --- */
-    /* The status comes from where the card keeps the product - in use, blocked,
-     * never used - not from whether it is still any good. A ticket still "in
-     * use" by that measure can have run out of date or of rides, and saying
-     * "Active" beside "Expired" contradicts the line under it. Only the rides
-     * kinds count as used up at zero: a period ticket with no passes left in
-     * stock can still be in its current pass. */
-    if(product->status == ItsoProductStatusActive && !itso_date_open(product->expiry) &&
-       itso_date_expired(product->expiry, now)) {
-        furi_string_cat(main, "Status: Expired\n");
-    } else if(
-        product->status == ItsoProductStatusActive &&
-        (product->count_kind == ItsoCountRides || product->count_kind == ItsoCountCoupons ||
-         product->count_kind == ItsoCountJourneys) &&
-        product->count == 0) {
-        furi_string_cat(main, "Status: Used up\n");
-    } else if(product->status != ItsoProductStatusUnknown) {
-        furi_string_cat_printf(main, "Status: %s\n", itso_status_name(product->status));
-    }
-
     /* --- Where. An entitlement's two locations are areas it is good in, not
      * the ends of a journey, and come after what it entitles the holder to. --- */
     /* A Space Saving IPE has an area element instead, and keeps the place it
@@ -222,6 +202,28 @@ void flipso_cat_product_details(
             rides ? "Unused rides expired" : "Unused passes expired",
             ticket->stored_expiry,
             now);
+    }
+
+    /* --- Whether it is still good, after where and when: the status is the
+     * card's bookkeeping, and the places and dates are what a holder reads
+     * the ticket for. --- */
+    /* The status comes from where the card keeps the product - in use, blocked,
+     * never used - not from whether it is still any good. A ticket still "in
+     * use" by that measure can have run out of date or of rides, and saying
+     * "Active" beside "Expired" contradicts the line under it. Only the rides
+     * kinds count as used up at zero: a period ticket with no passes left in
+     * stock can still be in its current pass. */
+    if(product->status == ItsoProductStatusActive && !itso_date_open(product->expiry) &&
+       itso_date_expired(product->expiry, now)) {
+        furi_string_cat(main, "Status: Expired\n");
+    } else if(
+        product->status == ItsoProductStatusActive &&
+        (product->count_kind == ItsoCountRides || product->count_kind == ItsoCountCoupons ||
+         product->count_kind == ItsoCountJourneys) &&
+        product->count == 0) {
+        furi_string_cat(main, "Status: Used up\n");
+    } else if(product->status != ItsoProductStatusUnknown) {
+        furi_string_cat_printf(main, "Status: %s\n", itso_status_name(product->status));
     }
 
     /* --- What it is not valid without: a railcard, or an ID. On the first

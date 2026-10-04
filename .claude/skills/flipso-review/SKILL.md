@@ -89,8 +89,8 @@ sheet with every page on it; vary the rows to reach the changed screen.
 
 Check against CLAUDE.md's conventions: `Label: Value` with the value
 capitalised, a detail indented two spaces and labelled, money as `£`; the
-first page answers whether the ticket is good, for where, until when and
-with what; Technical last; a new line on the page that answers its question.
+first page answers for where the ticket is good, until when, whether it
+still is and with what; Technical last; a new line on the page that answers its question.
 Every page title has an icon that says what the page holds.
 
 Then read it as a passenger would: abbreviations and acronyms that are not

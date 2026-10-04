@@ -46,7 +46,7 @@ data.
 <table>
   <tr>
     <td width="50%" align="center" valign="top"><img src="docs/screenshots/card.png" width="250" alt="Card number 633597 0289 0100 0016 and expiry"></td>
-    <td width="50%" align="center" valign="top"><img src="docs/screenshots/id.png" width="250" alt="ITSO ID: name, status, expiry, entitlement and concession"></td>
+    <td width="50%" align="center" valign="top"><img src="docs/screenshots/id.png" width="250" alt="ITSO ID: name, expiry, status, entitlement and concession"></td>
   </tr>
   <tr>
     <td width="50%" align="center" valign="top"><b>Card</b><br><sub>The 18-digit ISRN, its issuer and expiry, validated on the device</sub></td>
@@ -54,11 +54,11 @@ data.
   </tr>
   <tr>
     <td width="50%" align="center" valign="top"><img src="docs/screenshots/products.png" width="250" alt="Products list with a per-type icon on each row"></td>
-    <td width="50%" align="center" valign="top"><img src="docs/screenshots/product-detail.png" width="250" alt="Period ticket: status, the stations it covers and its validity"></td>
+    <td width="50%" align="center" valign="top"><img src="docs/screenshots/product-detail.png" width="250" alt="Period ticket: the stations it covers, its validity and its status"></td>
   </tr>
   <tr>
     <td width="50%" align="center" valign="top"><b>Products</b><br><sub>Every ticket on the card, each with an icon for its type and a flag for expired, blocked or unused.</sub></td>
-    <td width="50%" align="center" valign="top"><b>Product detail</b><br><sub>Operator, status, validity window, remaining passes and the stations a ticket covers</sub></td>
+    <td width="50%" align="center" valign="top"><b>Product detail</b><br><sub>The stations a ticket covers, its validity window, status, remaining passes and operator</sub></td>
   </tr>
 </table>
 

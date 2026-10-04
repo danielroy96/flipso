@@ -220,8 +220,8 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
   with its title (`flipso_cat_page()`), drawn as the icon list's header - icon
   and text centred over a rule - and every title has an icon that says what
   the page holds; draw a new one in `tools/icons/build_icons.py` rather than
-  borrow one that does not fit. The first page answers whether the
-  ticket is good, for where, until when and with what, and Technical is
+  borrow one that does not fit. The first page answers for where
+  the ticket is good, until when, whether it still is and with what, and Technical is
   always last. A new line goes on the page that answers the question it
   answers, never on a page of its own. `tools/test/screen_text/` pins each kind's page
   order and checks every screen's pages are titled, non-empty and end with
