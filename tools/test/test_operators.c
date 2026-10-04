@@ -7,6 +7,7 @@
  * issues. Built under ASan/UBSan, so a line that runs off the end of a field
  * buffer is a test failure rather than a subtle one on the device.
  */
+#include "test.h"
 #include "lookup/flipso_operators.h"
 #include "itso/itso_operators.h"
 
@@ -65,13 +66,6 @@ bool stream_read_line(struct Stream* stream, FuriString* line) {
 /* ---- test --------------------------------------------------------------- */
 
 #define OPERATORS_PATH "stub_data_operators.txt"
-
-static int failures = 0;
-
-static void check(const char* what, int ok) {
-    printf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
-    if(!ok) failures++;
-}
 
 static void same(const char* what, const char* got, const char* want) {
     int ok = want ? (got && strcmp(got, want) == 0) : (got == NULL);

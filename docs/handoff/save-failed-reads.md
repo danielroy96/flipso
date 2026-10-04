@@ -7,7 +7,7 @@ is exactly what a bug report needs — yet they are the ones that cannot be save
 
 - `flipso_capture_valid()` (`cards/flipso_capture.c`) requires a Shell or Type 2
   block, and a shell is only added to the capture **after** it parses
-  (`flipso_read_shell()` in `reader/flipso_reader.c`, and the CMD2 path in
+  (`flipso_read_shell()` in `reader/flipso_desfire.c`, and the CMD2 path in
   `reader/flipso_cmd2.c`). A "Card not readable" (bad shell) read captures nothing.
 - The error scene (`scenes/flipso_scene_error.c`) has one button, and no save.
 - The CMD9/CMD10 "Unsupported" path in `reader/flipso_type2.c` decodes the shell but
@@ -42,9 +42,9 @@ is exactly what a bug report needs — yet they are the ones that cannot be save
 
 ## Tests
 
-- `test_capture.c`: a bad shell round-trips through a file and decodes to the
+- `tools/test/capture/`: a bad shell round-trips through a file and decodes to the
   same rejection reason (`card.shell_reject`).
-- `test_saved.c`: such a file loads without being called damaged.
+- `tools/test/saved/`: such a file loads without being called damaged.
 - Replaying one with `tools/test/replay.py` should reproduce the failure.
 
 ## Done when

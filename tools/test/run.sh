@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build and run the ITSO decoder tests on the host, under ASan and UBSan.
+# Build and run the host test suites, under ASan and UBSan.
 #
 #   tools/test/run.sh       one line on success; on failure every [FAIL] line
 #                           and the end of the log, where a compiler error or
@@ -10,6 +10,10 @@
 # Read whole it cost a session tens of thousands of tokens, and the habit that
 # grew up instead - `run.sh | grep FAIL` - reports grep's exit status, not the
 # suite's, so a build that failed before any test ran read as a pass.
+#
+# Each suite is one binary: its test files - a directory of them for the larger
+# suites, one file for the rest - the harness in test.c, and the parts of the
+# app it tests, listed in sources.py.
 set -e
 if [ "$1" != "-v" ]; then
   T=${TMPDIR:-/tmp}
@@ -32,64 +36,54 @@ fi
 cd "$(dirname "$0")"
 ROOT=../..
 
+# Which files make up each part of the app: see sources.py.
+src() { python3 sources.py "$@"; }
+ITSO=$(src itso)
+FORMAT=$(src format)
+CAPTURE=$(src capture)
+
+# Every suite is compiled alike: build NAME SOURCES-AND-INCLUDE-FLAGS...
+build() {
+  name=$1
+  shift
+  ${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
+    -fsanitize=address,undefined \
+    "$@" test.c \
+    -o "$name"
+}
+
 python3 build_card.py >/dev/null
-${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
-  -fsanitize=address,undefined \
-  -I"$ROOT/itso" -I. \
-  test_parse.c "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
-  -o test_parse
+build test_parse -I"$ROOT/itso" -I. parse/*.c $ITSO
 ./test_parse
 
 echo
 echo "Scan session"
 # The transport and retry policy, which is pure C: every path a card can take
 # through a scan, without a card.
-${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
-  -fsanitize=address,undefined \
-  -I"$ROOT" \
-  test_scan_session.c "$ROOT/reader/flipso_scan_session.c" \
-  -o test_scan_session
+build test_scan_session -I"$ROOT" test_scan_session.c $(src scan_session)
 ./test_scan_session
 
 echo
 echo "Saved cards"
 # The save/load round trip, which is the decoder's other entry point: a saved
 # card is raw blocks, so loading one runs the same parsers a tap does.
-${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
-  -fsanitize=address,undefined \
-  -I"$ROOT" -I"$ROOT/itso" -I. \
-  test_capture.c "$ROOT/cards/flipso_capture.c" \
-  "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
-  -o test_capture
+build test_capture -I"$ROOT" -I"$ROOT/itso" -I. capture/*.c $CAPTURE $ITSO
 ./test_capture
 
 echo
 echo "Saved card files"
 # The layer around the blocks: naming, and real files in a real directory.
-${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
-  -fsanitize=address,undefined \
-  -I"$ROOT" -I"$ROOT/itso" -Istub -I. \
-  test_saved.c "$ROOT/cards/flipso_saved.c" "$ROOT/cards/flipso_capture.c" \
-  "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
-  -o test_saved
+build test_saved -I"$ROOT" -I"$ROOT/itso" -Istub -I. saved/*.c $(src saved) $CAPTURE $ITSO
 ./test_saved
 
 echo
 echo "Station table"
-${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
-  -fsanitize=address,undefined \
-  -I"$ROOT" -Istub \
-  test_stations.c "$ROOT/lookup/flipso_stations.c" \
-  -o test_stations
+build test_stations -I"$ROOT" -Istub test_stations.c $(src stations)
 ./test_stations
 
 echo
 echo "Stop table"
-${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
-  -fsanitize=address,undefined \
-  -I"$ROOT" -Istub \
-  test_naptan.c "$ROOT/lookup/flipso_naptan.c" \
-  -o test_naptan
+build test_naptan -I"$ROOT" -Istub test_naptan.c $(src naptan)
 ./test_naptan
 
 echo
@@ -99,6 +93,24 @@ echo "Storage opens close on failure"
 python3 "$ROOT/tools/test/lint_storage.py"
 
 echo
+echo "Firmware sources"
+# fbt tries every pattern in application.fam from every directory, so a test
+# directory named like an app one ends up in the .fap. See the script.
+python3 "$ROOT/tools/test/lint_sources.py"
+
+echo
+echo "Product terms"
+# A product's family terms share their room (ItsoTerms, itso_product.h), so
+# outside the decoder they are read through the accessors, which give another
+# family's product nothing set rather than its bytes.
+if grep -rnE '(->|\.)terms\.(purse|id|ticket)' "$ROOT/format" "$ROOT/scenes" "$ROOT/views" \
+  "$ROOT/cards" "$ROOT/reader" "$ROOT/lookup" "$ROOT/flipso.c"; then
+  echo "  [FAIL] only the decoder reads ItsoProduct::terms directly"
+  exit 1
+fi
+echo "  [PASS] only the decoder reads ItsoProduct::terms directly"
+
+echo
 echo "flipctl serial recovery"
 # Pure Python and needs no Flipper: it injects the USB CDC drop that cannot be
 # provoked on demand from a real device.
@@ -106,11 +118,7 @@ python3 "$ROOT/tools/flipper/test_flipctl.py"
 
 echo
 echo "Operator names and branding"
-${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
-  -fsanitize=address,undefined \
-  -I"$ROOT" -Istub \
-  test_operators.c "$ROOT/lookup/flipso_operators.c" "$ROOT/itso/itso_operators.c" \
-  -o test_operators
+build test_operators -I"$ROOT" -Istub test_operators.c $(src operators) "$ROOT/itso/itso_operators.c"
 ./test_operators
 
 echo
@@ -128,14 +136,7 @@ else
   echo "  [FAIL] the packaged demo cards are stale: run tools/demo/build_demo_cards.py"
   exit 1
 fi
-${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
-  -fsanitize=address,undefined \
-  -I"$ROOT" -I"$ROOT/itso" -I. -Istub \
-  test_format.c "$ROOT/format/flipso_format.c" "$ROOT/format/flipso_format_product.c" \
-  "$ROOT/format/flipso_format_card.c" "$ROOT/format/flipso_format_journeys.c" "$ROOT/cards/flipso_capture.c" "$ROOT/reader/flipso_media.c" \
-  "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
-  "$ROOT/itso/itso_operators.c" \
-  -o test_format
+build test_format -I"$ROOT" -I"$ROOT/itso" -I. -Istub screen_text/*.c $FORMAT $CAPTURE $(src media) $ITSO
 ./test_format "$DEMO"
 
 echo
@@ -151,6 +152,17 @@ else
   exit 1
 fi
 rm -f screens.out
+# replay.py is how a pulled card gets into the host loop, and builds the decoder
+# from sources.py the same way.
+if python3 "$ROOT/tools/test/replay.py" "$DEMO/Demo 04 SWR Touch.flipso" >replay.out 2>&1 &&
+  grep -q "check digit ok" replay.out; then
+  echo "  [PASS] replay.py decodes a demo card"
+else
+  cat replay.out
+  echo "  [FAIL] replay.py decodes a demo card"
+  exit 1
+fi
+rm -f replay.out
 # And the check for what a new card adds, which renders through the same tool:
 # a demo card is by definition nothing new.
 if python3 "$ROOT/tools/demo/new_encodings.py" "$DEMO/Demo 07 GWR Touch.flipso" >encodings.out 2>&1 &&
@@ -166,30 +178,15 @@ rm -rf "$DEMO"
 
 echo
 echo "Card media"
-${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
-  -fsanitize=address,undefined \
-  -I"$ROOT" -I"$ROOT/itso" -I. -Istub \
-  test_media.c "$ROOT/reader/flipso_media.c" "$ROOT/format/flipso_format.c" "$ROOT/format/flipso_format_product.c" \
-  "$ROOT/format/flipso_format_card.c" "$ROOT/format/flipso_format_journeys.c" "$ROOT/cards/flipso_capture.c" \
-  "$ROOT/itso/itso_parse.c" "$ROOT/itso/itso_util.c" "$ROOT/itso/itso_names.c" \
-  "$ROOT/itso/itso_operators.c" \
-  -o test_media
+build test_media -I"$ROOT" -I"$ROOT/itso" -I. -Istub test_media.c $(src media) $FORMAT $CAPTURE $ITSO
 ./test_media
 
 echo
 echo "Icon list view"
-${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
-  -fsanitize=address,undefined \
-  -I"$ROOT/views" -Istub \
-  test_menu_view.c "$ROOT/views/flipso_menu_view.c" "$ROOT/views/flipso_glyphs.c" \
-  -o test_menu_view
+build test_menu_view -I"$ROOT/views" -Istub test_menu_view.c $(src menu_view views)
 ./test_menu_view
 
 echo
 echo "Scrolling text view"
-${CC:-cc} -std=gnu11 -Wall -Wextra -Wno-unused-parameter \
-  -fsanitize=address,undefined \
-  -I"$ROOT/views" -Istub \
-  test_text_view.c "$ROOT/views/flipso_text_view.c" "$ROOT/views/flipso_glyphs.c" \
-  -o test_text_view
+build test_text_view -I"$ROOT/views" -Istub test_text_view.c $(src text_view views)
 ./test_text_view

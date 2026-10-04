@@ -26,17 +26,13 @@ import subprocess
 import sys
 import tempfile
 
+import sources
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 
-SOURCES = [
-    "tools/test/screens.c",
-    "format/flipso_format.c", "format/flipso_format_product.c", "format/flipso_format_card.c",
-    "format/flipso_format_journeys.c", "cards/flipso_capture.c", "reader/flipso_media.c",
-    "lookup/flipso_stations.c", "lookup/flipso_naptan.c",
-    "itso/itso_parse.c", "itso/itso_util.c", "itso/itso_names.c",
-    "itso/itso_operators.c",
-]
+# The renderer, and every part of the app it renders through.
+PARTS = ("format", "capture", "media", "stations", "naptan", "itso")
 
 # What the storage stub in screens.c opens for each table - the device's
 # APP_ASSETS_PATH, mapped by tools/test/stub/storage/storage.h - and the file
@@ -54,7 +50,7 @@ def build() -> str:
            "-Wno-unused-parameter", "-fsanitize=address,undefined",
            "-I", ROOT, "-I", os.path.join(ROOT, "itso"), "-I", HERE,
            "-I", os.path.join(HERE, "stub")]
-    cmd += [os.path.join(ROOT, s) for s in SOURCES]
+    cmd += [os.path.join(HERE, "screens.c")] + sources.sources(*PARTS)
     cmd += ["-o", binary]
     done = subprocess.run(cmd, capture_output=True, text=True)
     if done.returncode != 0:

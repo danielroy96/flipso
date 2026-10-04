@@ -53,12 +53,35 @@ behaviours is there because a past session lost time to it.
 ## Layout
 
 ```
-flipso.c/.h           app entry, the icon table, the name validator
-format/               the text of every screen (flipso_format*.c), one file per
-                      screen group, sharing flipso_format_i.h; host-tested by
-                      test_format.c
+flipso.c/.h           app entry and lifecycle, the icon table
+itso/                 the decoder: pure C, no firmware dependency, host-testable.
+                      itso.h is the one header the app includes; its comment
+                      maps the parts:
+  media/                the card as storage: itso_shell.c, itso_directory.c (the
+                        directory and sector chains), itso_type2.c (CMD9/CMD10),
+                        itso_cmd4.c (paper tickets)
+  ipe/                  what a product holds: itso_ipe.c (shared elements and the
+                        table of types), one itso_ipe_<kind>.c per TYP family,
+                        itso_value.c (value records), itso_capping.c,
+                        itso_space_saving.c
+  itso_log.c, itso_card.c, itso_location.c, itso_names.c, itso_operators.c
+format/               the text of every screen, one file per screen
+                      (flipso_format_<screen>.c) and the line builders they share
+                      (flipso_format_lines.c, flipso_format_i.h); host-tested by
+                      tools/test/screen_text/
+  product/              the product, Pay as you go and ID screens: the pages each
+                        kind has (flipso_product_pages.c), the common lines
+                        (details), Technical, and one flipso_product_<kind>.c per
+                        kind of product
 reader/               getting a card off the reader:
-                        flipso_reader.c        DESFire (CMD7/CMD12), and the pollers
+                        flipso_reader.c        which transport runs, the pollers
+                                               that run it, the lifecycle
+                        flipso_transport.c     what the transports share: the shell
+                                               owner logged, the walk of products and
+                                               log for the ones that read sector chains
+                        flipso_desfire.c       DESFire transport (CMD7/CMD12)
+                        flipso_desfire_media.c what a non-ITSO DESFire says about
+                                               itself (incl. Oyster)
                         flipso_scan_session.c  which transport next, retries and the
                                                verdict; pure C, host-tested by
                                                test_scan_session.c
@@ -66,24 +89,30 @@ reader/               getting a card off the reader:
                         flipso_type2.c         NFC Type 2 tag transport: CMD4 (SPT paper
                                                tickets), and CMD9/CMD10 (a full shell on
                                                an NTAG or Ultralight EV1)
-                        flipso_media.c         what a DESFire says about itself (incl.
-                                               Oyster); the text is format/'s
-cards/                flipso_capture.c: the raw blocks a read produced; saved cards
+                        flipso_media.c         the model of what a DESFire says about
+                                               itself; the text is format/'s
+cards/                flipso_capture*.c: the raw blocks a read produced (the store,
+                      decode, merging an earlier read, the file format); saved cards
                       decode from these. flipso_saved.c: those blocks on the SD card -
-                      write, read, browse, match, rename, delete
+                      write, read, browse, match, rename, delete; beside it the demo
+                      cards (flipso_saved_demos.c), power-cut recovery
+                      (flipso_saved_recover.c) and the rule a saved card's name
+                      follows (flipso_name_validator.c)
 lookup/               flipso_operators.c operator id -> name, built-in table plus the
                       user's file; flipso_stations.c NLC -> station name, binary search
                       over the SD card table; flipso_naptan.c NaptanCode/AtcoCode ->
                       bus stop name, same design
-itso/                 the decoder: pure C, no firmware dependency, host-testable
 scenes/               one file per scene; every paged text screen is the one
                       text scene (flipso_open_text()); list in flipso_scene_config.h
 views/                custom views (the icon list, the text panel, the scan screen),
                       and the hand-drawn £ and € the fonts lack
 tools/flipper/        flipctl: the device driver described above
 tools/ide/            compile_commands.json, so CLion and clangd index the tree
-tools/test/           host test suite, synthetic card builder, card replay,
-                      screens.py (every screen of a saved card)
+tools/test/           host test suites (run.sh), synthetic card builder, card replay,
+                      screens.py (every screen of a saved card). The larger suites
+                      are directories - parse/, screen_text/, capture/, saved/ - of topic
+                      files sharing test.h's check(); sources.py lists the app files
+                      each host build compiles
 tools/spec/           itso_spec.py: fetch and search the TS 1000 parts
 tools/debug/          opt-in card-dump instrumentation
 tools/catalog/        the Apps Catalog manifest, and validate.sh to run the
@@ -100,9 +129,9 @@ tools/icons/          pixel art the images/ icons are generated from
 
 `itso/` must stay free of firmware headers. That is what lets `tools/test/run.sh`
 and `tools/test/replay.py` build it on the host, which is the fast loop.
-`cards/flipso_capture.c` is held to the same rule for the same reason: the save and
-load path, including the file parser, is tested on the host by
-`tools/test/test_capture.c`.
+`cards/flipso_capture*.c` are held to the same rule for the same reason: the save
+and load path, including the file parser, is tested on the host by
+`tools/test/capture/`.
 
 A saved card is the raw blocks, not the decoded fields, so loading one runs the
 live decoder over them - which means a saved card is also a test case.
@@ -121,22 +150,30 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-88.6 KB of the 280 KB file as of 2026-10-03 - 2.2 KB of that came with the
-paged screens and the title icons, 10.4 KB with the TYP 24 decoder, its screen and the rail
+91.0 KB of the 290 KB file as of 2026-10-04 - 1.8 KB of that came with
+splitting the sources a responsibility to a file (a call between files is not
+inlined, and a string used in several files is stored once in each), 2.2 KB
+with the paged screens and the title icons, 10.4 KB with the TYP 24 decoder, its screen and the rail
 railcard and seat tables, 76 KB before - because the 79 KB station table and the 26 KB of demo cards live in
 `.fapassets`, which the firmware unpacks to the SD card and never maps.
 Anything added as a `const` array *does* reach RAM. With the app at its idle
-scan screen 34.1 KB of the heap is free (measured 2026-10-02). A card on
-screen costs what it holds: `ItsoCard` allocates its products (672 bytes each
-on the device since 2026-10-02, 652 before TYP 24's, 620 before 2026-09-29)
-and journeys (204 bytes each) to fit rather than keeping room for twenty and
-twelve, which held 15 KB whatever the card and left only 25 KB free. Demo 04,
-seven products and twelve journeys, cost 8.9 KB over idle at 620 bytes a
-product; Demo 01's product list leaves 23.8 KB free. A TYP 24's screen decodes
-the rest of its dataset and its reservations as it is drawn, about 750 bytes
-for Demo 01's two legs, once for the whole screen and freed before the text is
-shown. With it open, 19.1 KB is free (measured 2026-10-03, after the paged
-screens and their icons; 21.0 KB before).
+scan screen 30.9 KB of the heap is free (measured 2026-10-04). A card on
+screen costs what it holds: `ItsoCard` allocates its products (268 bytes each
+on the device since 2026-10-04; 672 before, when every product carried every
+type's fields, eight value records and its locations as display text), each
+product's value records (20 bytes each - two on most products, none on an ID,
+up to eight on a saved card that remembers more than the card keeps) and
+journeys (128 bytes each, 204 before) to fit rather than keeping room for
+twenty and twelve, which held 15 KB whatever the card and left only 25 KB
+free. A location is kept as the card's bytes and rendered as it is drawn
+(`itso_location_text()`), and a paper ticket's Space Saving record and a
+non-ITSO DESFire's file list are allocated only for the cards that have them.
+A TYP 24's screen decodes the rest of its dataset and its reservations as it
+is drawn, about 750 bytes for Demo 01's two legs, once for the whole screen
+and freed before the text is shown. With it open, 22.1 KB is free (measured
+2026-10-04). In that boot the build before the struct review of 2026-10-04
+left 29.4 KB at idle and 18.0 KB with it open, so the review gave back 1.5 KB
+at idle and 4.1 KB with a card on screen.
 
 The text panel keeps its string at the size of the longest screen shown until
 the app exits, so a screen's text is not given back when it closes: back at
@@ -169,7 +206,16 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
 - Comments explain *why*, and cite the spec clause when a constant comes from
   one (`TS 1000-2 table 11`). Do not narrate what the code already says.
 - New sources must be listed explicitly in `application.fam`. A bare `*.c` is
-  matched recursively and would pull in the host-side tests under `tools/`.
+  matched recursively and would pull in the host-side tests under `tools/`;
+  `dir/*.c` takes no subdirectory of `dir/`, so a new one needs its own line -
+  and it takes *any* directory called `dir`, `tools/` included, so no tools
+  directory may share a name with an app directory (a `tools/test/format/`
+  once put the screen tests into the `.fap`). The host builds take their sources from `tools/test/sources.py`, so a
+  new subdirectory goes there too.
+- One responsibility to a file. The decoder has a file per medium and per IPE
+  type family, the screen text a file per screen and per kind of product, the
+  reader a file per transport, and the tests a file per topic. A file growing
+  past a few hundred lines is usually two.
 - Every text screen is a set of pages, turned with Left and Right, each opening
   with its title (`flipso_cat_page()`), drawn as the icon list's header - icon
   and text centred over a rule - and every title has an icon that says what
@@ -177,16 +223,17 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
   borrow one that does not fit. The first page answers whether the
   ticket is good, for where, until when and with what, and Technical is
   always last. A new line goes on the page that answers the question it
-  answers, never on a page of its own. `test_format.c` pins each kind's page
+  answers, never on a page of its own. `tools/test/screen_text/` pins each kind's page
   order and checks every screen's pages are titled, non-empty and end with
   Technical.
-- Screen text is built in `format/flipso_format*.c`, never in a scene, and follows the
+- Screen text is built in `format/`, never in a scene, and follows the
   house style its header sets out: `Label: Value` with the value capitalised, a
-  detail indented two spaces and itself labelled, money as `£`. `test_format.c`
+  detail indented two spaces and itself labelled, money as `£`. `tools/test/screen_text/`
   holds every screen of every demo card to that, so a line that breaks it fails
   the host tests.
 - Every decoder change needs a case in `tools/test/` — usually a new synthetic
-  product in `tools/test/build_card.py`. The suite runs under ASan and UBSan;
+  product in `tools/test/build_card.py`, checked in the `tools/test/parse/` file
+  for its topic. The suite runs under ASan and UBSan;
   make the test buffer exactly as long as the data claims to be, or an over-read
   lands inside an oversized array and the sanitiser sees nothing.
 - Icons in `images/` are generated by `tools/icons/build_icons.py`; edit the

@@ -5,7 +5,7 @@
  * Each screen of a card is a set of pages of "Label: Value" lines, turned with
  * Left and Right, and all of them are built here from an ItsoCard and the
  * lookup tables, so that the words the user reads can be tested on the host
- * like the decoder behind them: tools/test/test_format.c renders the synthetic
+ * like the decoder behind them: tools/test/screen_text/ renders the synthetic
  * cards and checks what comes out. The scenes only hand the result to the text
  * view.
  *
@@ -94,8 +94,8 @@ typedef struct {
     const FlipsoCapture* capture;
     /** What the chip said about itself on a live read; NULL or invalid if nothing. */
     const FlipsoMedia* media;
-    /** Unix time, for deciding what has expired. */
-    uint32_t now;
+    /** The time now, for deciding what has expired. */
+    ItsoUnixTime now;
 } FlipsoFormat;
 
 /* ------------------------------------------------------------------ */
@@ -118,7 +118,7 @@ void flipso_format_card(
     const ItsoCard* card,
     const char* saved_name,
     bool demo,
-    uint32_t read_at);
+    ItsoUnixTime read_at);
 
 /** Every purse the card holds now. */
 void flipso_format_payg(FuriString* out, const FlipsoFormat* f, const ItsoCard* card);
@@ -171,16 +171,16 @@ void flipso_format_about(
 void flipso_cat_heading(FuriString* out, FlipsoIcon icon, const char* title);
 
 /** Append "dd/mm/yyyy" for an ITSO DATE, in the user's date format. */
-void flipso_cat_date(FuriString* out, uint16_t date);
+void flipso_cat_date(FuriString* out, ItsoDate date);
 
 /**
  * Append a DATE with a two-digit year, "31/03/27", in the user's date order:
  * short enough to sit at the end of a list row.
  */
-void flipso_cat_short_date(FuriString* out, uint16_t date);
+void flipso_cat_short_date(FuriString* out, ItsoDate date);
 
-/** Append "dd/mm/yyyy hh:mm" for a Unix timestamp, in the user's formats. */
-void flipso_cat_time(FuriString* out, uint32_t timestamp);
+/** Append "dd/mm/yyyy hh:mm" for a Unix time, in the user's formats. */
+void flipso_cat_time(FuriString* out, ItsoUnixTime timestamp);
 
 /** Human label for a product, e.g. "Pay as you go". */
 const char* flipso_product_title(const ItsoProduct* product);
@@ -192,7 +192,7 @@ FlipsoIcon flipso_product_icon(const ItsoProduct* product);
  * The tag at the end of a product's row: "Off card", "Blocked", "Expired" or
  * "Unused", or NULL when the product is none of those.
  */
-const char* flipso_product_tag(const ItsoProduct* product, uint32_t now);
+const char* flipso_product_tag(const ItsoProduct* product, ItsoUnixTime now);
 
 /** First product of the given IPE type still on the card, or NULL. */
 const ItsoProduct* flipso_find_product(const ItsoCard* card, uint8_t typ);

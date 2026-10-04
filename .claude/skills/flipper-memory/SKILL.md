@@ -174,6 +174,19 @@ An over-read of a card data group is by far the most common kind. Make test
 buffers exactly as long as the data claims to be — see the **flipso-decoder**
 skill for why an oversized buffer hides them.
 
+Leaks are the exception: **ASan's leak checker does not run on this Mac** (Apple
+Silicon's ASan says `detect_leaks is not supported on this platform`), while
+CI's Linux runner has it on by default — so a leak in a host suite passes here
+and fails CI. Two ways to see one locally:
+
+- Count the heap in the test itself: `__sanitizer_get_current_allocated_bytes()`
+  before and after a decode-and-free, as `tools/test/capture/test_history_memory.c`
+  does for the card's allocations (its products, their value histories, its
+  taps), and `__sanitizer_get_allocated_size()` to check a block was allocated
+  to fit.
+- Build a suite without `-fsanitize` and run it under `leaks --atExit -- ./suite`,
+  macOS's own leak checker, which names the allocation site of each leak.
+
 A device crash that cannot be reproduced on the host is worth the effort of
 turning into a host test anyway: it is the difference between a one-second loop
 and a loop that needs someone to hold down two buttons.

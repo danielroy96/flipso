@@ -16,7 +16,7 @@
  * replay it without the card or the Flipper.
  *
  * Pure computation over byte buffers, with no firmware dependency, so the whole
- * save/load round trip is testable on the host - see tools/test/test_capture.c.
+ * save/load round trip is testable on the host - see tools/test/capture/.
  */
 #pragma once
 
@@ -186,9 +186,9 @@ void flipso_capture_reset(FlipsoCapture* capture);
  */
 bool flipso_capture_valid(const FlipsoCapture* capture);
 
-/** When the card was read, as a Unix timestamp, or 0 when it was not recorded. */
-uint32_t flipso_capture_time(const FlipsoCapture* capture);
-void flipso_capture_set_time(FlipsoCapture* capture, uint32_t timestamp);
+/** When the card was read, or 0 when it was not recorded. */
+ItsoUnixTime flipso_capture_time(const FlipsoCapture* capture);
+void flipso_capture_set_time(FlipsoCapture* capture, ItsoUnixTime timestamp);
 
 /**
  * Keep one block of card bytes.

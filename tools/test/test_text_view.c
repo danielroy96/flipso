@@ -11,18 +11,12 @@
  * holds 24 of them - narrow enough that the real names wrap, which is the case
  * worth testing.
  */
+#include "test.h"
 #include "flipso_text_view.h"
 
 #include <gui/elements.h>
 #include <stdio.h>
 #include <string.h>
-
-static int failures = 0;
-
-static void check(const char* what, int ok) {
-    printf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
-    if(!ok) failures++;
-}
 
 static Canvas canvas;
 

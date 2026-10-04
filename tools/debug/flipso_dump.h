@@ -5,8 +5,8 @@
  * Not built by default. To turn it on for a debugging session:
  *
  *   1. add "tools/debug/flipso_dump.c" to `sources` in application.fam
- *   2. `#include "tools/debug/flipso_dump.h"` in flipso_reader.c
- *   3. call flipso_dump_begin() at the top of flipso_read_card(), and
+ *   2. `#include "tools/debug/flipso_dump.h"` in flipso_desfire.c
+ *   3. call flipso_dump_begin() at the top of flipso_desfire_read(), and
  *      flipso_dump_block("SHELL"/"DIR"/"GROUP", buf, len) next to each read
  *   4. deploy, scan the card, then:
  *        tools/flipper/flipctl pull /ext/apps_data/flipso/dump.txt dump.txt

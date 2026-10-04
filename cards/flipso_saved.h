@@ -98,7 +98,7 @@ bool flipso_saved_read(FlipsoCapture* capture, const char* path);
  *                     being replaced is.
  * @return false when no saved card holds this one.
  */
-bool flipso_saved_find(const FlipsoCapture* capture, FuriString* path, uint32_t* read_at);
+bool flipso_saved_find(const FlipsoCapture* capture, FuriString* path, ItsoUnixTime* read_at);
 
 /**
  * Let the user choose a saved card.

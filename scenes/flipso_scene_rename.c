@@ -22,7 +22,7 @@ void flipso_scene_rename_on_enter(void* context) {
      * is usually adjusting a name, not thinking of a new one. */
     FuriString* name = furi_string_alloc();
     flipso_saved_name(name, furi_string_get_cstr(app->loaded_path));
-    snprintf(app->save_name, sizeof(app->save_name), "%s", furi_string_get_cstr(name));
+    snprintf(app->save.name, sizeof(app->save.name), "%s", furi_string_get_cstr(name));
 
     text_input_reset(app->text_input);
     text_input_set_header_text(app->text_input, "Rename this card");
@@ -33,8 +33,8 @@ void flipso_scene_rename_on_enter(void* context) {
         app->text_input,
         flipso_scene_rename_input_callback,
         app,
-        app->save_name,
-        sizeof(app->save_name),
+        app->save.name,
+        sizeof(app->save.name),
         false);
     text_input_set_minimum_length(app->text_input, 1);
 
@@ -56,13 +56,13 @@ bool flipso_scene_rename_on_event(void* context, SceneManagerEvent event) {
     if(event.type != SceneManagerEventTypeCustom) return false;
     if(event.event != FlipsoCustomEventRenameCommit) return false;
 
-    flipso_saved_path(app->save_path, app->save_name);
+    flipso_saved_path(app->save.path, app->save.name);
 
     if(flipso_saved_rename(
-           furi_string_get_cstr(app->loaded_path), furi_string_get_cstr(app->save_path))) {
+           furi_string_get_cstr(app->loaded_path), furi_string_get_cstr(app->save.path))) {
         /* The card on screen is the same card; only where it lives has moved,
          * so the Card screen and the delete row follow it. */
-        furi_string_set(app->loaded_path, app->save_path);
+        furi_string_set(app->loaded_path, app->save.path);
         notification_message(app->notifications, &flipso_sequence_saved);
         scene_manager_previous_scene(app->scene_manager);
     } else {

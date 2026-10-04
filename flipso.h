@@ -7,6 +7,7 @@
 #include "reader/flipso_reader.h"
 #include "cards/flipso_capture.h"
 #include "cards/flipso_saved.h"
+#include "cards/flipso_name_validator.h"
 #include "lookup/flipso_operators.h"
 #include "lookup/flipso_stations.h"
 #include "lookup/flipso_naptan.h"
@@ -91,6 +92,25 @@ typedef enum {
     FlipsoTextAbout,
 } FlipsoTextScreen;
 
+/**
+ * Where the save and rename screens are writing a card, and what they know
+ * about it. Neither is up while the other is, so they share it.
+ */
+typedef struct {
+    /** Where the card is about to go: a new file, or one being replaced. */
+    FuriString* path;
+
+    /** Name being edited on the save or rename screen. */
+    char name[FLIPSO_SAVED_NAME_LEN];
+
+    /**
+     * What the record being replaced knew that this read does not, and the
+     * other way round. Filled in when the save screen finds a record to update,
+     * because that is the one moment both are in hand.
+     */
+    FlipsoCaptureDiff diff;
+} FlipsoSaveState;
+
 typedef struct {
     Gui* gui;
     ViewDispatcher* view_dispatcher;
@@ -130,18 +150,7 @@ typedef struct {
     /** Detail text built by the error scene, alive only while that scene is. */
     FuriString* error_detail;
 
-    /** Where the save screen is about to write: a new file, or one being replaced. */
-    FuriString* save_path;
-
-    /** Name being edited on the save screen. */
-    char save_name[FLIPSO_SAVED_NAME_LEN];
-
-    /**
-     * What the record being replaced knew that this read does not, and the
-     * other way round. Filled in when the save screen finds a record to update,
-     * because that is the one moment both are in hand.
-     */
-    FlipsoCaptureDiff save_diff;
+    FlipsoSaveState save;
 
     /** What a card that is not an ITSO one said about itself. */
     FlipsoMedia media;
@@ -170,32 +179,8 @@ typedef struct {
 extern const NotificationSequence flipso_sequence_saved;
 extern const NotificationSequence flipso_sequence_deleted;
 
-/**
- * Text input validator for the name of a saved card, used by both the screen
- * that names one and the screen that renames one.
- *
- * Rejects the characters a file name cannot carry, then defers to the
- * firmware's own check for a name already taken. The two have to be one
- * callback because a text input holds only one, and catching a bad character
- * here rather than at the write is the difference between saying what is wrong
- * and reporting a failure the user cannot explain.
- */
-typedef struct FlipsoNameValidator FlipsoNameValidator;
-
-/**
- * @param current_name the card's name when renaming it, or "" when naming a new
- *                     one. Keeping that name is allowed, and so is changing
- *                     only its case, which the SD card's file system would
- *                     otherwise report as a clash with the card itself.
- */
-FlipsoNameValidator* flipso_name_validator_alloc(const char* current_name);
-void flipso_name_validator_free(FlipsoNameValidator* validator);
-
-/** The TextInputValidatorCallback; @p context is a FlipsoNameValidator. */
-bool flipso_name_validator(const char* text, FuriString* error, void* context);
-
-/** Current time as a Unix timestamp, from the Flipper's RTC. */
-uint32_t flipso_now(void);
+/** The current time, from the Flipper's RTC. */
+ItsoUnixTime flipso_now(void);
 
 /** The lookup tables and the time, for the screen builders in flipso_format.h. */
 FlipsoFormat flipso_format_context(const Flipso* app);

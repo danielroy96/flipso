@@ -12,10 +12,15 @@
  * contents are locked.
  *
  * This is the data model, kept free of the NFC stack so that it builds and is
- * tested on the host: flipso_reader.c fills it in, and flipso_format.c turns
+ * tested on the host: flipso_desfire_media.c fills it in, and flipso_format_media.c turns
  * it into the screen. Sizes are capped rather than grown, so a card with more
  * applications or files than we keep is reported as truncated rather than
  * silently shortened.
+ *
+ * The chip half is held for every DESFire, ITSO ones included - the Card screen
+ * shows it. The files of an application and what could be read of them are
+ * most of the size and only ever come from a card that is not an ITSO one, so
+ * they are a FlipsoMediaApp allocated when such a card's files are listed.
  */
 #pragma once
 
@@ -85,7 +90,7 @@ typedef struct {
     uint8_t comm; /**< MfDesfireFileCommunicationSettings. */
     uint16_t access; /**< Read / write / read-write / change key numbers. */
     bool settings_valid; /**< False when the card refused to describe the file. */
-    uint8_t data_offset; /**< Into FlipsoMedia::data. */
+    uint8_t data_offset; /**< Into FlipsoMediaApp::data. */
     uint8_t data_len; /**< 0 when nothing could be read without a key. */
     /* Shaped by the file type, as DESFire's own file settings are. */
     union {
@@ -104,6 +109,22 @@ typedef struct {
     };
 } FlipsoMediaFile;
 
+/** The application we looked inside: its files, and what of them had no key on them. */
+typedef struct {
+    uint32_t aid; /**< The application the files belong to. */
+    bool files_truncated;
+    uint8_t file_count;
+    FlipsoMediaFile files[FLIPSO_MEDIA_MAX_FILES];
+
+    uint8_t data[FLIPSO_MEDIA_MAX_DATA];
+    uint8_t data_len;
+} FlipsoMediaApp;
+
+/**
+ * What a DESFire said about itself. Zeroed storage is an empty one, and from
+ * then on flipso_media_reset() is what empties it, because it may own an
+ * application's files.
+ */
 typedef struct {
     /** False until a card has answered GetVersion. Nothing else is meaningful. */
     bool valid;
@@ -123,19 +144,20 @@ typedef struct {
     bool app_list_valid; /**< False when the card would not list them. */
     bool apps_truncated;
 
-    /** The application the files below belong to. */
-    uint32_t selected_aid;
-    bool has_files;
-    bool files_truncated;
-    uint8_t file_count;
-    FlipsoMediaFile files[FLIPSO_MEDIA_MAX_FILES];
-
-    uint8_t data[FLIPSO_MEDIA_MAX_DATA];
-    uint8_t data_len;
+    /** The application whose files the card listed; NULL when none was. */
+    FlipsoMediaApp* app;
 } FlipsoMedia;
 
-/** Forget the last card. */
+/** Forget the last card, releasing its application's files. */
 void flipso_media_reset(FlipsoMedia* media);
+
+/**
+ * Start describing application @p aid's files, emptying any described before.
+ *
+ * @return where they go, owned by @p media until the next reset; NULL when
+ *         there is no room for them.
+ */
+FlipsoMediaApp* flipso_media_open_app(FlipsoMedia* media, uint32_t aid);
 
 /** Record an application identifier, ignoring duplicates and overflow. */
 void flipso_media_add_app(FlipsoMedia* media, uint32_t aid);

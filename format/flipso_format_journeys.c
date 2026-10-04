@@ -4,6 +4,14 @@
  */
 #include "flipso_format_i.h"
 
+const ItsoTap* flipso_latest_tap(const ItsoCard* card) {
+    /* Newest first, so the first on-card record is the newest. */
+    for(uint8_t i = 0; i < card->tap_count; i++) {
+        if(card->taps[i].on_card) return &card->taps[i];
+    }
+    return NULL;
+}
+
 /** What a record was, "Tap out", which titles its page and its Technical entry. */
 static const char* flipso_tap_title(const ItsoTap* tap) {
     return itso_transaction_name(tap->transaction_type);
@@ -35,8 +43,8 @@ static void flipso_cat_tap(
     if(tap->has_entry) flipso_cat_datetime_line(out, "", "In", tap->entry_dts);
     flipso_cat_datetime_line(out, "", tap->has_entry ? "Out" : "When", tap->dts);
     if(tap->has_entry) {
-        uint32_t in = itso_dts_to_unix(tap->entry_dts);
-        uint32_t at = itso_dts_to_unix(tap->dts);
+        ItsoUnixTime in = itso_dts_to_unix(tap->entry_dts);
+        ItsoUnixTime at = itso_dts_to_unix(tap->dts);
         if(at > in && at - in < 86400) {
             uint32_t minutes = (at - in) / 60;
             if(minutes >= 60) {
@@ -106,7 +114,13 @@ static void flipso_cat_tap_technical(FuriString* out, const FlipsoFormat* f, con
     if(tap->has_entry_oid && tap->entry_iin_index) {
         furi_string_cat(out, "  Tapped in on: Another network\n");
     }
-    if(tap->has_entry) flipso_cat_machine(out, f, "  ", "Tap-in reader", tap->entry_isam);
+    /* The ENTRY group names the tap-in record by its own InstanceID - the ISAM
+     * that wrote it and that ISAM's sequence number (TS 1000-5 table 64) - as a
+     * product is named by its machine and sequence. */
+    if(tap->has_entry && tap->entry_isam) {
+        flipso_cat_machine(out, f, "  ", "Tap-in reader", tap->entry_isam);
+        furi_string_cat_printf(out, "    Sequence: %lu\n", (unsigned long)tap->entry_isam_seq);
+    }
     /* The record's own InstanceID: whose reader wrote this tap. */
     if(tap->has_writer) flipso_cat_machine(out, f, "  ", "Reader", tap->writer_isam);
     /* The network the machine that wrote it belongs to, where that is not

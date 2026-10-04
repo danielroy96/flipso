@@ -13,13 +13,13 @@ Every brief assumes the working rules in `CLAUDE.md` — in particular:
 
 - Screen text is built in `flipso_format*.c`, never in a scene, and follows the
   house style in `format/flipso_format.h` (`Label: Value`, capitalised values, indented
-  details that are themselves labelled, money as `£`). `tools/test/test_format.c`
+  details that are themselves labelled, money as `£`). `tools/test/screen_text/`
   enforces it on every screen of every demo card.
 - Every decoder change needs a case in `tools/test/`, usually a synthetic
   product in `tools/test/build_card.py`. Run `tools/test/run.sh` (ASan + UBSan).
 - Memory is the constraint: no large static tables, and `flipctl mem` before and
-  after anything structural. A decoded card allocates 672 bytes a product and
-  204 a journey, and the app leaves about 34 KB free at its scan screen.
+  after anything structural. A decoded card allocates 268 bytes a product and
+  128 a journey, and the app leaves about 31 KB free at its scan screen.
 - Verify on the device with the demo cards (`tools/demo/build_demo_cards.py`)
   and `flipctl shot`; only ask for a card tap after a green `flipctl arm`.
 - Remove the brief from this folder, and its row below, once the feature ships.

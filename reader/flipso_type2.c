@@ -3,6 +3,7 @@
  * @brief NFC Type 2 tag transport for ITSO CMD4, CMD9 and CMD10 (see flipso_type2.h).
  */
 #include "flipso_type2.h"
+#include "flipso_transport.h"
 
 #include <furi.h>
 #include <toolbox/bit_buffer.h>

@@ -60,15 +60,20 @@ a fresh launch (CLAUDE.md, "Memory is the constraint").
 
 ### 2. Architecture
 
-- `itso/` and `cards/flipso_capture.c` include no firmware header.
-- Screen text is built in `format/flipso_format*.c`, never in a scene.
-- New sources are listed by name in `application.fam`.
+- `itso/` and `cards/flipso_capture*.c` include no firmware header.
+- Screen text is built in `format/`, never in a scene.
+- New sources are listed in `application.fam` (a `dir/*.c` pattern covers one
+  directory, not its subdirectories) and in `tools/test/sources.py`.
+- One responsibility to a file: a medium or IPE type family in `itso/`, a
+  screen or kind of product in `format/`, a transport in `reader/`, a topic in
+  a test suite.
 - One thing in one place: a second copy of a table, a formatter or a lookup is
   a finding even when both copies are right today.
 
 When the user asks for architecture fixes, they want them refactor-only: no
-change to any screen. `tools/test/run.sh` passing with `test_format.c`
-unchanged is the evidence.
+change to any screen. `tools/test/run.sh` passing with `tools/test/screen_text/`
+unchanged is the evidence, and `tools/test/screens.py` printing every demo
+card identically before and after.
 
 ### 3. Screens - wording, pages and icons
 
@@ -126,6 +131,9 @@ reply each time.
   of every product. Technical is always last (2026-10-03).
 - **The railcard a ticket needs is page-1 information** on every ticket
   type; its percentage and code type stay on Technical (2026-10-02).
+- **The 1.8 KB a responsibility to a file costs** - calls between files are
+  not inlined, and a string used in several files is stored in each - is
+  accepted; CLAUDE.md records it (2026-10-04).
 - **Known log noise** (`ViewPort lockup`, `Incorrect BacklightEnforce use`)
   is not a finding - CLAUDE.md, "Known noise".
 

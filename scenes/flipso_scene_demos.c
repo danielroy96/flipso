@@ -38,7 +38,8 @@ void flipso_scene_demos_on_enter(void* context) {
     FlipsoMenuView* menu = app->menu_view;
 
     /* On the heap and only while the list is up: twenty names is more than
-     * the 4 KB stack should carry, and nothing needs them once a card is open. */
+     * the 4 KB stack should carry, and nothing needs them once a card is open.
+     * The list's rows are labelled with them in place. */
     if(!app->demos) app->demos = malloc(sizeof(FlipsoDemos));
     flipso_saved_demos(app->demos);
 
@@ -81,6 +82,8 @@ bool flipso_scene_demos_on_event(void* context, SceneManagerEvent event) {
 
 void flipso_scene_demos_on_exit(void* context) {
     Flipso* app = context;
+    /* The rows point into the names rather than copying them, so the list is
+     * emptied before the names go. */
     flipso_menu_view_reset(app->menu_view);
     free(app->demos);
     app->demos = NULL;

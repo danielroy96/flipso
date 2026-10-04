@@ -16,7 +16,7 @@
 #include <time.h>
 
 /** A DTS as a readable UTC timestamp, which is what a history is read by. */
-static const char* fmt_dts(uint32_t dts) {
+static const char* fmt_dts(ItsoDts dts) {
     static char buf[24];
     time_t when = (time_t)itso_dts_to_unix(dts);
     struct tm tm;
@@ -25,8 +25,8 @@ static const char* fmt_dts(uint32_t dts) {
     return buf;
 }
 
-/** A 14-bit DATE as a readable UTC day. */
-static const char* fmt_date(uint16_t date) {
+/** A DATE as a readable UTC day. */
+static const char* fmt_date(ItsoDate date) {
     static char buf[16];
     time_t when = (time_t)itso_date_to_unix(date);
     struct tm tm;
@@ -35,8 +35,16 @@ static const char* fmt_date(uint16_t date) {
     return buf;
 }
 
+/** A location's text, rendered into a buffer that lasts until the next call. */
+static const char* location_text(const ItsoLocation* loc) {
+    static char text[ITSO_LOC_LEN];
+    itso_location_text(loc, text, sizeof(text));
+    return text;
+}
+
 static void show_location(const char* label, const ItsoLocation* loc) {
-    if(loc->valid) printf("      %-12s %s (LocDefType %u)\n", label, loc->text, loc->def_type);
+    if(loc->valid)
+        printf("      %-12s %s (LocDefType %u)\n", label, location_text(loc), loc->def_type);
 }
 
 static void show_money(const char* label, const ItsoMoney* money) {
@@ -63,24 +71,31 @@ static void show_extras(const ItsoProduct* p, const uint8_t* group, size_t len, 
             (unsigned long)p->value_isam,
             itso_isam_oid(p->value_isam));
     if(p->has_cpicc) printf("      %-12s %u (0x%04X)\n", "CPICC", p->cpicc, p->cpicc);
-    if(p->has_holder_id) printf("      %-12s %lu\n", "holder ID", (unsigned long)p->holder_id);
-    if(p->has_secondary_holder)
-        printf("      %-12s %lu\n", "2nd holder", (unsigned long)p->secondary_holder_id);
-    if(p->language) {
+    if(itso_product_id(p)->has_holder_id)
+        printf("      %-12s %lu\n", "holder ID", (unsigned long)itso_product_id(p)->holder_id);
+    if(itso_product_id(p)->has_secondary_holder)
+        printf(
+            "      %-12s %lu\n",
+            "2nd holder",
+            (unsigned long)itso_product_id(p)->secondary_holder_id);
+    if(itso_product_id(p)->language) {
         char code[3];
         printf(
             "      %-12s %u = %s\n",
             "language",
-            p->language,
-            itso_language_code(p->language, code) ? code : "?");
+            itso_product_id(p)->language,
+            itso_language_code(itso_product_id(p)->language, code) ? code : "?");
     }
-    if(p->rounding) printf("      %-12s 0x%X\n", "rounding", p->rounding);
-    if(p->has_half_days) printf("      %-12s 0x%04X\n", "half days", p->half_days);
+    if(itso_product_id(p)->rounding)
+        printf("      %-12s 0x%X\n", "rounding", itso_product_id(p)->rounding);
+    if(itso_product_id(p)->has_half_days)
+        printf("      %-12s 0x%04X\n", "half days", itso_product_id(p)->half_days);
     if(p->has_deposit) show_money("deposit", &p->deposit);
-    if(p->has_shell_deposit) show_money("shell dep.", &p->shell_deposit);
+    if(itso_product_id(p)->has_shell_deposit)
+        show_money("shell dep.", &itso_product_id(p)->shell_deposit);
     if(p->has_passback && p->passback) printf("      %-12s %u min\n", "passback", p->passback);
 
-    const ItsoTicketTerms* t = &p->ticket;
+    const ItsoTicketTerms* t = itso_product_ticket(p);
     if(t->valid) {
         printf(
             "      %-12s flags 0x%04X, days 0x%02X, class %u, validity %u, promo %u\n",
@@ -115,7 +130,7 @@ static void show_extras(const ItsoProduct* p, const uint8_t* group, size_t len, 
     if(p->vgx_ref) {
         printf("      %-12s VGXRef %u\n", "extension", p->vgx_ref);
         ItsoCapping cap;
-        if(itso_parse_capping(group, len, sector, p->balance.currency, &cap)) {
+        if(itso_parse_capping(group, len, sector, itso_product_purse(p)->balance.currency, &cap)) {
             printf("      %-12s strategy %u\n", "capping", cap.strategy);
             for(int a = 0; a < ITSO_CAP_ACCUMULATORS; a++) {
                 const ItsoCapAccumulator* c = &cap.acc[a];
@@ -128,7 +143,7 @@ static void show_extras(const ItsoProduct* p, const uint8_t* group, size_t len, 
                     (long)c->uncapped.value,
                     c->day_count,
                     c->location.valid ? ", at " : "",
-                    c->location.valid ? c->location.text : "");
+                    c->location.valid ? location_text(&c->location) : "");
             }
         }
     }
@@ -195,10 +210,10 @@ int main(void) {
             itso_type2_frozen_pages(card.chip_lock));
         printf("  memory       %u bytes\n", card.chip_memory_len);
         printf("\nProducts\n  %u product(s)\n", card.product_count);
-        const ItsoSpaceSaving* ss = &card.space;
+        const ItsoSpaceSaving* ss = card.space;
         for(uint8_t p = 0; p < card.product_count; p++) {
             const ItsoProduct* product = &card.products[p];
-            const ItsoTicketTerms* t = &product->ticket;
+            const ItsoTicketTerms* t = itso_product_ticket(product);
             printf(
                 "  E%u  %s (TYP %u.%u), owner OID %u%s, %s\n",
                 product->dir_index,
@@ -221,7 +236,7 @@ int main(void) {
                     itso_isam_oid(product->isam_id),
                     (unsigned long)product->isam_seq,
                     product->key_id);
-            if(!product->space_saving) continue;
+            if(!product->space_saving || !ss) continue;
 
             if(t->issue_date) printf("      %-12s %s\n", "issued", fmt_date(t->issue_date));
             show_money("price paid", &t->amount_paid);
@@ -264,7 +279,7 @@ int main(void) {
                 printf(
                     "      %-12s %s (LocDefType %u)\n",
                     ss->usage_alighted ? "last off at" : "last on at",
-                    product->from.text,
+                    location_text(&product->from),
                     product->from.def_type);
             if(product->typ == ItsoTypCarnet) {
                 printf(
@@ -396,7 +411,7 @@ int main(void) {
             product->oid,
             product->oid_extended ? " (extended)" : "");
         printf("      %-12s %s\n", "status", itso_status_name(product->status));
-        show_money("balance", &product->balance);
+        show_money("balance", &itso_product_purse(product)->balance);
         show_location("from", &product->from);
         show_location("to", &product->to);
         /* Every value record, not only the live one: the others are what the
@@ -410,15 +425,16 @@ int main(void) {
                 record->ts,
                 itso_transaction_name(record->txn),
                 fmt_dts(record->dts));
-            if(record->amount.valid) {
-                char money[24];
-                itso_format_money(&record->amount, money, sizeof(money));
-                printf("  %s", money);
-            } else if(record->has_count) {
+            /* has_count first: the counter and the balance share their room. */
+            if(record->has_count) {
                 printf(
                     "  %s %lu",
                     itso_count_name(product->count_kind) ?: "count",
                     (unsigned long)record->count);
+            } else if(record->amount.valid) {
+                char money[24];
+                itso_format_money(&record->amount, money, sizeof(money));
+                printf("  %s", money);
             }
             printf("%s\n", v ? "" : "  <- live");
         }
@@ -434,9 +450,8 @@ int main(void) {
         for(uint8_t i = 0; i < card.tap_count; i++) {
             const ItsoTap* tap = &card.taps[i];
             printf(
-                "  tap %u%s: %s, DTS %u\n",
+                "  tap %u: %s, DTS %u\n",
                 i,
-                tap->latest ? " (latest)" : "",
                 itso_transaction_name(tap->transaction_type),
                 tap->dts);
             show_money("fare", &tap->amount);

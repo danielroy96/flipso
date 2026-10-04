@@ -625,6 +625,13 @@ Date encoding comes in two forms:
 - `DTS` is a 24-bit **two's complement** count of minutes from an epoch of
   2028-11-24 20:16, not an unsigned offset from 1997.
 
+In the decoder they are `ItsoDate` and `ItsoDts` (`itso/itso_types.h`), and
+what `itso_date_to_unix()` and `itso_dts_to_unix()` make of them is an
+`ItsoUnixTime` - seconds since 1970, as the Flipper's clock and a saved card's
+read time count. All three are plain integers, a DTS and a Unix time both 32
+bits, so the type a field or parameter is declared with is what says which it
+holds.
+
 ## Blocking
 
 Two different things in the shell are called "blocked", and they are read from
@@ -727,12 +734,16 @@ the rest. So every ISAM on a card names an operator, and Flipso shows it:
 - the **value record** header: whose machine last changed it;
 - the **Directory InstanceID** (TS 1000-2 table 8), after DIRS#: the last
   device to change anything on the card, which is how a London Freedom Pass
-  turns out to have been used on a Reading bus. Its KID and the shell's
-  iteration number INS# (which hotlists pair with the ISRN) are there too;
+  turns out to have been used on a Reading bus. Its KID - the version of the
+  key the directory's seal is made with - and the shell's iteration number
+  INS# (which hotlists pair with the ISRN) are shown with it;
 - each **journey record's own InstanceID** — a Transient Ticket Record is an
   Orphan IPE Data Group, so it carries one after its dataset: whose gate or bus
   took the tap. SWR's gates report OID 8160, in ITSO's reserved 8001–8191
-  range.
+  range;
+- a revision 4 record's **ENTRY group** (TS 1000-5 table 64): the ISAM and
+  sequence number of the tap-in record, so a tap out names the gate the holder
+  came in through.
 
 A value record that has never been written holds ISAM zero, which is not
 operator zero and is not shown.
@@ -746,6 +757,8 @@ and 2 (full), which SPT's Subway purse carries: a strategy code and four
 accumulator sets, each with its rule (day, n days, m days), what has been spent
 towards the cap, what the fares would have been uncapped, the day count of a
 multi-day cap, the last fare, and where and when the cap was last applied.
+Which of the two forms the card keeps is under Technical, since the reduced
+one has a single place for all four sets and no last fare.
 
 It is decoded when a screen asks for it rather than held in every product, since
 four locations make it bigger than anything else a product carries.
@@ -926,6 +939,18 @@ Locations are rendered from the encoding the card uses: rail NLC codes, NaPTAN
 and ATCO bus stop codes, zone numbers and bit maps, fare stages and service
 numbers. Rail codes are resolved to station names and bus stop codes to stop
 names, from the tables described above.
+
+A decoded location holds the card's own bytes, not its text: the LocDefType, the
+record's length, and the first 15 bytes of its body (`ItsoLocation`,
+`itso/itso_location.h`) - 19 bytes on the device where the rendered text and
+code took 45. A LOC1 may run to 255 bytes (TS 1000-1 clause 4.2.4.2.2), but no
+LocDefType's element is longer than nine (table 6, 216's) bar an over-long
+AtcoCode, whose first fifteen characters are shown; a 212's further stops are
+counted from the length. `itso_location_text()` and `itso_location_code()`
+render the text and the lookup code when a screen draws the line, so a card's
+twelve taps hold none of it. The one thing the bytes cannot say - that a fare
+stage on an SPT Subway ticket is a station - the decoder marks from the
+product's OID when it reads the place.
 
 LocDefType 216 carries a service number as well as a stop, so a resolved one
 reads `Route 42 at High Street (adj), Hulme`: the table names only the stop

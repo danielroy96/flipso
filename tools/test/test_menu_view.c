@@ -6,6 +6,7 @@
  * window sits after a wrap, whether a long label terminates - are tested here.
  * Rendering goes to an ASCII framebuffer so the layout can be eyeballed too.
  */
+#include "test.h"
 #include "flipso_menu_view.h"
 #include "flipso_glyphs.h"
 
@@ -13,13 +14,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-static int failures = 0;
-
-static void check(const char* what, int ok) {
-    printf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
-    if(!ok) failures++;
-}
 
 static const Icon icon_a = {10, 10, 'a'};
 /* The header's warning triangle, which is drawn beside the title rather than
@@ -262,10 +256,11 @@ int main(void) {
     /* --- A full list, which has to scroll. --- */
     flipso_menu_view_reset(menu);
     flipso_menu_view_set_header(menu, "Products");
-    char label[40];
+    /* One buffer a row: the list keeps the pointer, not a copy. */
+    static char labels[FLIPSO_MENU_MAX_ITEMS * 3][16];
     for(uint32_t i = 0; i < FLIPSO_MENU_MAX_ITEMS; i++) {
-        snprintf(label, sizeof(label), "Item %lu", (unsigned long)i);
-        flipso_menu_view_add_item(menu, label, &icon_a, 100 + i);
+        snprintf(labels[i], sizeof(labels[i]), "Item %lu", (unsigned long)i);
+        flipso_menu_view_add_item(menu, labels[i], &icon_a, 100 + i);
     }
     render(menu);
     show("a full list, top");
@@ -335,8 +330,8 @@ int main(void) {
      * past the end of the array. */
     flipso_menu_view_reset(menu);
     for(uint32_t i = 0; i < FLIPSO_MENU_MAX_ITEMS * 3; i++) {
-        snprintf(label, sizeof(label), "Over %lu", (unsigned long)i);
-        flipso_menu_view_add_item(menu, label, &icon_a, i);
+        snprintf(labels[i], sizeof(labels[i]), "Over %lu", (unsigned long)i);
+        flipso_menu_view_add_item(menu, labels[i], &icon_a, i);
     }
     for(int i = 0; i < 200; i++)
         press(menu, InputKeyDown, InputTypeShort);
@@ -346,8 +341,9 @@ int main(void) {
 
     flipso_menu_view_free(menu);
 
-    /* Copying into the fixed-size label, tag and header buffers: a two-byte
-     * pound sign straddling the cut goes whole or not at all. */
+    /* Copying into the fixed-size tag and header buffers, and a label into the
+     * one it is drawn from: a two-byte pound sign straddling the cut goes whole
+     * or not at all. */
     {
         char out[6];
         flipso_glyphs_copy(

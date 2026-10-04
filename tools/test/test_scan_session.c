@@ -3,16 +3,10 @@
  * tries the same one again, and what it concludes. Each case is the sequence of
  * reports a real card produces, fed through as the reader would feed them.
  */
+#include "test.h"
 #include "reader/flipso_scan_session.h"
 
 #include <stdio.h>
-
-static int failures = 0;
-
-static void check(const char* what, int ok) {
-    printf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
-    if(!ok) failures++;
-}
 
 /**
  * Feed @p reports through a fresh session. Each report goes to whichever
