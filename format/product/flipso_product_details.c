@@ -210,17 +210,12 @@ void flipso_cat_product_details(
     /* The status comes from where the card keeps the product - in use, blocked,
      * never used - not from whether it is still any good. A ticket still "in
      * use" by that measure can have run out of date or of rides, and saying
-     * "Active" beside "Expired" contradicts the line under it. Only the rides
-     * kinds count as used up at zero: a period ticket with no passes left in
-     * stock can still be in its current pass. */
+     * "Active" beside "Expired" contradicts the line under it, and so does
+     * "Active" above nothing left to travel on. */
     if(product->status == ItsoProductStatusActive && !itso_date_open(product->expiry) &&
        itso_date_expired(product->expiry, now)) {
         furi_string_cat(main, "Status: Expired\n");
-    } else if(
-        product->status == ItsoProductStatusActive &&
-        (product->count_kind == ItsoCountRides || product->count_kind == ItsoCountCoupons ||
-         product->count_kind == ItsoCountJourneys) &&
-        product->count == 0) {
+    } else if(product->status == ItsoProductStatusActive && flipso_product_used_up(product, now)) {
         furi_string_cat(main, "Status: Used up\n");
     } else if(product->status != ItsoProductStatusUnknown) {
         furi_string_cat_printf(main, "Status: %s\n", itso_status_name(product->status));

@@ -189,8 +189,15 @@ const char* flipso_product_title(const ItsoProduct* product);
 FlipsoIcon flipso_product_icon(const ItsoProduct* product);
 
 /**
- * The tag at the end of a product's row: "Off card", "Blocked", "Expired" or
- * "Unused", or NULL when the product is none of those.
+ * True when a product has nothing left to travel on: no rides, coupons or
+ * journeys left, or a period ticket with no passes in stock whose last pass
+ * has ended. Says nothing of the product's date, its status or its value.
+ */
+bool flipso_product_used_up(const ItsoProduct* product, ItsoUnixTime now);
+
+/**
+ * The tag at the end of a product's row: "Off card", "Blocked", "Expired",
+ * "Used up" or "Unused", or NULL when the product is none of those.
  */
 const char* flipso_product_tag(const ItsoProduct* product, ItsoUnixTime now);
 

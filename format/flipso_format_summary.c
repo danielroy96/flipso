@@ -5,14 +5,15 @@
 #include "flipso_format_i.h"
 
 /**
- * True when a product's summary line leads with its state - blocked, or
- * expired with the date - as flipso_summary_product() writes it.
+ * True when a product's summary line leads with its state - blocked, used
+ * up, or expired with the date - as flipso_summary_product() writes it.
  */
 static bool flipso_summary_states(const ItsoProduct* product, ItsoUnixTime now) {
     const ItsoPurseTerms* purse = itso_product_purse(product);
     const ItsoIdTerms* id = itso_product_id(product);
     if(product->status == ItsoProductStatusBlocked) return true;
     if(purse->balance.valid || id->has_entitlement) return false;
+    if(flipso_product_used_up(product, now)) return true;
     return !itso_date_open(product->expiry) && itso_date_expired(product->expiry, now);
 }
 
@@ -46,7 +47,12 @@ static void flipso_summary_product(
         furi_string_cat_printf(out, "%s: %s\n", title, what);
     } else {
         furi_string_cat_printf(out, "%s: ", title);
-        if(itso_date_open(product->expiry)) {
+        /* A date it is good until reads as a ticket still good, and an
+         * expired one is the more telling of the two. */
+        if(flipso_product_used_up(product, now) &&
+           (itso_date_open(product->expiry) || !itso_date_expired(product->expiry, now))) {
+            furi_string_cat(out, "Used up");
+        } else if(itso_date_open(product->expiry)) {
             furi_string_cat(out, "No expiry");
         } else {
             furi_string_cat(out, itso_date_expired(product->expiry, now) ? "Expired " : "Until ");
