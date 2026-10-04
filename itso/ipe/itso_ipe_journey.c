@@ -28,7 +28,7 @@ static void itso_parse_journey_terms(
     if(data[5] & 0x40) product->print_flags |= ITSO_PRINT_RECEIPT;
     product->passback = (uint8_t)itso_bits(data, 50, 6);
     product->has_passback = true;
-    t->issue_date = (uint16_t)itso_bits(data, 58, 14);
+    t->issue_date = (ItsoDate)itso_bits(data, 58, 14);
 
     /* Everything from ValidityCode on moves three bytes in revision 3. */
     const uint32_t shift = format_rev >= 3 ? 24 : 0;
@@ -142,7 +142,7 @@ void itso_ipe_journey_value(ItsoProduct* product, const uint8_t* newest) {
     if(product->format_rev >= 3) {
         /* Table 33b added an expiry for the unactivated rides; in revisions 1
          * and 2 these bytes are RFU and reading them would invent a date. */
-        ticket->stored_expiry = (uint16_t)itso_bits(newest, 106, 14);
+        ticket->stored_expiry = (ItsoDate)itso_bits(newest, 106, 14);
         ticket->has_stored_expiry = true;
     }
 }

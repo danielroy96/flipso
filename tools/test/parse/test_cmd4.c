@@ -104,16 +104,16 @@ void compact_shell(void) {
         itso_product_ticket(day)->adults == 1 && itso_product_ticket(day)->children == 0);
     check(
         "TYP 27 carries reference fare code 0",
-        card.space.area_kind == ItsoAreaFareCode && card.space.area_value == 0);
+        card.space->area_kind == ItsoAreaFareCode && card.space->area_value == 0);
     check(
         "TYP 27 flags: owner expiry time, all-day, standard",
-        (card.space.flags & ITSO_SS_EXPIRY_TIME) && !(card.space.flags & ITSO_SS_OFF_PEAK) &&
-            !(card.space.flags & ITSO_SS_FIRST_CLASS));
+        (card.space->flags & ITSO_SS_EXPIRY_TIME) && !(card.space->flags & ITSO_SS_OFF_PEAK) &&
+            !(card.space->flags & ITSO_SS_FIRST_CLASS));
     check("TYP 27 keeps its passback time", day->has_passback && day->passback == 7);
-    check("TYP 27 records a last use", card.space.has_last_use && card.space.last_use_dts != 0);
+    check("TYP 27 records a last use", card.space->has_last_use && card.space->last_use_dts != 0);
     check(
         "TYP 27 keeps both event codes",
-        card.space.has_events && card.space.event1 == 0 && card.space.event2 == 12);
+        card.space->has_events && card.space->event1 == 0 && card.space->event2 == 12);
 
     /* The compact shell's OID is the generic 8189, so the ticket's issuer - the
      * operator that titles it - is its product's owner. A full shell's is its own. */
@@ -192,8 +192,10 @@ void space_saving_types(void) {
     check("TYP 29 return cost GBP 3.30", itso_product_ticket(ret)->amount_paid.value == 330);
     check(
         "TYP 29 return last used getting off at stage 4",
-        ret->from.valid && ret->from.def_type == 202 && card.space.usage_alighted);
-    check("an SPT fare stage is named as its station", strcmp(ret->from.text, "Hillhead") == 0);
+        ret->from.valid && ret->from.def_type == 202 && card.space->usage_alighted);
+    check(
+        "an SPT fare stage is named as its station",
+        strcmp(loc_text(&ret->from), "Hillhead") == 0);
     check("TYP 29 revision 1 has no passback", !ret->has_passback);
 
     /* TYP 28: two passes used, two ticks left and the expiry-day pass, two
@@ -206,12 +208,12 @@ void space_saving_types(void) {
         carnet->count_kind == ItsoCountPasses && carnet->count == 3);
     check(
         "TYP 28 keeps the days its passes were used",
-        card.space.carnet_ticks[0] == 20 && card.space.carnet_ticks[1] == 10 &&
-            card.space.carnet_ticks[4] == 31);
+        card.space->carnet_ticks[0] == 20 && card.space->carnet_ticks[1] == 10 &&
+            card.space->carnet_ticks[4] == 31);
     check(
         "TYP 28 day-of-issue and day-of-expiry flags",
-        card.space.carnet_issue_day && card.space.carnet_expiry_day);
-    check("TYP 28 is off-peak only", card.space.flags & ITSO_SS_OFF_PEAK);
+        card.space->carnet_issue_day && card.space->carnet_expiry_day);
+    check("TYP 28 is off-peak only", card.space->flags & ITSO_SS_OFF_PEAK);
     check("TYP 28 cost GBP 20.00", itso_product_ticket(carnet)->amount_paid.value == 2000);
     check("TYP 28 keeps its passback", carnet->has_passback && carnet->passback == 5);
 
@@ -222,9 +224,9 @@ void space_saving_types(void) {
     check("TYP 29 revision 2 has seven journeys left", legs->count == 7);
     check(
         "TYP 29 revision 2 journey counters",
-        card.space.daily_journeys == 2 && card.space.max_daily_journeys == 4 &&
-            card.space.transfers == 1 && itso_product_ticket(legs)->max_transfers == 2);
-    check("TYP 29 revision 2 records when the journey began", card.space.journey_start_dts != 0);
+        card.space->daily_journeys == 2 && card.space->max_daily_journeys == 4 &&
+            card.space->transfers == 1 && itso_product_ticket(legs)->max_transfers == 2);
+    check("TYP 29 revision 2 records when the journey began", card.space->journey_start_dts != 0);
     check("TYP 29 revision 2 carries no price", !itso_product_ticket(legs)->amount_paid.valid);
     check("TYP 29 revision 2 has no usage place", !legs->from.valid);
 
@@ -266,52 +268,52 @@ void space_saving_types(void) {
     parse_type2_exact(&card, cmd4_fare_value, sizeof(cmd4_fare_value));
     check(
         "GeoValidity can be a fare value",
-        card.space.area_kind == ItsoAreaFareValue && card.space.area_value == 175);
+        card.space->area_kind == ItsoAreaFareValue && card.space->area_value == 175);
     parse_type2_exact(&card, cmd4_location, sizeof(cmd4_location));
     check(
         "GeoValidity can be a location, kept by its LocDefType",
-        card.space.area_kind == ItsoAreaLocation && card.space.area_value == 204);
+        card.space->area_kind == ItsoAreaLocation && card.space->area_value == 204);
     check(
         "a LOC4 zone map fills its origin slot with four zone bytes",
-        card.space.area[0].valid && strcmp(card.space.area[0].text, "Zones 1,2,3") == 0);
+        card.space->area[0].valid && strcmp(loc_text(&card.space->area[0]), "Zones 1,2,3") == 0);
     check(
         "and leaves its empty destination and via absent",
-        !card.space.area[1].valid && !card.space.area[2].valid);
+        !card.space->area[1].valid && !card.space->area[2].valid);
 
     parse_type2_exact(&card, cmd4_journey_area, sizeof(cmd4_journey_area));
     check(
         "AreaValidity as a LOC3 has both ends",
-        card.space.area_kind == ItsoAreaLocation && card.space.area_value == 203 &&
-            strcmp(card.space.area[0].text, "Station 1072") == 0 &&
-            strcmp(card.space.area[1].text, "Station 1444") == 0 &&
-            itso_location_code_kind(&card.space.area[1]) == ItsoLocCodeNlc);
-    check("a LOC3 has no via", !card.space.area[2].valid);
+        card.space->area_kind == ItsoAreaLocation && card.space->area_value == 203 &&
+            strcmp(loc_text(&card.space->area[0]), "Station 1072") == 0 &&
+            strcmp(loc_text(&card.space->area[1]), "Station 1444") == 0 &&
+            loc_kind(&card.space->area[1]) == ItsoLocCodeNlc);
+    check("a LOC3 has no via", !card.space->area[2].valid);
 
     parse_type2_exact(&card, cmd4_stage_area, sizeof(cmd4_stage_area));
     check(
         "a LOC3 fare stage's destination is on the origin's machine",
-        strcmp(card.space.area[0].text, "Fare stage 4 (6236160)") == 0 &&
-            strcmp(card.space.area[1].text, "Fare stage 9 (6236160)") == 0);
+        strcmp(loc_text(&card.space->area[0]), "Fare stage 4 (6236160)") == 0 &&
+            strcmp(loc_text(&card.space->area[1]), "Fare stage 9 (6236160)") == 0);
 
     /* ScaledQtyBackup (table 58b): a bit per m used, so it says what is left
      * to within m. */
     parse_type2_exact(&card, cmd4_return, sizeof(cmd4_return));
     check(
         "a Subway return's backup counts one ride, a bit to a ride",
-        card.space.has_backup && card.space.backup_step == 1 && card.space.backup_count == 1);
+        card.space->has_backup && card.space->backup_step == 1 && card.space->backup_count == 1);
     parse_type2_exact(&card, cmd4_backup_scaled, sizeof(cmd4_backup_scaled));
     check(
         "at ScalingFactor 4, ten left reads as up to twelve",
-        card.products[0].count == 10 && card.space.backup_step == 4 &&
-            card.space.backup_count == 12);
+        card.products[0].count == 10 && card.space->backup_step == 4 &&
+            card.space->backup_count == 12);
     parse_type2_exact(&card, cmd4_backup_torn, sizeof(cmd4_backup_torn));
     check(
         "a backup that disagrees is kept as it stands",
-        card.products[0].count == 1 && card.space.backup_count == 3);
+        card.products[0].count == 1 && card.space->backup_count == 3);
     parse_type2_exact(&card, cmd4_multileg, sizeof(cmd4_multileg));
     check(
         "revision 2 keeps its backup too",
-        card.space.has_backup && card.space.backup_count == card.products[0].count);
+        card.space->has_backup && card.space->backup_count == card.products[0].count);
     parse_type2_exact(&card, cmd4_carnet, sizeof(cmd4_carnet));
-    check("a carnet has no backup", !card.space.has_backup);
+    check("a carnet has no backup", !card.space->has_backup);
 }

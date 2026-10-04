@@ -40,6 +40,7 @@ int main(void) {
 
     printf("\n== Robustness ==\n");
     bus_stop_locations();
+    location_rendering();
     shell_reject_reasons();
     sector_chains();
     log_sectors();

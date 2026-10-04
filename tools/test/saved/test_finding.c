@@ -22,7 +22,7 @@ void finding(void) {
     check("the two test cards are different cards", strcmp(a, b) != 0);
 
     FuriString* found = furi_string_alloc();
-    uint32_t read_at = 0;
+    ItsoUnixTime read_at = 0;
     check("an empty folder holds no record", !flipso_saved_find(mine, found, &read_at));
 
     /* Somebody else's card, and a file that is not a card at all, both under

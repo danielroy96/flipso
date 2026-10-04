@@ -29,7 +29,7 @@
 #define FLIPSO_MENU_TAG_GAP         4
 
 typedef struct {
-    char label[FLIPSO_MENU_LABEL_LEN];
+    const char* label; /**< The caller's; see flipso_menu_view_add_item(). */
     char tag[FLIPSO_MENU_TAG_LEN]; /**< Empty for none. */
     const Icon* icon;
     uint32_t id;
@@ -260,7 +260,7 @@ FlipsoMenuView* flipso_menu_view_alloc(void) {
 
     instance->view = view_alloc();
     /* The model owns no pointers of its own, so view_free is enough to release
-     * it: labels are inline arrays and icons are const app data. */
+     * it: tags are inline arrays, and labels and icons are the caller's. */
     view_allocate_model(instance->view, ViewModelTypeLocking, sizeof(FlipsoMenuModel));
     view_set_context(instance->view, instance);
     view_set_draw_callback(instance->view, flipso_menu_view_draw);
@@ -349,9 +349,9 @@ void flipso_menu_view_add_tagged_item(
         {
             if(model->count < FLIPSO_MENU_MAX_ITEMS) {
                 FlipsoMenuItem* item = &model->items[model->count++];
-                /* Copied without splitting a UTF-8 sequence: a brand from the
-                 * user's operators file may hold one at the cut. */
-                flipso_glyphs_copy(item->label, sizeof(item->label), label);
+                item->label = label;
+                /* Copied without splitting a UTF-8 sequence, as the label is when
+                 * it is drawn. */
                 flipso_glyphs_copy(item->tag, sizeof(item->tag), tag ? tag : "");
                 item->icon = icon;
                 item->id = id;

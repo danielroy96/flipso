@@ -31,7 +31,8 @@ typedef enum {
 } ItsoLocStruct;
 
 /**
- * Decode one location record into readable text.
+ * Read one location record: its extent, and the bytes an ItsoLocation keeps of
+ * it for itso_location_text() and itso_location_code() to render.
  *
  * @param      data    start of the record (the LocDefType byte).
  * @param      avail   bytes remaining in the containing buffer.
@@ -132,7 +133,7 @@ void itso_parse_instance_id(
 
 /**
  * Decode a Space Saving IPE (TYP 27, 28 or 29) into @p product and
- * @c card->space.
+ * @c card->space, which is allocated for it.
  *
  * @param dataset ITSO_SPACE_SAVING_LEN bytes, reassembled into table 48's order.
  */

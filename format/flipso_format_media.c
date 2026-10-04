@@ -92,7 +92,7 @@ static void flipso_cat_file_right(FuriString* out, const char* label, uint8_t ke
 
 /** One file, as a page of its own titled with its number. */
 static void
-    flipso_cat_media_file(FuriString* out, const FlipsoMedia* media, const FlipsoMediaFile* file) {
+    flipso_cat_media_file(FuriString* out, const FlipsoMediaApp* app, const FlipsoMediaFile* file) {
     char title[12];
     snprintf(title, sizeof(title), "File %u", file->id);
     flipso_cat_page(out, FlipsoIconFile, title);
@@ -144,7 +144,7 @@ static void
             uint8_t run = (uint8_t)(file->data_len - i);
             if(run > 4) run = 4;
             furi_string_push_back(out, ' ');
-            flipso_cat_hex(out, media->data + file->data_offset + i, run);
+            flipso_cat_hex(out, app->data + file->data_offset + i, run);
         }
         furi_string_push_back(out, '\n');
     } else if(flipso_media_file_free_read(file)) {
@@ -195,22 +195,22 @@ void flipso_format_media(FuriString* out, const FlipsoMedia* media) {
     }
     if(media->apps_truncated) furi_string_cat(out, "More: Too many to list\n");
 
-    if(!media->has_files) return;
+    const FlipsoMediaApp* app = media->app;
+    if(!app) return;
 
     /* Which application the file pages after this one are from, named where
      * we can: the list above has already paired the name with its number. */
-    const char* app = flipso_media_app_name(media->selected_aid);
-    if(app) {
-        furi_string_cat_printf(out, "Files read from: %s\n", app);
+    const char* name = flipso_media_app_name(app->aid);
+    if(name) {
+        furi_string_cat_printf(out, "Files read from: %s\n", name);
     } else {
-        furi_string_cat_printf(
-            out, "Files read from: %06lX\n", (unsigned long)media->selected_aid);
+        furi_string_cat_printf(out, "Files read from: %06lX\n", (unsigned long)app->aid);
     }
-    if(media->file_count == 0) furi_string_cat(out, "Files: None listed\n");
-    if(media->files_truncated) furi_string_cat(out, "More files: Too many to list\n");
+    if(app->file_count == 0) furi_string_cat(out, "Files: None listed\n");
+    if(app->files_truncated) furi_string_cat(out, "More files: Too many to list\n");
 
-    for(uint8_t i = 0; i < media->file_count; i++) {
-        flipso_cat_media_file(out, media, &media->files[i]);
+    for(uint8_t i = 0; i < app->file_count; i++) {
+        flipso_cat_media_file(out, app, &app->files[i]);
     }
 }
 

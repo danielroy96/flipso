@@ -16,12 +16,12 @@ extern "C" {
 struct ItsoCard {
     /* --- ITSO Shell Environment Data Group (TS 1000-2 clause 4) --- */
     bool shell_valid;
-    ItsoShellReject shell_reject; /**< Which test rejected the shell, if one did. */
+    ItsoShellVerdict shell_reject; /**< Accepted, or which test rejected the shell. */
     char isrn[ITSO_ISRN_DIGITS + 1]; /**< 18-digit card number, IIN+OID+ISSN+check. */
     bool isrn_check_ok; /**< Luhn check digit verifies. */
     uint32_t iin; /**< Issuer Identification Number as a decimal value. */
     uint16_t oid; /**< Shell owner. */
-    uint16_t expiry; /**< Raw DATE. */
+    ItsoDate expiry; /**< EXP, the shell's expiry. */
     uint8_t format_rev; /**< ShellFormatRevision. */
     /** Format Version Code, the media definition: 2 = ISO 7816 CMD2, 4 = Ultralight
      *  CMD4, 7 = DESFire CMD7, 9 = NTAG CMD9, 10 = Ultralight EV1 CMD10, 12 = CMD12. */
@@ -56,7 +56,11 @@ struct ItsoCard {
      */
     bool chip_abacus_valid;
     uint8_t chip_abacus;
+    /** KSC, Key Strategy Code (TS 1000-2 clause 4.1.6): which security algorithm
+     *  guards the data groups on a card of this FVC. */
     uint8_t ksc;
+    /** KVC, Key-set Version Code (clause 4.1.7): which version of that strategy's
+     *  key set the card was issued with. */
     uint8_t kvc;
     uint8_t shell_len; /**< ShellLength, in blocks of ITSO_SHELL_BLOCK_LEN. */
 
@@ -76,8 +80,12 @@ struct ItsoCard {
     uint8_t sector_count; /**< S */
     uint8_t dir_entries; /**< e# */
     uint8_t sct_len; /**< SCTL */
+    /** ShellBitMap bit 1: the shell carries an MCRN (TS 1000-2 table 3). */
     bool mcrn_present;
-    char mcrn[21];
+    /** MCRN, the Multi-application Card Reference Number (clause 4.1.13): a copy
+     *  of the number the issuer of a multi-application card gave the card the
+     *  shell is installed on. The digits, up to the F that ends them. */
+    char mcrn[ITSO_MCRN_DIGITS + 1];
 
     /* --- Directory Data Group (TS 1000-2 clause 5) --- */
     bool dir_valid;
@@ -96,7 +104,7 @@ struct ItsoCard {
     bool log_normal_mode; /**< LPF: normal mode references a transient ticket record. */
     uint8_t log_ptr; /**< Directory entry of the product used on the last tap. */
     uint8_t log_eei; /**< Entry/exit indicator: 0 = outside a closed system. */
-    uint32_t log_dts;
+    ItsoDts log_dts;
     uint8_t log_record_offset; /**< RO: next record to be written. */
     uint8_t log_passback; /**< PTLBM, minutes. */
 
@@ -104,18 +112,24 @@ struct ItsoCard {
      * dropped since a file was written - so a screen that walks the array in
      * order shows the card before it shows the card's past.
      *
-     * Allocated to fit: 672 bytes a product, and the cap is 20 while a real card
-     * carries five or six, so a fixed array spent most of the card's memory on
-     * slots nothing filled. The card owns it - see itso_card_init(). */
+     * Allocated to fit: 268 bytes a product on the device, and the cap is
+     * ITSO_MAX_CARD_PRODUCTS while a real card carries five or six, so a fixed
+     * array spent most of the card's memory on slots nothing filled. Each
+     * product's value records are allocated to fit behind it in turn. The card
+     * owns both - see itso_card_init() - and every slot up to
+     * @c product_capacity is either zeroed or a product whose history it owns,
+     * which is what lets a reset free them all. */
     ItsoProduct* products;
     uint8_t product_count;
     uint8_t product_capacity; /**< Slots allocated behind @c products. */
 
-    /** The Space Saving IPE's own elements, when products[0].space_saving. */
-    ItsoSpaceSaving space;
+    /** The Space Saving IPE's own elements, for the product whose @c space_saving
+     *  is set; NULL on any other card. Only a paper ticket has one, so it is
+     *  allocated when one decodes rather than carried by every card. */
+    ItsoSpaceSaving* space;
 
-    /* Newest first. Allocated to fit, like @c products: twelve slots of 204
-     * bytes is the cap, and a card straight off the reader has four at most. */
+    /* Newest first. Allocated to fit, like @c products: ITSO_MAX_TAPS slots of
+     * 128 bytes is the cap, and a card straight off the reader has four at most. */
     ItsoTap* taps;
     uint8_t tap_count;
     uint8_t tap_capacity; /**< Slots allocated behind @c taps. */
@@ -126,16 +140,18 @@ struct ItsoCard {
  * already. A card in zeroed storage - static, calloc'd, or `= {0}` - starts that
  * way without this.
  *
- * The products and taps arrays are the things an ItsoCard owns, which is what
- * makes the distinction matter: every other entry point may free them.
+ * The products and taps arrays, each product's value history, and a paper
+ * ticket's @c space are the things an ItsoCard owns, which is what makes the
+ * distinction matter: every other entry point may free them.
  */
 void itso_card_init(ItsoCard* card);
 
 /**
- * Empty @p card for the next decode, releasing its products and taps.
+ * Empty @p card for the next decode, releasing its products, their value
+ * histories, its taps and its space.
  *
  * @p card must be initialised - see itso_card_init(). A card copied by struct
- * assignment shares both arrays with the original, so reset only one of them.
+ * assignment shares all of them with the original, so reset only one of them.
  */
 void itso_card_reset(ItsoCard* card);
 
@@ -143,8 +159,9 @@ void itso_card_reset(ItsoCard* card);
 void itso_card_free(ItsoCard* card);
 
 /**
- * True when two cards decoded to the same thing: every field, and the products
- * and taps themselves rather than where they happen to be allocated.
+ * True when two cards decoded to the same thing: every field, and the products,
+ * their value records, the taps and space themselves rather than where they
+ * happen to be allocated.
  */
 bool itso_card_equal(const ItsoCard* a, const ItsoCard* b);
 

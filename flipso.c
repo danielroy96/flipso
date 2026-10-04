@@ -41,7 +41,7 @@ const NotificationSequence flipso_sequence_deleted = {
     NULL,
 };
 
-uint32_t flipso_now(void) {
+ItsoUnixTime flipso_now(void) {
     DateTime now;
     furi_hal_rtc_get_datetime(&now);
     return datetime_datetime_to_timestamp(&now);
@@ -198,7 +198,7 @@ static Flipso* flipso_alloc(void) {
     app->reader = flipso_reader_alloc();
     app->capture = flipso_capture_alloc();
     app->loaded_path = furi_string_alloc();
-    app->save_path = furi_string_alloc();
+    app->save.path = furi_string_alloc();
     app->operators = flipso_operators_alloc();
     app->stations = flipso_stations_alloc();
     app->naptan = flipso_naptan_alloc();
@@ -216,8 +216,9 @@ static void flipso_free(Flipso* app) {
     flipso_reader_free(app->reader);
     flipso_capture_free(app->capture);
     itso_card_free(&app->card);
+    flipso_media_reset(&app->media);
     furi_string_free(app->loaded_path);
-    furi_string_free(app->save_path);
+    furi_string_free(app->save.path);
     flipso_operators_free(app->operators);
     flipso_stations_free(app->stations);
     flipso_naptan_free(app->naptan);

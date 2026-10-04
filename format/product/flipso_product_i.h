@@ -147,7 +147,7 @@ bool flipso_decode_reservation(
     ItsoReservation* res);
 
 /** One portion of a reserved journey: "Outward: 01/10/2026 to 31/10/2026". */
-void flipso_cat_portion(FuriString* out, const char* label, uint32_t from_dts, uint16_t days);
+void flipso_cat_portion(FuriString* out, const char* label, ItsoDts from_dts, uint16_t days);
 
 /** What NumberOfJourneysSold buys, given ProductTypeEncoding. */
 void flipso_cat_sold_as(FuriString* out, const ItsoTicketTerms* t);

@@ -119,8 +119,9 @@ void full_shell_type2(void) {
     /* The log: T0 in sector 2, T1 in sector 3, RO 0 so T1 is newest. */
     check("CMD9 log has both records", card.tap_count == 2);
     check(
-        "CMD9 newest tap is T1",
-        card.taps[0].latest && card.taps[0].transaction_type == 11 && !card.taps[1].latest);
+        "CMD9 newest tap is T1, listed first",
+        card.taps[0].transaction_type == 11 &&
+            itso_dts_to_unix(card.taps[0].dts) > itso_dts_to_unix(card.taps[1].dts));
 
     /* A torn transaction: TS#4 sits in the previous copy, but the directory still
      * names copy B first, so B's TS#3 is live and TS#4 is not history at all. */

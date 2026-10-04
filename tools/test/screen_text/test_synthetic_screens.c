@@ -49,6 +49,9 @@ void synthetic_screens(const FlipsoFormat* f, const ItsoCard* card, FuriString* 
     check("the card number is grouped", shows(text, "633597 1234 0012 3458"));
     check("the checksum is stated", shows(text, "Checksum: Correct"));
     check("the card type is named", shows(text, "Card type: DESFire (CMD7)"));
+    check(
+        "the directory's seal key version is under Technical",
+        technical(text, "Directory seal key version: 1\n"));
     check("no saved card section for a card just read", !shows(text, "Saved card"));
 
     furi_string_reset(text);

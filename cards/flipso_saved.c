@@ -235,7 +235,7 @@ static bool flipso_saved_peek(Stream* stream, FlipsoCapture* scratch, char* isrn
     return ours && flipso_capture_card_number(scratch, isrn);
 }
 
-bool flipso_saved_find(const FlipsoCapture* capture, FuriString* path, uint32_t* read_at) {
+bool flipso_saved_find(const FlipsoCapture* capture, FuriString* path, ItsoUnixTime* read_at) {
     furi_assert(capture);
     furi_assert(path);
 

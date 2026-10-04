@@ -52,7 +52,7 @@ FlipsoIcon flipso_product_icon(const ItsoProduct* product) {
     }
 }
 
-const char* flipso_product_tag(const ItsoProduct* product, uint32_t now) {
+const char* flipso_product_tag(const ItsoProduct* product, ItsoUnixTime now) {
     /* Off the card comes first, because it is the one thing not true of the
      * card in front of the user: whether it was blocked or expired when it
      * left is the detail screen's to tell - it is history either way. */
@@ -194,7 +194,7 @@ void flipso_cat_ticket_state(
     FuriString* out,
     const char* label,
     const ItsoCard* card,
-    uint32_t now) {
+    ItsoUnixTime now) {
     if(!card->product_count) {
         furi_string_cat_printf(out, "%s: No ticket on it\n", label);
         return;

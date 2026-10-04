@@ -270,11 +270,11 @@ static bool flipso_capture_type2_identity(const FlipsoCapture* capture, char* ou
     return n == ITSO_ISRN_DIGITS;
 }
 
-uint32_t flipso_capture_time(const FlipsoCapture* capture) {
+ItsoUnixTime flipso_capture_time(const FlipsoCapture* capture) {
     return capture ? capture->timestamp : 0;
 }
 
-void flipso_capture_set_time(FlipsoCapture* capture, uint32_t timestamp) {
+void flipso_capture_set_time(FlipsoCapture* capture, ItsoUnixTime timestamp) {
     if(capture) capture->timestamp = timestamp;
 }
 

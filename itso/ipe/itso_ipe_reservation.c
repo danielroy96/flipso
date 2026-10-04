@@ -257,10 +257,7 @@ bool itso_parse_reservation_dataset(const uint8_t* data, size_t len, ItsoReserva
     if(pos == 0) return false;
     out->valid = true;
 
-    if(bitmap & (1 << 2)) {
-        out->has_options = true;
-        pos = itso_t24_options(data, end, pos, out);
-    }
+    if(bitmap & (1 << 2)) pos = itso_t24_options(data, end, pos, out);
     /* PaxDetail comes after every optional group (table 136), so a group that
      * overran leaves it nowhere to be found. */
     if((bitmap & (1 << 1)) && itso_t24_fits(out, pos, 21, end)) {

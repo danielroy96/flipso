@@ -112,8 +112,8 @@ void flipso_desfire_describe(MfDesfirePoller* poller, FlipsoMedia* media, Flipso
 
 /** Read as much of one file as its access rights and the budget allow. */
 static void
-    flipso_read_media_data(FlipsoMedia* media, MfDesfirePoller* poller, FlipsoMediaFile* out) {
-    size_t budget = FLIPSO_MEDIA_MAX_DATA - media->data_len;
+    flipso_read_media_data(FlipsoMediaApp* app, MfDesfirePoller* poller, FlipsoMediaFile* out) {
+    size_t budget = FLIPSO_MEDIA_MAX_DATA - app->data_len;
     if(budget > FLIPSO_MEDIA_FILE_BYTES) budget = FLIPSO_MEDIA_FILE_BYTES;
     if(budget == 0) return;
 
@@ -150,10 +150,10 @@ static void
         size_t len = simple_array_get_count(data.data);
         if(len > budget) len = budget;
         if(len) {
-            memcpy(media->data + media->data_len, simple_array_cget_data(data.data), len);
-            out->data_offset = media->data_len;
+            memcpy(app->data + app->data_len, simple_array_cget_data(data.data), len);
+            out->data_offset = app->data_len;
             out->data_len = (uint8_t)len;
-            media->data_len += (uint8_t)len;
+            app->data_len += (uint8_t)len;
         }
     }
 
@@ -162,10 +162,10 @@ static void
 
 /** Record one file: its settings, and its contents if it has no key on them. */
 static void
-    flipso_read_media_file(FlipsoMedia* media, MfDesfirePoller* poller, MfDesfireFileId fid) {
-    if(media->file_count >= FLIPSO_MEDIA_MAX_FILES) return;
+    flipso_read_media_file(FlipsoMediaApp* app, MfDesfirePoller* poller, MfDesfireFileId fid) {
+    if(app->file_count >= FLIPSO_MEDIA_MAX_FILES) return;
 
-    FlipsoMediaFile* out = &media->files[media->file_count++];
+    FlipsoMediaFile* out = &app->files[app->file_count++];
     memset(out, 0, sizeof(*out));
     out->id = fid;
 
@@ -203,7 +203,7 @@ static void
         break;
     }
 
-    if(flipso_media_file_free_read(out)) flipso_read_media_data(media, poller, out);
+    if(flipso_media_file_free_read(out)) flipso_read_media_data(app, poller, out);
 }
 
 /** List an application's files and describe each one. */
@@ -215,18 +215,19 @@ static void flipso_read_media_app(
     if(mf_desfire_poller_select_application(poller, aid) != MfDesfireErrorNone) return;
 
     SimpleArray* file_ids = simple_array_alloc(&simple_array_config_uint8_t);
+    FlipsoMediaApp* app = NULL;
     if(mf_desfire_poller_read_file_ids(poller, file_ids) == MfDesfireErrorNone) {
-        media->has_files = true;
-        media->selected_aid = aid_value;
-
+        app = flipso_media_open_app(media, aid_value);
+    }
+    if(app) {
         uint32_t count = simple_array_get_count(file_ids);
         if(count > FLIPSO_MEDIA_MAX_FILES) {
             count = FLIPSO_MEDIA_MAX_FILES;
-            media->files_truncated = true;
+            app->files_truncated = true;
         }
         for(uint32_t i = 0; i < count; i++) {
             const uint8_t* fid = simple_array_cget(file_ids, i);
-            flipso_read_media_file(media, poller, *fid);
+            flipso_read_media_file(app, poller, *fid);
         }
     }
     simple_array_free(file_ids);

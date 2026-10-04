@@ -18,7 +18,17 @@
 /* --- test_parse_util.c --- */
 
 /** "2026-09-14 08:41" for a Unix time, in UTC; the buffer is reused per call. */
-const char* fmt_unix(uint32_t t);
+const char* fmt_unix(ItsoUnixTime t);
+
+/**
+ * A location's text and code, rendered as a screen would render them. Each
+ * returns one of a few buffers in turn, so several may be held at once.
+ */
+const char* loc_text(const ItsoLocation* loc);
+const char* loc_code(const ItsoLocation* loc);
+
+/** Which register loc_code()'s code is a key into. */
+ItsoLocCodeKind loc_kind(const ItsoLocation* loc);
 
 /** Print a location under @p label, when there is one. */
 void dump_location(const char* label, const ItsoLocation* loc);
@@ -26,6 +36,9 @@ void dump_location(const char* label, const ItsoLocation* loc);
 /**
  * Decode one IPE group of type @p typ from an exact-length heap copy of @p src
  * into @p p, so that an over-read is the sanitiser's to catch.
+ *
+ * @p p is zeroed or what an earlier call left, whose value history this
+ * releases; release the last with itso_product_free().
  */
 void parse_group(ItsoProduct* p, uint8_t typ, bool vgp, const uint8_t* src, size_t len);
 
@@ -60,6 +73,7 @@ void spec_review_fields(void); /* test_spec_review.c */
 void reservation_ticket(void); /* test_reservation.c */
 void rail_profile(void); /* test_rail_profile.c */
 void bus_stop_locations(void); /* test_locations.c */
+void location_rendering(void);
 
 /* --- Hostile input: test_robustness.c --- */
 

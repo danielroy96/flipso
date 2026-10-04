@@ -1,6 +1,7 @@
 /**
  * @file itso_location.c
- * @brief Location records (TS 1000-1 clause 4.2.4) rendered as text, and the
+ * @brief Location records (TS 1000-1 clause 4.2.4): kept as the card stored
+ * them, rendered as text and a lookup code when a screen shows one, and the
  * station a rail retailer code names.
  */
 #include "itso_i.h"
@@ -86,40 +87,64 @@ static bool itso_all_digits(const char* text) {
 /**
  * Record a code a national register could name, along with which register.
  *
- * Anything that does not fit ItsoLocation::code is dropped rather than
+ * Anything longer than ITSO_LOC_CODE_LEN allows is dropped rather than
  * truncated: half an AtcoCode would find the wrong stop, whereas no code at all
  * falls back to the rendered text, which is merely less helpful.
+ *
+ * @return @p of, or ItsoLocCodeNone when the code was dropped.
  */
-static void itso_note_code(char* code, uint8_t* kind, ItsoLocCodeKind of, const char* value) {
+static ItsoLocCodeKind
+    itso_note_code(char* code, size_t code_len, ItsoLocCodeKind of, const char* value) {
     size_t length = strlen(value);
-    if(length == 0 || length >= ITSO_LOC_CODE_LEN) return;
+    if(length == 0 || length >= ITSO_LOC_CODE_LEN || length >= code_len) return ItsoLocCodeNone;
     memcpy(code, value, length + 1);
-    *kind = (uint8_t)of;
+    return of;
 }
 
 /**
- * Render a location body (everything after the tag and optional length byte).
- * @param body  first byte of the location element.
- * @param n     bytes of body available.
+ * Render a location as text, and as the code a register could name it by.
+ *
+ * Both come out of one pass because they come out of the same fields; each
+ * caller wants one, and gives the other a buffer on its stack.
+ *
+ * @param code @p code_len bytes; left empty when there is no code, or none
+ *             that fits.
+ * @return     which register @p code is a key into.
  */
-static void itso_render_location(
-    uint8_t def_type,
-    const uint8_t* body,
-    size_t n,
+static ItsoLocCodeKind itso_render_location(
+    const ItsoLocation* location,
     char* out,
     size_t len,
     char* code,
-    uint8_t* code_kind) {
+    size_t code_len) {
+    const uint8_t def_type = location->def_type;
+    const uint8_t* body = location->body;
+    /* The bytes of body there are to read. A LOC1 may claim more than are kept,
+     * but no LocDefType reads past ITSO_LOC_BODY_LEN, so only a 212's count of
+     * further stops needs the length itself. */
+    const size_t n = location->length < ITSO_LOC_BODY_LEN ? location->length : ITSO_LOC_BODY_LEN;
+    ItsoLocCodeKind kind = ItsoLocCodeNone;
     /* Sized so the compiler can prove every snprintf below fits in ITSO_LOC_LEN. */
     char scratch[16]; /* NLC, zone list, stop code */
     char service[6]; /* four SNCODE characters plus terminator */
     out[0] = '\0';
+    code[0] = '\0';
 
     switch(def_type) {
     case 202: /* Bus fare stage type 1: 3-byte machine number, 1-byte stage. */
         if(n >= 4) {
-            snprintf(
-                out, len, "Fare stage %u (%lu)", body[3], (unsigned long)itso_bits(body, 0, 24));
+            const char* station = location->subway_station ? itso_spt_subway_station(body[3]) :
+                                                             NULL;
+            if(station) {
+                snprintf(out, len, "%s", station);
+            } else {
+                snprintf(
+                    out,
+                    len,
+                    "Fare stage %u (%lu)",
+                    body[3],
+                    (unsigned long)itso_bits(body, 0, 24));
+            }
         }
         break;
 
@@ -127,7 +152,7 @@ static void itso_render_location(
         if(n >= 4) {
             itso_copy_ascii(body, 4, scratch, sizeof(scratch));
             snprintf(out, len, "Station %s", scratch);
-            itso_note_code(code, code_kind, ItsoLocCodeNlc, scratch);
+            kind = itso_note_code(code, code_len, ItsoLocCodeNlc, scratch);
         }
         break;
 
@@ -157,7 +182,7 @@ static void itso_render_location(
             itso_bcd(body, 0, 8, scratch);
             snprintf(out, len, "Stop %s", scratch);
             if(itso_all_digits(scratch)) {
-                itso_note_code(code, code_kind, ItsoLocCodeNaptan, scratch);
+                kind = itso_note_code(code, code_len, ItsoLocCodeNaptan, scratch);
             }
         }
         break;
@@ -175,7 +200,7 @@ static void itso_render_location(
             if(country == 0x070) {
                 snprintf(out, len, "Station %s", scratch);
                 /* Only UK codes index the station table. */
-                itso_note_code(code, code_kind, ItsoLocCodeNlc, scratch);
+                kind = itso_note_code(code, code_len, ItsoLocCodeNlc, scratch);
             } else {
                 snprintf(out, len, "Station %.4s (country %.3s)", scratch, country_digits);
             }
@@ -202,7 +227,7 @@ static void itso_render_location(
         itso_copy_ascii(body, n, scratch, sizeof(scratch));
         if(scratch[0]) {
             snprintf(out, len, "Stop %s", scratch);
-            itso_note_code(code, code_kind, ItsoLocCodeAtco, scratch);
+            kind = itso_note_code(code, code_len, ItsoLocCodeAtco, scratch);
         }
         break;
 
@@ -210,7 +235,7 @@ static void itso_render_location(
                * count the rest (TS 1000-1 clause 4.2.4.3.13). */
         if(n >= 4) {
             itso_bcd(body, 0, 8, scratch);
-            size_t others = n / 4 - 1;
+            uint8_t others = itso_location_more(location);
             if(others > 0) {
                 /* Bounded for the compiler as the data bounds it: eight digits,
                  * and at most 62 others in a 255-byte body. */
@@ -219,7 +244,7 @@ static void itso_render_location(
                 snprintf(out, len, "Stop %s", scratch);
             }
             if(itso_all_digits(scratch)) {
-                itso_note_code(code, code_kind, ItsoLocCodeNaptan, scratch);
+                kind = itso_note_code(code, code_len, ItsoLocCodeNaptan, scratch);
             }
         }
         break;
@@ -235,7 +260,7 @@ static void itso_render_location(
              * before it has to read correctly on its own. */
             snprintf(out, len, "Route %s@%s", service, stop);
             if(itso_all_digits(stop)) {
-                itso_note_code(code, code_kind, ItsoLocCodeNaptan, stop);
+                kind = itso_note_code(code, code_len, ItsoLocCodeNaptan, stop);
             }
         }
         break;
@@ -263,6 +288,19 @@ static void itso_render_location(
     }
 
     if(out[0] == '\0') snprintf(out, len, "Unknown location (type %u)", def_type);
+    return kind;
+}
+
+void itso_location_text(const ItsoLocation* location, char* out, size_t len) {
+    if(len == 0) return;
+    char code[ITSO_LOC_CODE_LEN];
+    itso_render_location(location, out, len, code, sizeof(code));
+}
+
+ItsoLocCodeKind itso_location_code(const ItsoLocation* location, char* out, size_t len) {
+    if(len == 0) return ItsoLocCodeNone;
+    char text[ITSO_LOC_LEN];
+    return itso_render_location(location, text, sizeof(text), out, len);
 }
 
 size_t itso_parse_location(
@@ -297,11 +335,9 @@ size_t itso_parse_location(
     /* Type 255 is the documented "no location here" marker; treat it as absent
      * so the UI can skip the row rather than printing a placeholder. */
     out->valid = (def_type != 255);
-    itso_render_location(
-        def_type, body, body_len, out->text, sizeof(out->text), out->code, &out->code_kind);
-    /* The count the text above already carries, kept apart for a screen that
-     * replaces the first stop's code with its name (TS 1000-1 4.2.4.3.13). */
-    if(def_type == 212 && body_len >= 8) out->more = (uint8_t)(body_len / 4 - 1);
+    /* A LOC1's length is one byte and a LOC2's body six, so either fits. */
+    out->length = (uint8_t)body_len;
+    memcpy(out->body, body, body_len < ITSO_LOC_BODY_LEN ? body_len : ITSO_LOC_BODY_LEN);
     return consumed;
 }
 

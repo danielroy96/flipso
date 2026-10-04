@@ -32,8 +32,10 @@ Fare paid
   `product->value_history[0]` and is shown as the headline balance, not in the
   history — its amount belongs on the "Last transaction" line
   (`flipso_cat_last_transaction()`).
-- `itso/ipe/itso_product.h`: `ItsoValueRecord` — `amount` (balance after, `ItsoMoney`),
-  `count` / `has_count` (rides, passes, points), `ts` (the 12-bit TS#), `dts`.
+- `itso/ipe/itso_product.h`: `ItsoValueRecord` — `amount` (balance after, `ItsoMoney`)
+  or `count` (rides, passes, points), sharing a union with `has_count` saying
+  which, `ts` (the 12-bit TS#), `dts`. A product's records are allocated to fit
+  (`value_history`, `value_history_count`).
 - `product->balance_is_spend` is set for TYP 4 (charge to account): the amount
   counts *up*, so a positive difference is spend, not a top-up.
 

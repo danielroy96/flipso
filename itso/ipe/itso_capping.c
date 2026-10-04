@@ -41,7 +41,7 @@ bool itso_parse_capping(
     for(uint8_t a = 0; a < ITSO_CAP_ACCUMULATORS; a++) {
         ItsoCapAccumulator* acc = &out->acc[a];
         const size_t base = 4 + a * stride;
-        acc->rule = v[base] >> 4;
+        acc->rule = (ItsoCapRule)(v[base] >> 4);
         size_t amounts;
         if(ref == 1) {
             acc->last_txn = v[base] & 0x0F;

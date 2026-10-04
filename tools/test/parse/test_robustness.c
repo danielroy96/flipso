@@ -83,6 +83,7 @@ void robustness(void) {
                     pr.value_group = true;
                     /* Sector size 0 as well: the value group offset divides by it. */
                     itso_parse_ipe(&pr, body, avail, (uint8_t)(avail % 17));
+                    itso_product_free(&pr);
                     free(body);
                 }
             }
@@ -107,7 +108,8 @@ void robustness(void) {
     }
     check("every tap revision and group set survives", 1);
 
-    /* Every location type against a short buffer, again sized exactly. */
+    /* Every location type against a short buffer, again sized exactly, and
+     * rendered as a screen would render it. */
     for(int t = 0; t < 256; t++) {
         for(size_t avail = 0; avail < 24; avail++) {
             ItsoLocation loc;
@@ -116,7 +118,11 @@ void robustness(void) {
             if(avail >= 1) body[0] = (uint8_t)t;
             if(avail >= 2) body[1] = (uint8_t)(avail > 2 ? avail - 2 : 0);
             itso_parse_location(body, avail, ItsoLocStructLoc1, &loc);
+            loc_text(&loc);
+            loc_code(&loc);
             itso_parse_location(body, avail, ItsoLocStructLoc2, &loc);
+            loc_text(&loc);
+            loc_code(&loc);
             free(body);
         }
     }

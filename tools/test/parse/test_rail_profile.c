@@ -44,10 +44,11 @@ void rail_profile(void) {
     check(
         "a retailer with bit 15 set is an NLC",
         itso_retailer_location(0x8000 | (5 << 10) | 230, &loc) &&
-            strcmp(loc.text, "Station 5230") == 0 && strcmp(loc.code, "5230") == 0);
+            strcmp(loc_text(&loc), "Station 5230") == 0 && strcmp(loc_code(&loc), "5230") == 0);
     check(
         "whose first character runs on into letters",
-        itso_retailer_location(0x8000 | (31 << 10) | 7, &loc) && strcmp(loc.code, "V007") == 0);
+        itso_retailer_location(0x8000 | (31 << 10) | 7, &loc) &&
+            strcmp(loc_code(&loc), "V007") == 0);
     check(
         "and is not one past 999",
         !itso_retailer_location(0x8000 | 1000, &loc) && !itso_retailer_location(289, &loc));
@@ -58,12 +59,12 @@ void rail_profile(void) {
     sold.retailer = 0x8000 | (5 << 10) | 631;
     check(
         "a TYP 23's retailer in table B2's gap is a station",
-        itso_product_sold_at(&sold, &loc) && strcmp(loc.code, "5631") == 0);
+        itso_product_sold_at(&sold, &loc) && strcmp(loc_code(&loc), "5631") == 0);
     sold.typ = ItsoTypPeriodTicket;
     sold.retailer = 0x8000 | (23 << 10) | 999; /* N999, the gap's last NLC: 57319 */
     check(
         "so is a TYP 22's, to the end of the gap",
-        itso_product_sold_at(&sold, &loc) && strcmp(loc.code, "N999") == 0);
+        itso_product_sold_at(&sold, &loc) && strcmp(loc_code(&loc), "N999") == 0);
     sold.retailer = 57344; /* The first OID past the gap, which would be O000. */
     check(
         "but a TYP 22's retailer-only OID is an operator",
@@ -76,7 +77,7 @@ void rail_profile(void) {
     sold.retailer = 0x8000 | (5 << 10) | 230;
     check(
         "where a TYP 24's in the gap is rail's NLC",
-        itso_product_sold_at(&sold, &loc) && strcmp(loc.code, "5230") == 0);
+        itso_product_sold_at(&sold, &loc) && strcmp(loc_code(&loc), "5230") == 0);
     sold.typ = ItsoTypStoredTravelRights;
     sold.retailer = 0x8000 | (5 << 10) | 631;
     check("a type RSPS3002 does not cover keeps its operator", !itso_product_sold_at(&sold, &loc));

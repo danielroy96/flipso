@@ -143,7 +143,6 @@ static bool itso_parse_tap(ItsoTap* tap, const uint8_t* data, size_t len) {
         tap->has_writer = tap->writer_isam != 0;
     }
 
-    tap->present = true;
     return true;
 }
 
@@ -181,7 +180,7 @@ static void itso_sort_taps(ItsoCard* card) {
     /* At most ITSO_MAX_TAPS records, so an insertion sort is plenty. */
     for(uint8_t i = 1; i < card->tap_count; i++) {
         ItsoTap held = card->taps[i];
-        uint32_t held_time = itso_dts_to_unix(held.dts);
+        ItsoUnixTime held_time = itso_dts_to_unix(held.dts);
         int8_t j = (int8_t)i - 1;
         while(j >= 0 && itso_dts_to_unix(card->taps[j].dts) < held_time) {
             card->taps[j + 1] = card->taps[j];
@@ -193,12 +192,9 @@ static void itso_sort_taps(ItsoCard* card) {
 
 void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len) {
     /* TS 1000-10 clause 8.7.5: the DESFire cyclic log holds fixed-length records.
-     * Record Offset in the Log Directory Entry names the *next* slot to be used,
-     * so the newest record is the one before it - counted over the slots the log
-     * has rather than the ones we have room for. */
+     * Which slot is newest does not matter here: the taps are put in time order
+     * once they are all in. */
     uint8_t slots = (uint8_t)(len / ITSO_TAP_RECORD_LEN);
-    if(slots == 0) return;
-    uint8_t newest_slot = (uint8_t)((card->log_record_offset + slots - 1) % slots);
 
     for(uint8_t i = 0; i < slots; i++) {
         ItsoTap tap;
@@ -207,7 +203,6 @@ void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len) {
             continue;
         }
 
-        tap.latest = card->log_entry_valid && card->log_normal_mode && (i == newest_slot);
         tap.on_card = true;
         itso_add_tap(card, &tap);
     }
@@ -216,10 +211,8 @@ void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len) {
 }
 
 void itso_parse_log_history(ItsoCard* card, const uint8_t* data, size_t len) {
-    /* No latest flag on any of these: the record the card itself calls its
-     * newest is in the live log, which has already been parsed. And on_card
-     * stays false, because only the file has them - a record still on the card
-     * was added from the live log first, and the duplicate is dropped. */
+    /* on_card stays false, because only the file has these - a record still on
+     * the card was added from the live log first, and the duplicate is dropped. */
     for(size_t offset = 0; offset + ITSO_TAP_RECORD_LEN <= len; offset += ITSO_TAP_RECORD_LEN) {
         ItsoTap tap;
         memset(&tap, 0, sizeof(tap));

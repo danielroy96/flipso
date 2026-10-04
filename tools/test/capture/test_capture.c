@@ -44,6 +44,11 @@ int main(void) {
     gone_product_cap();
     gone_needs_a_directory();
     gone_full_chain();
+    printf("\nValue histories on the heap\n");
+    history_past_the_card();
+    history_owned_by_each_card();
+    history_reset_and_reread();
+    history_load_merge_free_twice();
 
     printf("\n%s\n", failures ? "FAILURES" : "All capture tests passed");
     return failures ? 1 : 0;

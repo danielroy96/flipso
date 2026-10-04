@@ -117,7 +117,7 @@ typedef enum {
 
 /** One reserved leg, from a TYP 24's VGXRef 3 extension (table AD3). */
 typedef struct {
-    uint32_t departs; /**< LegDepartureDateTime, DTS. */
+    ItsoDts departs; /**< LegDepartureDateTime. */
     char service[7]; /**< LegServiceId: the retail service ID. */
     ItsoLocation from;
     ItsoLocation to;
@@ -162,7 +162,6 @@ typedef struct {
 
     /* IPEBitMap bit 2: the optional groups, in table 136's order, each counted
      * as far as the dataset holds it. */
-    bool has_options;
     /** A group's count ran past the end of the dataset. Nothing from there on
      *  can be found, so the groups after it are left empty. */
     bool overrun;
@@ -190,7 +189,7 @@ typedef struct {
 
     /* The VGXRef 3 extension (table AD3). */
     bool has_extension;
-    uint32_t last_validation; /**< DTSOfLastValidation; 0 never. */
+    ItsoDts last_validation; /**< DTSOfLastValidation; 0 never. */
     ItsoLocation last_validation_at;
     char booking[9]; /**< BookingReference. */
     ItsoReservedLeg* legs;

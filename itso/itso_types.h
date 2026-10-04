@@ -33,11 +33,22 @@ extern "C" {
  * holds a full log plus the eight a saved card keeps. */
 #define ITSO_MAX_TAPS              12
 #define ITSO_NAME_LEN              40
+/* A location's text, rendered on demand (itso_location_text()). */
 #define ITSO_LOC_LEN               28
 /* Twelve-character AtcoCode plus terminator, the longest code a location can
  * carry (TS 1000-1 table 40). A NaptanCode needs nine of these bytes. */
 #define ITSO_LOC_CODE_LEN          13
+/* The most of a location's body anything reads (ItsoLocation::body). A LOC1's
+ * may be 255 bytes (TS 1000-1 clause 4.2.4.2.2), but every LocDefType's LOCE
+ * is at most nine (table 6, 216's) - bar a 211 AtcoCode, whose text shows up
+ * to fifteen characters so that one longer than table 40's twelve still reads
+ * as the card has it. A 212's further stops are counted from its length. */
+#define ITSO_LOC_BODY_LEN          15
 #define ITSO_ISRN_DIGITS           18
+/* MCRN, the optional copy of a multi-application card's own number: 80 bits of
+ * BCD (TS 1000-2 table 1), up to 19 digits and at least one F to end them
+ * (clause 4.1.13). Twenty is what the element holds. */
+#define ITSO_MCRN_DIGITS           20
 
 /* BL for the ITSO Shell Environment Data Group. ShellFormatRevision 1 is the
  * only revision TS 1000-2 table 2 defines a block size for, and it is 4. */
@@ -55,8 +66,9 @@ extern "C" {
  * cards to hand are issued with two. The rest of the room is for the records an
  * earlier read of the same card saw, which a saved card keeps: the store on the
  * card is a rolling window, so a history is only ever as long as something off
- * the card remembers. Eight is a compromise - the array is per product, so it
- * is paid for sixteen times over whether a product has a value group or not.
+ * the card remembers. Eight is a cap rather than a cost: a product's history is
+ * allocated to fit what it holds (ItsoProduct::value_history), so the cap is
+ * what a product the file remembers most about can take, at 20 bytes a record.
  */
 #define ITSO_MAX_VALUE_RECORDS 8
 
@@ -91,7 +103,8 @@ typedef enum {
 } ItsoTyp;
 
 /**
- * Why itso_parse_shell() refused a block of bytes.
+ * What itso_parse_shell() made of a block of bytes: accepted, or the test that
+ * refused it.
  *
  * A failed shell read is the one error the user sees with no way to tell a
  * card Flipso does not understand from a card it simply did not read cleanly,
@@ -106,7 +119,7 @@ typedef enum {
     ItsoShellRejectGeometry, /**< Sector or directory sizes out of range. */
     ItsoShellRejectNumber, /**< The card number holds a digit that is not 0-9. */
     ItsoShellAccepted,
-} ItsoShellReject;
+} ItsoShellVerdict;
 
 /** Lifecycle of a product, derived from the Sector Chain Table terminator. */
 typedef enum {
@@ -144,6 +157,28 @@ typedef enum {
 #define ITSO_DOW_SPECIAL  0x01u
 #define ITSO_DOW_WEEKDAYS 0xF8u
 #define ITSO_DOW_ALL_DAYS 0xFEu
+
+/*
+ * The three ways a point in time is held. All are plain integers, and a DTS and
+ * a Unix time are both 32 bits, so the declared type is what says which one a
+ * value is. They are typedefs, not checked by the compiler: a DTS passed where
+ * a Unix time belongs still builds, and prints a day in 1970.
+ */
+
+/** DATE, the EN1545 DateStamp (TS 1000-1 table 3, TS 1000-5 annex A.3): 14
+ *  bits counting days from 1997-01-01, where zero means the latest date there
+ *  is. itso_date_to_unix() and itso_date_open() say what one means. */
+typedef uint16_t ItsoDate;
+
+/** DTS, the DateTimeStamp (TS 1000-1 table 3 and annex A, TS 1000-5 annex
+ *  A.7): 24 bits of two's complement minutes either side of 2028-11-24 20:16,
+ *  held in the low bits. Not EN1545's; see itso_dts_to_unix(). */
+typedef uint32_t ItsoDts;
+
+/** Seconds since 1970-01-01 UTC: what the two above convert to, what the
+ *  firmware's clock and DateTime helpers count in, and so what a screen is
+ *  drawn against and a saved card records its reads in. */
+typedef uint32_t ItsoUnixTime;
 
 /**
  * A monetary amount plus the currency/scaling nibble that gives it meaning.

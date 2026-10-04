@@ -9,6 +9,8 @@
  */
 #include "itso_ipe_i.h"
 
+#include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 /**
@@ -183,8 +185,9 @@ static void itso_add_value_record(ItsoProduct* product, const ItsoValueRecord* r
     }
 
     /* Newest first, by TS# rather than by time: see itso_parse_value_records. */
-    uint8_t pos = product->value_history_count;
-    for(uint8_t i = 0; i < product->value_history_count; i++) {
+    uint8_t count = product->value_history_count;
+    uint8_t pos = count;
+    for(uint8_t i = 0; i < count; i++) {
         if(itso_ts_newer(record->ts, product->value_history[i].ts)) {
             pos = i;
             break;
@@ -192,11 +195,25 @@ static void itso_add_value_record(ItsoProduct* product, const ItsoValueRecord* r
     }
     if(pos >= ITSO_MAX_VALUE_RECORDS) return; /* Older than everything we keep. */
 
-    for(uint8_t i = product->value_history_count; i > pos; i--) {
-        if(i < ITSO_MAX_VALUE_RECORDS) product->value_history[i] = product->value_history[i - 1];
+    /* Grown a record at a time rather than kept with room to spare: a product
+     * holds two or three, and room spare in every product is most of what a
+     * fixed array would cost. At the cap the oldest drops off the end instead. */
+    if(count < ITSO_MAX_VALUE_RECORDS) {
+        ItsoValueRecord* grown =
+            realloc(product->value_history, (size_t)(count + 1) * sizeof(ItsoValueRecord));
+        if(!grown) return;
+        product->value_history = grown;
+        count++;
     }
-    product->value_history[pos] = *record;
-    if(product->value_history_count < ITSO_MAX_VALUE_RECORDS) product->value_history_count++;
+    /* Copied as bytes rather than assigned, so that the padding goes too - the
+     * decoder zeroed it, realloc'd memory is not zeroed, and
+     * itso_product_equal() compares the records whole. */
+    memmove(
+        &product->value_history[pos + 1],
+        &product->value_history[pos],
+        (size_t)(count - 1 - pos) * sizeof(ItsoValueRecord));
+    memcpy(&product->value_history[pos], record, sizeof(ItsoValueRecord));
+    product->value_history_count = count;
 }
 
 /**
@@ -276,7 +293,9 @@ void itso_parse_value_records(
             itso_add_value_run(product, group + previous, previous_records, newest, ceiling);
         if(!newest) newest = fallback;
     }
-    if(newest == NULL) return;
+    /* The live record is value_history[0], which the type's decoder reads: a
+     * history left empty is one the record could not be allocated into. */
+    if(newest == NULL || product->value_history_count == 0) return;
 
     product->value_parsed = true;
     product->value_txn = (uint8_t)itso_bits(newest, 0, 4);
@@ -311,6 +330,31 @@ void itso_parse_value_history(ItsoProduct* product, const uint8_t* data, size_t 
         itso_decode_value_record(&decoded, record, product->typ);
         itso_add_value_record(product, &decoded);
     }
+}
+
+void itso_product_free(ItsoProduct* product) {
+    free(product->value_history);
+    product->value_history = NULL;
+    product->value_history_count = 0;
+}
+
+bool itso_product_equal(const ItsoProduct* a, const ItsoProduct* b) {
+    /* Every byte but the history pointer, which says where the records were
+     * allocated rather than what they are. The slots are zeroed before they are
+     * decoded into, so the padding compares as well as the fields do. */
+    const size_t at = offsetof(ItsoProduct, value_history);
+    const size_t after = at + sizeof(a->value_history);
+    if(memcmp(a, b, at) != 0) return false;
+    if(memcmp((const uint8_t*)a + after, (const uint8_t*)b + after, sizeof(ItsoProduct) - after) !=
+       0) {
+        return false;
+    }
+    /* The counts are equal by now: they are among the bytes compared. */
+    return a->value_history_count == 0 ||
+           memcmp(
+               a->value_history,
+               b->value_history,
+               (size_t)a->value_history_count * sizeof(ItsoValueRecord)) == 0;
 }
 
 bool itso_value_record_newer(const uint8_t* a, const uint8_t* b) {

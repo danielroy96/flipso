@@ -43,7 +43,7 @@ void itso_ipe_purse_dataset(ItsoProduct* product, const uint8_t* data, size_t le
         product->deposit_vat = (uint16_t)itso_bits(data, 164, 12);
         product->has_deposit = product->deposit.value != 0;
         /* StartDateAutoTopUp: a DATE at byte 16, followed by RFU to 19.5. */
-        product->start = (uint16_t)itso_bits(data, 128, 14);
+        product->start = (ItsoDate)itso_bits(data, 128, 14);
         product->has_start = product->start != 0;
         break;
 
@@ -55,9 +55,9 @@ void itso_ipe_purse_dataset(ItsoProduct* product, const uint8_t* data, size_t le
         product->deposit_mop = data[13] & 0x0F;
         product->deposit_vat = (uint16_t)itso_bits(data, 116, 12); /* At byte 14.5. */
         product->has_deposit = product->deposit.value != 0;
-        product->start = (uint16_t)itso_bits(data, 80, 14); /* StartDateCTA at byte 10. */
+        product->start = (ItsoDate)itso_bits(data, 80, 14); /* StartDateCTA at byte 10. */
         product->has_start = product->start != 0;
-        purse->end_date = (uint16_t)itso_bits(data, 94, 14); /* EndDate at byte 11.75. */
+        purse->end_date = (ItsoDate)itso_bits(data, 94, 14); /* EndDate at byte 11.75. */
         purse->has_end_date = true;
         break;
 
@@ -72,9 +72,9 @@ void itso_ipe_purse_dataset(ItsoProduct* product, const uint8_t* data, size_t le
         product->deposit_mop = data[15] & 0x0F;
         product->deposit_vat = (uint16_t)itso_bits(data, 132, 12); /* At byte 16.5. */
         product->has_deposit = product->deposit.value != 0;
-        product->start = (uint16_t)itso_bits(data, 96, 14); /* StartDateCTA at byte 12. */
+        product->start = (ItsoDate)itso_bits(data, 96, 14); /* StartDateCTA at byte 12. */
         product->has_start = product->start != 0;
-        purse->end_date = (uint16_t)itso_bits(data, 110, 14); /* EndDate at byte 13.75. */
+        purse->end_date = (ItsoDate)itso_bits(data, 110, 14); /* EndDate at byte 13.75. */
         purse->has_end_date = true;
         break;
 
@@ -125,7 +125,7 @@ void itso_ipe_charge_to_account2_value(ItsoProduct* product, const uint8_t* newe
      * the date that count was last cleared. */
     product->count_kind = ItsoCountTransactions;
     product->count = live->count;
-    purse->last_reset = (uint16_t)itso_bits(newest, 90, 14);
+    purse->last_reset = (ItsoDate)itso_bits(newest, 90, 14);
     purse->has_last_reset = true;
     /* ValueCurrencyCode at offset 15 prices MaxValue5, though the record
      * itself holds no money; TYP5ValueFlags beside it has the priority bit

@@ -175,6 +175,7 @@ void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
         shows(text, "  Journeys left: 1\n  Valid only with: 16-25 Railcard\n  Test ticket: Yes\n"));
     house_style("reservation summary", text);
 
+    itso_product_free(&p);
     flipso_capture_free(capture);
     furi_string_free(text);
 }

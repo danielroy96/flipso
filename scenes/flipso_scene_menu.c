@@ -24,18 +24,18 @@
 #include "flipso_icons.h"
 
 typedef enum {
-    FlipsoMenuItemSummary,
-    FlipsoMenuItemCard,
-    FlipsoMenuItemPayg,
-    FlipsoMenuItemId,
-    FlipsoMenuItemTaps,
-    FlipsoMenuItemProducts,
-    FlipsoMenuItemSave,
-    FlipsoMenuItemRename,
-    FlipsoMenuItemDelete,
+    FlipsoCardMenuRowSummary,
+    FlipsoCardMenuRowCard,
+    FlipsoCardMenuRowPayg,
+    FlipsoCardMenuRowId,
+    FlipsoCardMenuRowTaps,
+    FlipsoCardMenuRowProducts,
+    FlipsoCardMenuRowSave,
+    FlipsoCardMenuRowRename,
+    FlipsoCardMenuRowDelete,
     /** A paper ticket's one product, straight from the menu. */
-    FlipsoMenuItemTicket,
-} FlipsoMenuItem;
+    FlipsoCardMenuRowTicket,
+} FlipsoCardMenuRow;
 
 /** "3", or "3 + 8 off card": what is on the card, and what only a file keeps. */
 static void flipso_scene_menu_count(char* out, size_t len, uint8_t on_card, uint8_t past) {
@@ -79,7 +79,7 @@ void flipso_scene_menu_on_enter(void* context) {
     flipso_menu_view_set_header_icon(
         menu, app->card.shell_blocked || retired ? &I_warning_10px : &I_card_10px);
 
-    flipso_menu_view_add_item(menu, "Summary", &I_info_10px, FlipsoMenuItemSummary);
+    flipso_menu_view_add_item(menu, "Summary", &I_info_10px, FlipsoCardMenuRowSummary);
 
     /* A paper ticket is its one product, so the product is a row of its own
      * rather than a list with one row in it - and it comes first, because it
@@ -96,7 +96,11 @@ void flipso_scene_menu_on_enter(void* context) {
             snprintf(tag, sizeof(tag), "%lu left", (unsigned long)(product->count % 100000));
         }
         flipso_menu_view_add_tagged_item(
-            menu, "Ticket", tag, flipso_icon(flipso_product_icon(product)), FlipsoMenuItemTicket);
+            menu,
+            "Ticket",
+            tag,
+            flipso_icon(flipso_product_icon(product)),
+            FlipsoCardMenuRowTicket);
     }
 
     /* The card's own state on its row, where it is anything but fine: the
@@ -114,7 +118,7 @@ void flipso_scene_menu_on_enter(void* context) {
             card_tag = "Expired";
         }
     }
-    flipso_menu_view_add_tagged_item(menu, "Card", card_tag, &I_card_10px, FlipsoMenuItemCard);
+    flipso_menu_view_add_tagged_item(menu, "Card", card_tag, &I_card_10px, FlipsoCardMenuRowCard);
 
     const ItsoProduct* purse = flipso_find_product(&app->card, ItsoTypStoredTravelRights);
     if(purse) {
@@ -122,12 +126,12 @@ void flipso_scene_menu_on_enter(void* context) {
         const ItsoPurseTerms* terms = itso_product_purse(purse);
         if(terms->balance.valid) itso_format_money(&terms->balance, balance, sizeof(balance));
         flipso_menu_view_add_tagged_item(
-            menu, "Pay as you go", balance, &I_purse_10px, FlipsoMenuItemPayg);
+            menu, "Pay as you go", balance, &I_purse_10px, FlipsoCardMenuRowPayg);
     }
 
     if(flipso_find_product(&app->card, ItsoTypId) ||
        flipso_find_product(&app->card, ItsoTypEntitlement)) {
-        flipso_menu_view_add_item(menu, "ID & entitlement", &I_id_10px, FlipsoMenuItemId);
+        flipso_menu_view_add_item(menu, "ID & entitlement", &I_id_10px, FlipsoCardMenuRowId);
     }
 
     if(app->card.log_entry_valid || app->card.tap_count) {
@@ -143,7 +147,7 @@ void flipso_scene_menu_on_enter(void* context) {
                 count, sizeof(count), on_card, (uint8_t)(app->card.tap_count - on_card));
         }
         flipso_menu_view_add_tagged_item(
-            menu, "Journeys", count, &I_taps_10px, FlipsoMenuItemTaps);
+            menu, "Journeys", count, &I_taps_10px, FlipsoCardMenuRowTaps);
     }
 
     /* Counted apart, because the two numbers answer different questions: how
@@ -169,7 +173,7 @@ void flipso_scene_menu_on_enter(void* context) {
         char count[FLIPSO_MENU_TAG_LEN];
         flipso_scene_menu_count(count, sizeof(count), on_card, past);
         flipso_menu_view_add_tagged_item(
-            menu, "Products", count, &I_products_10px, FlipsoMenuItemProducts);
+            menu, "Products", count, &I_products_10px, FlipsoCardMenuRowProducts);
     }
 
     if(furi_string_empty(app->loaded_path)) {
@@ -177,13 +181,13 @@ void flipso_scene_menu_on_enter(void* context) {
          * shell read but whose directory did not still has a shell to keep, but
          * a read that never got that far has nothing. */
         if(flipso_capture_valid(app->capture)) {
-            flipso_menu_view_add_item(menu, "Save card", &I_save_10px, FlipsoMenuItemSave);
+            flipso_menu_view_add_item(menu, "Save card", &I_save_10px, FlipsoCardMenuRowSave);
         }
     } else if(!flipso_saved_is_demo(furi_string_get_cstr(app->loaded_path))) {
         /* The name is the only part of a saved card that is the user's rather
          * than the card's, so it is the only part there is anything to change. */
-        flipso_menu_view_add_item(menu, "Rename card", &I_rename_10px, FlipsoMenuItemRename);
-        flipso_menu_view_add_item(menu, "Delete card", &I_delete_10px, FlipsoMenuItemDelete);
+        flipso_menu_view_add_item(menu, "Rename card", &I_rename_10px, FlipsoCardMenuRowRename);
+        flipso_menu_view_add_item(menu, "Delete card", &I_delete_10px, FlipsoCardMenuRowDelete);
     }
 
     /* Restore the highlighted row when coming back from a detail screen. The
@@ -194,10 +198,10 @@ void flipso_scene_menu_on_enter(void* context) {
      * themselves, which is what keeps Cancel on either of them where it was. */
     uint32_t selected = scene_manager_get_scene_state(app->scene_manager, FlipsoSceneMenu);
     bool scanned = furi_string_empty(app->loaded_path);
-    if(scanned && (selected == FlipsoMenuItemRename || selected == FlipsoMenuItemDelete)) {
-        selected = FlipsoMenuItemSave;
-    } else if(!scanned && selected == FlipsoMenuItemSave) {
-        selected = FlipsoMenuItemRename;
+    if(scanned && (selected == FlipsoCardMenuRowRename || selected == FlipsoCardMenuRowDelete)) {
+        selected = FlipsoCardMenuRowSave;
+    } else if(!scanned && selected == FlipsoCardMenuRowSave) {
+        selected = FlipsoCardMenuRowRename;
     }
     flipso_menu_view_set_selected(menu, selected);
 
@@ -216,35 +220,35 @@ bool flipso_scene_menu_on_event(void* context, SceneManagerEvent event) {
     FlipsoTextScreen screen = FlipsoTextSummary;
     FlipsoScene next = FlipsoSceneText;
     switch(event.event) {
-    case FlipsoMenuItemSummary:
+    case FlipsoCardMenuRowSummary:
         screen = FlipsoTextSummary;
         break;
-    case FlipsoMenuItemCard:
+    case FlipsoCardMenuRowCard:
         screen = FlipsoTextCard;
         break;
-    case FlipsoMenuItemPayg:
+    case FlipsoCardMenuRowPayg:
         screen = FlipsoTextPayg;
         break;
-    case FlipsoMenuItemId:
+    case FlipsoCardMenuRowId:
         screen = FlipsoTextId;
         break;
-    case FlipsoMenuItemTaps:
+    case FlipsoCardMenuRowTaps:
         screen = FlipsoTextJourneys;
         break;
-    case FlipsoMenuItemProducts:
+    case FlipsoCardMenuRowProducts:
         next = FlipsoSceneProducts;
         break;
-    case FlipsoMenuItemTicket:
+    case FlipsoCardMenuRowTicket:
         app->selected_product = 0;
         screen = FlipsoTextProduct;
         break;
-    case FlipsoMenuItemSave:
+    case FlipsoCardMenuRowSave:
         next = FlipsoSceneSave;
         break;
-    case FlipsoMenuItemRename:
+    case FlipsoCardMenuRowRename:
         next = FlipsoSceneRename;
         break;
-    case FlipsoMenuItemDelete:
+    case FlipsoCardMenuRowDelete:
         next = FlipsoSceneDelete;
         break;
     default:

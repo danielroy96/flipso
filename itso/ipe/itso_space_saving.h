@@ -36,17 +36,17 @@ typedef enum {
  * The parts of a Space Saving IPE (TYP 27/28/29, TS 1000-5 clauses 2.14-2.16)
  * that a full IPE has no field for.
  *
- * Held once on the card rather than in every product slot: only a CMD4 carries
- * a Space Saving IPE, and it carries exactly one, so these would otherwise cost
- * their size twenty times over for one product that uses them. The elements
- * shared with a full ticket - price, issue date, class, travellers, passback -
- * go in the product's @c ticket as usual, and the place a TYP 29 was last used
- * in its @c from.
+ * Held by the card, and allocated only when one decodes, rather than in every
+ * product: only a CMD4 carries a Space Saving IPE, and it carries exactly one,
+ * so in ItsoProduct these 176 bytes would be paid for by every product of every
+ * card for the one product that uses them. The elements shared with a full
+ * ticket - price, issue date, class, travellers, passback - go in the product's
+ * @c ticket as usual, and the place a TYP 29 was last used in its @c from.
  */
 typedef struct {
     uint8_t flags; /**< ITSO_SS_* pass flags. */
     bool euro; /**< Sterling/Euro flag: the currency of every amount. */
-    uint8_t area_kind; /**< ItsoAreaKind. */
+    ItsoAreaKind area_kind;
     uint32_t area_value; /**< Fare code, fare value, or the location's LocDefType. */
     /** An ItsoAreaLocation's origin, destination and via, as TS 1000-1 lays out
      *  a LOC4 (TYP 27's GeoValidity); a LOC3 (TYP 28 and 29) has no via. */
@@ -60,7 +60,7 @@ typedef struct {
     uint16_t backup_count; /**< What the backup says is left: m times the bits unset. */
 
     bool has_last_use; /**< The type carries a LastUseDTS (TYP 27, 28, 29 rev 2). */
-    uint32_t last_use_dts; /**< Raw DTS of the last use; 0 is never used. */
+    ItsoDts last_use_dts; /**< The last use; 0 is never used. */
     bool has_events; /**< TYP 27: Event1 and Event2 are present. */
     uint8_t event1; /**< EN1545 EventTypeCode. */
     uint8_t event2;
@@ -70,7 +70,7 @@ typedef struct {
     bool usage_alighted;
 
     /* TYP 29 revision 2, multi-leg journeys (table 55a). */
-    uint32_t journey_start_dts; /**< JnyComDTS: when the latest journey began. */
+    ItsoDts journey_start_dts; /**< JnyComDTS: when the latest journey began. */
     uint8_t transfers; /**< TransferCounter: changes made on that journey. */
     uint8_t daily_journeys; /**< DailyJnyCounter: journeys begun that day. */
     uint8_t max_daily_journeys; /**< MaxDailyJourneys. */

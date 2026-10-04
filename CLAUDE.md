@@ -150,31 +150,30 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-91.1 KB of the 289 KB file as of 2026-10-04 - 0.5 KB of that came with
-sharing one family's product terms with the others' (below), 1.8 KB with
+91.0 KB of the 290 KB file as of 2026-10-04 - 1.8 KB of that came with
 splitting the sources a responsibility to a file (a call between files is not
 inlined, and a string used in several files is stored once in each), 2.2 KB
 with the paged screens and the title icons, 10.4 KB with the TYP 24 decoder, its screen and the rail
 railcard and seat tables, 76 KB before - because the 79 KB station table and the 26 KB of demo cards live in
 `.fapassets`, which the firmware unpacks to the SD card and never maps.
 Anything added as a `const` array *does* reach RAM. With the app at its idle
-scan screen 34.1 KB of the heap is free (measured 2026-10-02). A card on
-screen costs what it holds: `ItsoCard` allocates its products (508 bytes each
-on the device since 2026-10-04, when a purse's, an ID's and a ticket's terms
-came to share their room in `ItsoTerms`; 672 before that, 652 before TYP 24's,
-620 before 2026-09-29)
-and journeys (204 bytes each) to fit rather than keeping room for twenty and
-twelve, which held 15 KB whatever the card and left only 25 KB free. Demo 04,
-seven products and twelve journeys, cost 8.9 KB over idle at 620 bytes a
-product; Demo 01's product list leaves 23.8 KB free. A TYP 24's screen decodes
-the rest of its dataset and its reservations as it is drawn, about 750 bytes
-for Demo 01's two legs, once for the whole screen and freed before the text is
-shown. With it open, 18.1 KB is free, and 29.5 KB at the idle scan screen
-(measured in one boot on 2026-10-04). In that boot the shared terms gave back
-1.2 KB with Demo 01 open and cost 0.7 KB at idle, against 16.9 and 30.1 KB
-before; splitting the sources had cost 1.9 KB at both, against 18.8 and 32.0
-KB (19.1 KB with the TYP 24 open on 2026-10-03, after the paged screens and
-their icons, and 21.0 KB before them).
+scan screen 30.9 KB of the heap is free (measured 2026-10-04). A card on
+screen costs what it holds: `ItsoCard` allocates its products (268 bytes each
+on the device since 2026-10-04; 672 before, when every product carried every
+type's fields, eight value records and its locations as display text), each
+product's value records (20 bytes each - two on most products, none on an ID,
+up to eight on a saved card that remembers more than the card keeps) and
+journeys (128 bytes each, 204 before) to fit rather than keeping room for
+twenty and twelve, which held 15 KB whatever the card and left only 25 KB
+free. A location is kept as the card's bytes and rendered as it is drawn
+(`itso_location_text()`), and a paper ticket's Space Saving record and a
+non-ITSO DESFire's file list are allocated only for the cards that have them.
+A TYP 24's screen decodes the rest of its dataset and its reservations as it
+is drawn, about 750 bytes for Demo 01's two legs, once for the whole screen
+and freed before the text is shown. With it open, 22.1 KB is free (measured
+2026-10-04). In that boot the build before the struct review of 2026-10-04
+left 29.4 KB at idle and 18.0 KB with it open, so the review gave back 1.5 KB
+at idle and 4.1 KB with a card on screen.
 
 The text panel keeps its string at the size of the longest screen shown until
 the app exits, so a screen's text is not given back when it closes: back at

@@ -69,5 +69,6 @@ void cmd2_card(void) {
         "CMD2 E2 half days are Monday to Saturday",
         itso_half_days_mask(itso_product_id(id)->half_days) == 0xFC);
     check(
-        "CMD2 E2 valid at NLC 5685", id->from.valid && strcmp(id->from.text, "Station 5685") == 0);
+        "CMD2 E2 valid at NLC 5685",
+        id->from.valid && strcmp(loc_text(&id->from), "Station 5685") == 0);
 }

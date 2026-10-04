@@ -34,6 +34,9 @@ void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
     check(
         "the directory's last writer is decoded from an extended ISAM",
         technical(text, "Last updated by machine: 004E30F3\n  Operator: Unknown (24585)\n"));
+    check(
+        "with the version of the key its seal is made with, even at 0",
+        technical(text, "  Operator: Unknown (24585)\nDirectory seal key version: 0\n"));
     check("160-byte sectors are the layout", shows(text, "Layout: 16 sectors of 160 bytes\n"));
 
     /* Its ID never expires and nor does the entitlement on it, in the other
@@ -265,6 +268,10 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     check(
         "a reader names its machine, then its operator, under Technical",
         technical(text, "  Tap-in reader: 01020304\n    Operator: "));
+    check(
+        "and the tap-in record's sequence number with them",
+        technical(
+            text, "  Tap-in reader: 01020304\n    Operator: Unknown (32)\n    Sequence: 9\n"));
     check(
         "and the journey it belongs to keeps only where and when",
         !before_technical(text, "Tapped in on: ") && !before_technical(text, "reader: "));

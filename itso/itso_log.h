@@ -12,10 +12,9 @@ extern "C" {
 
 /** One Transient Ticket Record from the cyclic log: a single tap. */
 typedef struct {
-    bool present;
     uint8_t format_rev;
     uint8_t transaction_type; /**< EN1545 EventTypeCode. */
-    uint32_t dts; /**< Raw DTS of the tap. */
+    ItsoDts dts; /**< When the tap was. */
 
     /* AMT group (TS 1000-5 table 59). */
     ItsoMoney amount;
@@ -45,7 +44,7 @@ typedef struct {
     /* ENTRY group (format revision 4): where and when this journey checked in,
      * copied from the tap-in record so a tap-out record is self-contained. */
     bool has_entry;
-    uint32_t entry_dts;
+    ItsoDts entry_dts;
     bool has_entry_oid;
     uint16_t entry_oid; /**< Operator whose gate the holder entered through. */
     uint8_t entry_iin_index; /**< ENTRY_IIN_Index: that operator's network. */
@@ -61,7 +60,6 @@ typedef struct {
     bool has_writer;
     uint32_t writer_isam;
 
-    bool latest; /**< Newest record, per the Log Directory Entry record offset. */
     /* False for a record that came out of a saved file rather than out of the
      * log the card just offered, as ItsoValueRecord::on_card is. The log keeps
      * four; anything older survives only because a file remembered it. */
@@ -76,8 +74,8 @@ void itso_parse_log(ItsoCard* card, const uint8_t* data, size_t len);
  *
  * @param data ITSO_TAP_RECORD_LEN records back to back, in any order.
  *
- * Call it after itso_parse_log(), so that the record the card itself calls its
- * newest keeps the latest flag and so that the live log fills the array first.
+ * Call it after itso_parse_log(), so that the live log fills the array first and
+ * a record it holds is the one kept, marked as still on the card.
  */
 void itso_parse_log_history(ItsoCard* card, const uint8_t* data, size_t len);
 

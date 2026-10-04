@@ -43,11 +43,11 @@ void fill(FlipsoCapture* capture, const ItsoCard* reference);
 char** to_lines(const FlipsoCapture* capture, size_t* count);
 void free_lines(char** lines, size_t count);
 /** A copy of tap record @p from, restamped, which is a different journey. */
-void restamp_tap(uint8_t* out, const uint8_t* from, uint32_t dts);
+void restamp_tap(uint8_t* out, const uint8_t* from, ItsoDts dts);
 /** A copy of value record @p from with a new TS#, timestamp and balance. */
-void restamp_value(uint8_t* out, const uint8_t* from, uint16_t ts, uint32_t dts, int16_t amount);
+void restamp_value(uint8_t* out, const uint8_t* from, uint16_t ts, ItsoDts dts, int16_t amount);
 /** True when a decoded card holds a journey stamped @p dts. */
-bool holds_tap(const ItsoCard* card, uint32_t dts);
+bool holds_tap(const ItsoCard* card, ItsoDts dts);
 /** Fill a capture with the card as it is "now", entry 1 and the log rewritten. */
 void fill_now(
     FlipsoCapture* capture,
@@ -94,3 +94,10 @@ void merge_gone_product(void);
 void gone_product_cap(void);
 void gone_needs_a_directory(void);
 void gone_full_chain(void);
+
+/* --- Value histories on the heap: test_history_memory.c --- */
+
+void history_past_the_card(void);
+void history_owned_by_each_card(void);
+void history_reset_and_reread(void);
+void history_load_merge_free_twice(void);

@@ -142,6 +142,8 @@ static void
      * (TS 1000-2 table 8, annex B). */
     if(card->dir_instance_valid) {
         flipso_cat_machine(out, f, "", "Last updated by machine", card->dir_isam);
+        /* KID: the version of the key the directory's seal is made with. */
+        furi_string_cat_printf(out, "Directory seal key version: %u\n", card->dir_kid);
     }
 }
 
@@ -151,7 +153,7 @@ void flipso_format_card(
     const ItsoCard* card,
     const char* saved_name,
     bool demo,
-    uint32_t read_at) {
+    ItsoUnixTime read_at) {
     /* The blocking indicator is a property of the whole shell, so it comes
      * before anything else on the screen: once it is set a machine rejects the
      * card, however valid the products further down still look.

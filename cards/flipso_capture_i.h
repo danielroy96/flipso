@@ -26,7 +26,7 @@ struct FlipsoCapture {
     size_t capacity;
     FlipsoCaptureBlock blocks[FLIPSO_CAPTURE_MAX_BLOCKS];
     uint8_t count;
-    uint32_t timestamp;
+    ItsoUnixTime timestamp;
 };
 
 /** The block of this kind and directory entry, or NULL. */

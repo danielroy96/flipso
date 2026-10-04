@@ -213,7 +213,7 @@ bool flipso_capture_parse_line(FlipsoCapture* capture, const char* line) {
         while(*value >= '0' && *value <= '9') {
             parsed = parsed * 10 + (unsigned long)(*value++ - '0');
         }
-        capture->timestamp = (uint32_t)parsed;
+        capture->timestamp = (ItsoUnixTime)parsed;
         return true;
     }
 

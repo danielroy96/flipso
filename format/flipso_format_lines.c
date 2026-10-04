@@ -19,17 +19,17 @@ void flipso_cat_datetime_struct(FuriString* out, const DateTime* dt, bool with_t
 }
 
 /** Split a Unix timestamp and append it in the user's configured date format. */
-void flipso_cat_timestamp(FuriString* out, uint32_t timestamp, bool with_time) {
+void flipso_cat_timestamp(FuriString* out, ItsoUnixTime timestamp, bool with_time) {
     DateTime dt;
     datetime_timestamp_to_datetime(timestamp, &dt);
     flipso_cat_datetime_struct(out, &dt, with_time);
 }
 
-void flipso_cat_date(FuriString* out, uint16_t date) {
+void flipso_cat_date(FuriString* out, ItsoDate date) {
     flipso_cat_timestamp(out, itso_date_to_unix(date), false);
 }
 
-void flipso_cat_short_date(FuriString* out, uint16_t date) {
+void flipso_cat_short_date(FuriString* out, ItsoDate date) {
     FuriString* full = furi_string_alloc();
     flipso_cat_date(full, date);
     const char* text = furi_string_get_cstr(full);
@@ -46,12 +46,12 @@ void flipso_cat_short_date(FuriString* out, uint16_t date) {
     furi_string_free(full);
 }
 
-void flipso_cat_time(FuriString* out, uint32_t timestamp) {
+void flipso_cat_time(FuriString* out, ItsoUnixTime timestamp) {
     flipso_cat_timestamp(out, timestamp, true);
 }
 
 /** Append "dd/mm/yyyy hh:mm" for an ITSO DTS. */
-static void flipso_cat_datetime(FuriString* out, uint32_t dts) {
+static void flipso_cat_datetime(FuriString* out, ItsoDts dts) {
     flipso_cat_timestamp(out, itso_dts_to_unix(dts), true);
 }
 
@@ -93,14 +93,14 @@ void flipso_cat_money(
 }
 
 /** "Label: dd/mm/yyyy". */
-void flipso_cat_date_line(FuriString* out, const char* indent, const char* label, uint16_t date) {
+void flipso_cat_date_line(FuriString* out, const char* indent, const char* label, ItsoDate date) {
     furi_string_cat_printf(out, "%s%s: ", indent, label);
     flipso_cat_date(out, date);
     furi_string_push_back(out, '\n');
 }
 
 /** "Label: dd/mm/yyyy hh:mm" for a DTS. */
-void flipso_cat_datetime_line(FuriString* out, const char* indent, const char* label, uint32_t dts) {
+void flipso_cat_datetime_line(FuriString* out, const char* indent, const char* label, ItsoDts dts) {
     furi_string_cat_printf(out, "%s%s: ", indent, label);
     flipso_cat_datetime(out, dts);
     furi_string_push_back(out, '\n');
@@ -118,8 +118,8 @@ void flipso_cat_expiry(
     const char* indent,
     const char* label,
     const char* past_label,
-    uint16_t date,
-    uint32_t now) {
+    ItsoDate date,
+    ItsoUnixTime now) {
     if(itso_date_open(date)) {
         furi_string_cat_printf(out, "%s%s: No expiry\n", indent, label);
         return;
@@ -180,7 +180,7 @@ void flipso_cat_machine(
  *
  * Rail codes are resolved to station names and bus stop codes to stop names,
  * where the tables that hold them are on the SD card; anything else falls back
- * to the text the decoder rendered from the code itself.
+ * to the text the decoder renders from the code itself.
  */
 void flipso_cat_location(
     FuriString* out,
@@ -190,46 +190,51 @@ void flipso_cat_location(
     const ItsoLocation* location) {
     if(!location->valid) return;
 
+    /* A location holds the card's bytes, not its text: the code and the text
+     * are rendered here, for the one line, on the stack. */
+    char code[ITSO_LOC_CODE_LEN];
     const char* place = NULL;
-    switch(itso_location_code_kind(location)) {
+    switch(itso_location_code(location, code, sizeof(code))) {
     case ItsoLocCodeNlc:
-        place = flipso_stations_name(f->stations, location->code);
+        place = flipso_stations_name(f->stations, code);
         break;
     case ItsoLocCodeNaptan:
-        place = flipso_naptan_stop(f->naptan, location->code);
+        place = flipso_naptan_stop(f->naptan, code);
         break;
     case ItsoLocCodeAtco:
-        place = flipso_naptan_atco(f->naptan, location->code);
+        place = flipso_naptan_atco(f->naptan, code);
         break;
     default:
         break;
     }
+    char text[ITSO_LOC_LEN];
+    itso_location_text(location, text, sizeof(text));
 
     /* LocDefType 216 is a route and a stop together (TS 1000-1 table 42c),
-     * which itso_render_location() joins with an '@'. The route half is kept
+     * which itso_location_text() joins with an '@'. The route half is kept
      * either way; the stop half is named where the table can, and reads as a
      * stop number where it cannot. */
-    const char* at = location->def_type == 216 ? strchr(location->text, '@') : NULL;
+    const char* at = location->def_type == 216 ? strchr(text, '@') : NULL;
     if(at) {
-        int route_len = (int)(at - location->text);
+        int route_len = (int)(at - text);
         if(place) {
             furi_string_cat_printf(
-                out, "%s%s: %.*s at %s\n", indent, label, route_len, location->text, place);
+                out, "%s%s: %.*s at %s\n", indent, label, route_len, text, place);
         } else {
             furi_string_cat_printf(
-                out, "%s%s: %.*s, stop %s\n", indent, label, route_len, location->text, at + 1);
+                out, "%s%s: %.*s, stop %s\n", indent, label, route_len, text, at + 1);
         }
         return;
     }
 
-    if(place && location->more) {
+    uint8_t more = itso_location_more(location);
+    if(place && more) {
         /* Named, the first stop no longer carries the count the decoder's own
          * text gave it, so it is put back. */
-        furi_string_cat_printf(
-            out, "%s%s: %s and %u more\n", indent, label, place, location->more);
+        furi_string_cat_printf(out, "%s%s: %s and %u more\n", indent, label, place, more);
         return;
     }
-    furi_string_cat_printf(out, "%s%s: %s\n", indent, label, place ? place : location->text);
+    furi_string_cat_printf(out, "%s%s: %s\n", indent, label, place ? place : text);
 }
 
 void flipso_cat_hex(FuriString* out, const uint8_t* data, size_t len) {

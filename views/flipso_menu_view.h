@@ -6,10 +6,11 @@
  * icon is what lets a row be recognised without reading it. This is otherwise
  * a plain submenu: same header, same wrap-around navigation, same scrollbar.
  *
- * Items are copied in, so the caller may build labels on the stack. The list
- * holds at most FLIPSO_MENU_MAX_ITEMS of them; anything beyond that is dropped
- * rather than overflowing, which is why the products scene asserts that the
- * shell cannot carry more products than the list can show.
+ * A row's label is held by pointer and its tag copied: the labels are literals
+ * and names that outlive the list, and the tags are built on the stack. The
+ * list holds at most FLIPSO_MENU_MAX_ITEMS rows; anything beyond that is
+ * dropped rather than overflowing, which is why the products scene asserts that
+ * the shell cannot carry more products than the list can show.
  */
 #pragma once
 
@@ -22,6 +23,8 @@ extern "C" {
 /** Enough for every directory entry an ITSO shell can hold, plus the products a
  * saved card remembers from before the card dropped them. */
 #define FLIPSO_MENU_MAX_ITEMS 20
+/** Most of a label or header that is drawn: far more than a row has room for,
+ *  so anything longer is cut with an ellipsis either way. */
 #define FLIPSO_MENU_LABEL_LEN 32
 /** Longest tag, terminator included: "99 + 99 off card". */
 #define FLIPSO_MENU_TAG_LEN   18
@@ -55,7 +58,8 @@ void flipso_menu_view_set_header_icon(FlipsoMenuView* instance, const Icon* icon
 /**
  * Append a row.
  *
- * @param label the row text; copied, and truncated on screen if it does not fit.
+ * @param label the row text, truncated on screen if it does not fit. Not
+ *              copied: it must last until the list is reset or rebuilt.
  * @param icon  drawn at the left of the row, or NULL for no icon.
  * @param id    handed back to the callback; need not be the row's position.
  */

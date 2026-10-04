@@ -146,10 +146,10 @@ void itso_ipe_id_dataset(ItsoProduct* product, const uint8_t* data, size_t len) 
     if(entitlement_offset + 2 > len) return;
 
     if(start_bit) {
-        product->start = (uint16_t)itso_bits(data, start_bit, 14);
+        product->start = (ItsoDate)itso_bits(data, start_bit, 14);
         product->has_start = true;
     }
-    id->sub_expiry = (uint16_t)itso_bits(data, expiry_bit, 14);
+    id->sub_expiry = (ItsoDate)itso_bits(data, expiry_bit, 14);
     id->has_sub_expiry = true;
 
     id->entitlement_code = data[entitlement_offset];

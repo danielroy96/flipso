@@ -9,7 +9,7 @@
  * of the two encodings of "no expiry" (itso_date_open()). A second date is only
  * worth its line when it differs from the expiry.
  */
-static bool flipso_same_date(uint16_t a, uint16_t b) {
+static bool flipso_same_date(ItsoDate a, ItsoDate b) {
     return a == b || (itso_date_open(a) && itso_date_open(b));
 }
 
@@ -35,7 +35,7 @@ void flipso_cat_product_details(
     const ItsoPurseTerms* purse = itso_product_purse(product);
     const ItsoIdTerms* id = itso_product_id(product);
     const ItsoTicketTerms* ticket = itso_product_ticket(product);
-    const uint32_t now = f->now;
+    const ItsoUnixTime now = f->now;
     const bool identity = flipso_product_is_identity(product);
     const FlipsoKind kind = p->kind;
     FuriString* main = flipso_pages_at(p, FlipsoSlotMain);

@@ -10,7 +10,7 @@
 #include "itso_ipe_i.h"
 
 #include <string.h>
-#include <stdio.h>
+#include <stdlib.h>
 
 /**
  * Decode a Space Saving IPE's area element: TYP 27's 100-bit GeoValidity (table
@@ -72,17 +72,14 @@ static void itso_space_last_use(ItsoSpaceSaving* ss, const uint8_t* ds) {
  * SPT's Subway gates record a bus fare stage (202) whose stage number is the
  * station, 1-15, and whose machine number is the gate - as Ryan Murphy found,
  * with Partick at 2 and Hillhead at 4. On an SPT ticket the stage is shown as the
- * station it names; anywhere else it stays a fare stage.
+ * station it names; anywhere else it stays a fare stage. The location is
+ * rendered later, without the product, so it is marked here as the OID says.
  */
 static void itso_space_usage_place(ItsoProduct* product, uint8_t def_type, const uint8_t* loce) {
     const uint8_t loc2[7] = {def_type, loce[0], loce[1], loce[2], loce[3], 0, 0};
     itso_parse_location(loc2, sizeof(loc2), ItsoLocStructLoc2, &product->from);
     if(itso_is_blank(loce, 4)) product->from.valid = false; /* Never used. */
-
-    if(def_type == 202 && product->oid == ITSO_OID_SPT_SUBWAY_TICKET) {
-        const char* station = itso_spt_subway_station(loce[3]);
-        if(station) snprintf(product->from.text, sizeof(product->from.text), "%s", station);
-    }
+    product->from.subway_station = def_type == 202 && product->oid == ITSO_OID_SPT_SUBWAY_TICKET;
 }
 
 /*
@@ -115,7 +112,12 @@ void itso_parse_space_saving(ItsoCard* card, ItsoProduct* product, const uint8_t
     bool multi_leg = product->typ == ItsoTypMultiUse && rev == 2;
     if(rev != 1 && !multi_leg) return;
 
-    ItsoSpaceSaving* ss = &card->space;
+    /* Allocated here, the one place a card comes to need it: only a CMD4 carries
+     * a Space Saving IPE. Without the room the product stays as its directory
+     * entry describes it. */
+    if(!card->space) card->space = malloc(sizeof(ItsoSpaceSaving));
+    if(!card->space) return;
+    ItsoSpaceSaving* ss = card->space;
     memset(ss, 0, sizeof(ItsoSpaceSaving));
     product->space_saving = true;
     product->body_parsed = true;
@@ -124,7 +126,7 @@ void itso_parse_space_saving(ItsoCard* card, ItsoProduct* product, const uint8_t
 
     ItsoTicketTerms* t = &product->terms.ticket;
     t->valid = true;
-    t->issue_date = (uint16_t)itso_bits(ds, 16, 14); /* IssueDate, a DATE. */
+    t->issue_date = (ItsoDate)itso_bits(ds, 16, 14); /* IssueDate. */
     ss->euro = itso_bits(ds, 30, 1);
 
     /* Bits 32-39 are PassbackTime and the payment method on TYP 27 and 28; TYP 29
@@ -171,7 +173,7 @@ void itso_parse_space_saving(ItsoCard* card, ItsoProduct* product, const uint8_t
          * the directory's own date standing. */
         uint8_t expiry_offset = (uint8_t)itso_bits(ds, 216, 8);
         if(expiry_offset && product->expiry > expiry_offset) {
-            product->expiry = (uint16_t)(product->expiry - expiry_offset);
+            product->expiry = (ItsoDate)(product->expiry - expiry_offset);
         }
         break;
     }

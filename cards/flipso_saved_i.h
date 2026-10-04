@@ -8,6 +8,10 @@
 
 #define TAG "Flipso"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * The names a save or a rename passes a card through, each beside the record so
  * that every move is a rename within one folder. None is a card extension, so
@@ -21,3 +25,7 @@
 #define FLIPSO_SAVED_TEMP_SUFFIX ".tmp"
 #define FLIPSO_SAVED_OLD_SUFFIX  ".old"
 #define FLIPSO_SAVED_MOVE_SUFFIX ".ren"
+
+#ifdef __cplusplus
+}
+#endif

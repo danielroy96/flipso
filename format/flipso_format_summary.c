@@ -8,7 +8,7 @@
  * True when a product's summary line leads with its state - blocked, or
  * expired with the date - as flipso_summary_product() writes it.
  */
-static bool flipso_summary_states(const ItsoProduct* product, uint32_t now) {
+static bool flipso_summary_states(const ItsoProduct* product, ItsoUnixTime now) {
     const ItsoPurseTerms* purse = itso_product_purse(product);
     const ItsoIdTerms* id = itso_product_id(product);
     if(product->status == ItsoProductStatusBlocked) return true;
@@ -21,7 +21,7 @@ static void flipso_summary_product(
     FuriString* out,
     const ItsoCard* card,
     const ItsoProduct* product,
-    uint32_t now) {
+    ItsoUnixTime now) {
     const ItsoPurseTerms* purse = itso_product_purse(product);
     const ItsoIdTerms* id = itso_product_id(product);
     const ItsoTicketTerms* ticket = itso_product_ticket(product);

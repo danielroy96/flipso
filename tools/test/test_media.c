@@ -107,11 +107,10 @@ static void build_oyster(FlipsoMedia* media) {
     media->app_list_valid = true;
     flipso_media_add_app(media, FLIPSO_AID_OYSTER);
 
-    media->has_files = true;
-    media->selected_aid = FLIPSO_AID_OYSTER;
-    media->file_count = 8;
+    FlipsoMediaApp* app = flipso_media_open_app(media, FLIPSO_AID_OYSTER);
+    app->file_count = 8;
     for(uint8_t i = 0; i < 8; i++) {
-        FlipsoMediaFile* file = &media->files[i];
+        FlipsoMediaFile* file = &app->files[i];
         file->id = i;
         file->settings_valid = true;
         file->type = 0; /* Standard. */
@@ -125,7 +124,7 @@ static void build_oyster(FlipsoMedia* media) {
 int main(void) {
     printf("Card media\n");
 
-    FlipsoMedia media;
+    FlipsoMedia media = {0};
     FuriString* text = furi_string_alloc();
 
     /* Nothing scanned yet: the screen must still say something. */
@@ -165,41 +164,45 @@ int main(void) {
     media.hw_storage = 0x1A; /* 8K, and the odd bit says "up to". */
     media.hw_storage |= 1;
     flipso_media_add_app(&media, 0xABCDEFu);
-    media.has_files = true;
-    media.selected_aid = 0xABCDEFu;
-    media.file_count = 4;
+    FlipsoMediaApp* app = flipso_media_open_app(&media, FLIPSO_AID_OYSTER);
+    app->file_count = 1;
+    check(
+        "opening another application starts its files afresh",
+        flipso_media_open_app(&media, 0xABCDEFu) == app && app->file_count == 0 &&
+            app->aid == 0xABCDEFu);
+    app->file_count = 4;
 
-    media.files[0].id = 1;
-    media.files[0].settings_valid = true;
-    media.files[0].type = 0;
-    media.files[0].comm = 0;
-    media.files[0].access = 0xEEEE; /* Free to everyone. */
-    media.files[0].data.size = 4;
-    media.files[0].data_offset = 0;
-    media.files[0].data_len = 4;
-    memcpy(media.data, "\xDE\xAD\xBE\xEF", 4);
-    media.data_len = 4;
+    app->files[0].id = 1;
+    app->files[0].settings_valid = true;
+    app->files[0].type = 0;
+    app->files[0].comm = 0;
+    app->files[0].access = 0xEEEE; /* Free to everyone. */
+    app->files[0].data.size = 4;
+    app->files[0].data_offset = 0;
+    app->files[0].data_len = 4;
+    memcpy(app->data, "\xDE\xAD\xBE\xEF", 4);
+    app->data_len = 4;
 
-    media.files[1].id = 2;
-    media.files[1].settings_valid = true;
-    media.files[1].type = 2; /* Value. */
-    media.files[1].comm = 1;
-    media.files[1].access = 0xEF2F; /* Free to read, never written. */
-    media.files[1].value.lo_limit = 0;
-    media.files[1].value.hi_limit = 5000;
+    app->files[1].id = 2;
+    app->files[1].settings_valid = true;
+    app->files[1].type = 2; /* Value. */
+    app->files[1].comm = 1;
+    app->files[1].access = 0xEF2F; /* Free to read, never written. */
+    app->files[1].value.lo_limit = 0;
+    app->files[1].value.hi_limit = 5000;
 
-    media.files[2].id = 3;
-    media.files[2].settings_valid = true;
-    media.files[2].type = 4; /* Cyclic record. */
-    media.files[2].comm = 3;
-    media.files[2].access = 0xE11F;
-    media.files[2].record.size = 16;
-    media.files[2].record.cur = 2;
-    media.files[2].record.max = 4;
+    app->files[2].id = 3;
+    app->files[2].settings_valid = true;
+    app->files[2].type = 4; /* Cyclic record. */
+    app->files[2].comm = 3;
+    app->files[2].access = 0xE11F;
+    app->files[2].record.size = 16;
+    app->files[2].record.cur = 2;
+    app->files[2].record.max = 4;
     /* Free to read, and the read still failed: that is its own answer. */
 
-    media.files[3].id = 4;
-    media.files[3].settings_valid = false;
+    app->files[3].id = 4;
+    app->files[3].settings_valid = false;
 
     furi_string_reset(text);
     flipso_format_media(text, &media);
@@ -236,6 +239,7 @@ int main(void) {
     /* The application list is a set: the reader adds what it found by name on
      * top of what the card listed, and the two overlap. */
     flipso_media_reset(&media);
+    check("a reset lets the files go", media.app == NULL);
     flipso_media_add_app(&media, FLIPSO_AID_OYSTER);
     flipso_media_add_app(&media, FLIPSO_AID_OYSTER);
     check("an application is listed once", media.app_count == 1);
@@ -276,6 +280,7 @@ int main(void) {
     check("a short block is refused", !flipso_media_parse_chip(&media, chip, 20));
     check("and leaves the card undescribed", !media.valid);
 
+    flipso_media_reset(&media);
     furi_string_free(text);
 
     printf("\n%s\n", failures ? "MEDIA TESTS FAILED" : "All card media tests passed");

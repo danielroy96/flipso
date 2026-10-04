@@ -31,7 +31,7 @@ const char* itso_entitlement_name(uint8_t code);
 const char* itso_profile_name(uint8_t code);
 const char* itso_transaction_name(uint8_t code);
 const char* itso_status_name(ItsoProductStatus status);
-const char* itso_shell_reject_name(ItsoShellReject reject);
+const char* itso_shell_reject_name(ItsoShellVerdict verdict);
 
 /** EN1545 PaymentMeansCode, e.g. "Cash" (TS 1000-5 annex A.12). */
 const char* itso_payment_name(uint8_t code);

@@ -14,8 +14,9 @@ void product_screen(
     bool vgp,
     const uint8_t* group,
     size_t len) {
+    itso_product_free(p);
     memset(p, 0, sizeof(*p));
-    p->present = p->on_card = true;
+    p->on_card = true;
     p->typ = typ;
     p->value_group = vgp;
     p->dir_index = 9;
@@ -169,5 +170,28 @@ void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
         "a revision 3 period ticket's default",
         shows(text, "Expired passes at top-up: Written off\n"));
 
+    /* Fare capping is decoded from the capture as the screen is drawn, so each
+     * purse is put in one at the directory slot product_screen() gives it. Its
+     * Technical page says which of the two capping records the card keeps. */
+    for(uint8_t ref = 1; ref <= 2; ref++) {
+        const uint8_t* group = ref == 1 ? capping1_group : capping2_group;
+        size_t len = ref == 1 ? sizeof(capping1_group) : sizeof(capping2_group);
+        FlipsoCapture* capture = flipso_capture_alloc();
+        flipso_capture_add(capture, FlipsoBlockProduct, 9, group, len);
+        FlipsoFormat with = *f;
+        with.capture = capture;
+        product_screen(text, &with, card, &p, ItsoTypStoredTravelRights, true, group, len);
+        check("a capped purse has its capping page", page_of(text, "Fare capping") != NULL);
+        check(
+            ref == 1 ? "a reduced capping record says so, under Technical" :
+                       "a full capping record says so, under Technical",
+            technical(
+                text,
+                ref == 1 ? "Capping record: Reduced (type 1)\nCapping rules: 7\n" :
+                           "Capping record: Full (type 2)\nCapping rules: 7\n"));
+        flipso_capture_free(capture);
+    }
+
+    itso_product_free(&p);
     furi_string_free(text);
 }

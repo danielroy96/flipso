@@ -100,7 +100,6 @@ size_t itso_read_log_sectors(
 
 /** Decode one 5-byte IPE Directory Entry (TS 1000-2 clause 6.1). */
 void itso_parse_dir_entry(ItsoProduct* product, const uint8_t* entry, uint8_t index) {
-    product->present = true;
     product->dir_index = index;
     product->on_card = true;
 
@@ -118,7 +117,7 @@ void itso_parse_dir_entry(ItsoProduct* product, const uint8_t* entry, uint8_t in
     product->ptyp = (uint8_t)itso_bits(entry, 19, 5);
     product->value_group = (entry[3] & 0x80) != 0;
     product->foreign_iin = (entry[3] & 0x40) != 0;
-    product->expiry = (uint16_t)itso_bits(entry, 26, 14);
+    product->expiry = (ItsoDate)itso_bits(entry, 26, 14);
     product->status = ItsoProductStatusUnknown;
 }
 

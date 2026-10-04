@@ -39,7 +39,7 @@ static bool flipso_scene_products_shares_name(const ItsoCard* card, uint8_t inde
 void flipso_scene_products_on_enter(void* context) {
     Flipso* app = context;
     FlipsoMenuView* menu = app->menu_view;
-    uint32_t now = flipso_now();
+    ItsoUnixTime now = flipso_now();
 
     flipso_menu_view_reset(menu);
     flipso_menu_view_set_callback(menu, flipso_scene_products_callback, app);

@@ -33,17 +33,16 @@ void media_screens(FuriString* text) {
     flipso_media_parse_chip(&media, chip, sizeof(chip));
     flipso_media_add_app(&media, FLIPSO_AID_OYSTER);
     flipso_media_add_app(&media, 0xABCDEFu);
-    media.has_files = true;
-    media.selected_aid = FLIPSO_AID_OYSTER;
-    media.file_count = 3;
-    media.files[0] = (FlipsoMediaFile){.id = 0, .settings_valid = true, .access = 0xEEEE};
-    media.files[0].data.size = 8;
-    media.files[0].data_len = 8;
-    memcpy(media.data, "\xDE\xAD\xBE\xEF\x01\x02\x03\x04", 8);
-    media.data_len = 8;
-    media.files[1] = (FlipsoMediaFile){
+    FlipsoMediaApp* app = flipso_media_open_app(&media, FLIPSO_AID_OYSTER);
+    app->file_count = 3;
+    app->files[0] = (FlipsoMediaFile){.id = 0, .settings_valid = true, .access = 0xEEEE};
+    app->files[0].data.size = 8;
+    app->files[0].data_len = 8;
+    memcpy(app->data, "\xDE\xAD\xBE\xEF\x01\x02\x03\x04", 8);
+    app->data_len = 8;
+    app->files[1] = (FlipsoMediaFile){
         .id = 1, .settings_valid = true, .type = FLIPSO_FILE_VALUE, .access = 0x1111};
-    media.files[2] = (FlipsoMediaFile){.id = 2};
+    app->files[2] = (FlipsoMediaFile){.id = 2};
     furi_string_reset(text);
     flipso_format_media(text, &media);
     printf("\n%s\n", furi_string_get_cstr(text));
@@ -59,4 +58,5 @@ void media_screens(FuriString* text) {
         "a file the card would not describe says so",
         page_starts(text, "File 2", "Details: Locked\n"));
     check("a value file has its range", page_starts(text, "File 1", "Type: Value\nRange: "));
+    flipso_media_reset(&media);
 }

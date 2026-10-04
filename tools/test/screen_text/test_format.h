@@ -64,6 +64,8 @@ void every_screen(const char* name, const FlipsoFormat* f, const ItsoCard* card)
 
 void synthetic_screens(const FlipsoFormat* f, const ItsoCard* card, FuriString* text);
 void spec_review(const FlipsoFormat* f, const ItsoCard* card); /* test_spec_screens.c */
+/** Decode @p group into @p p - zeroed, or what an earlier call left, whose value
+ *  history this releases - and render it as its product screen. */
 void product_screen(
     FuriString* text,
     const FlipsoFormat* f,

@@ -14,9 +14,8 @@ void synthetic_log(ItsoCard* card) {
         const ItsoTap* tap = &card->taps[i];
         itso_format_money(&tap->amount, money, sizeof(money));
         printf(
-            "  [%u]%s %s at %s, %s\n",
+            "  [%u] %s at %s, %s\n",
             i,
-            tap->latest ? " *" : "  ",
             itso_transaction_name(tap->transaction_type),
             fmt_unix(itso_dts_to_unix(tap->dts)),
             money);
@@ -25,14 +24,14 @@ void synthetic_log(ItsoCard* card) {
     }
     check("four taps decoded", card->tap_count == 4);
     check("newest tap first is tap out", card->taps[0].transaction_type == 12);
-    check("newest tap flagged latest", card->taps[0].latest);
     check(
         "tap out origin",
-        card->taps[0].origin.valid && strcmp(card->taps[0].origin.text, "Station 1072") == 0);
+        card->taps[0].origin.valid &&
+            strcmp(loc_text(&card->taps[0].origin), "Station 1072") == 0);
     check(
         "tap out destination",
         card->taps[0].destination.valid &&
-            strcmp(card->taps[0].destination.text, "Station 1444") == 0);
+            strcmp(loc_text(&card->taps[0].destination), "Station 1444") == 0);
     itso_format_money(&card->taps[0].amount, money, sizeof(money));
     check(
         "tap out fare GBP 2.65",
@@ -51,34 +50,34 @@ void synthetic_log(ItsoCard* card) {
     const ItsoTap* bus = &card->taps[3];
     check(
         "bus tap origin is a stop",
-        bus->origin.valid && strcmp(bus->origin.text, "Stop 00062624") == 0);
+        bus->origin.valid && strcmp(loc_text(&bus->origin), "Stop 00062624") == 0);
     check(
         "bus tap origin offers a NaptanCode",
-        strcmp(bus->origin.code, "00062624") == 0 &&
-            itso_location_code_kind(&bus->origin) == ItsoLocCodeNaptan);
+        strcmp(loc_code(&bus->origin), "00062624") == 0 &&
+            loc_kind(&bus->origin) == ItsoLocCodeNaptan);
     check(
         "bus tap destination is a stop",
-        bus->destination.valid && strcmp(bus->destination.text, "Stop 62697956") == 0);
+        bus->destination.valid && strcmp(loc_text(&bus->destination), "Stop 62697956") == 0);
     check(
         "bus tap destination offers a NaptanCode",
-        strcmp(bus->destination.code, "62697956") == 0 &&
-            itso_location_code_kind(&bus->destination) == ItsoLocCodeNaptan);
+        strcmp(loc_code(&bus->destination), "62697956") == 0 &&
+            loc_kind(&bus->destination) == ItsoLocCodeNaptan);
 
     const ItsoTap* rev4 = &card->taps[2];
     printf(
         "  rev%u: via %s, paid by %s, entry %s, entry op %u\n",
         rev4->format_rev,
-        rev4->route.text,
+        loc_text(&rev4->route),
         itso_payment_name(rev4->mop),
         fmt_unix(itso_dts_to_unix(rev4->entry_dts)),
         rev4->entry_oid);
     check("third record is format revision 4", rev4->format_rev == 4);
     check(
         "routing code is NLC 1444",
-        rev4->route.valid && strcmp(rev4->route.text, "Station 1444") == 0);
+        rev4->route.valid && strcmp(loc_text(&rev4->route), "Station 1444") == 0);
     check(
         "destination survives the routing group",
-        rev4->destination.valid && strcmp(rev4->destination.text, "Station 5685") == 0);
+        rev4->destination.valid && strcmp(loc_text(&rev4->destination), "Station 5685") == 0);
     itso_format_money(&rev4->amount, money, sizeof(money));
     check(
         "rev 4 fare GBP 4.80",

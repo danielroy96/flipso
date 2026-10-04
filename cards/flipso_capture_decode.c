@@ -68,8 +68,8 @@ bool flipso_capture_decode(const FlipsoCapture* capture, ItsoCard* card) {
         if(!gone || gone->len < FLIPSO_PRODUCT_HISTORY_HEADER) continue;
 
         const uint8_t* data = capture->bytes + gone->offset;
-        uint32_t last_seen = ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) |
-                             ((uint32_t)data[2] << 8) | data[3];
+        ItsoUnixTime last_seen = ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) |
+                                 ((uint32_t)data[2] << 8) | data[3];
 
         ItsoProduct* product = itso_card_add_product(card, data + 5, data[4]);
         if(!product) break;

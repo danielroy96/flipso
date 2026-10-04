@@ -13,8 +13,9 @@
  * tickets carry but another scheme may give its innermost zone.
  */
 void flipso_cat_space_area(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
-    const ItsoSpaceSaving* ss = &card->space;
-    switch((ItsoAreaKind)ss->area_kind) {
+    const ItsoSpaceSaving* ss = card->space;
+    if(!ss) return;
+    switch(ss->area_kind) {
     case ItsoAreaFareCode:
         /* The code itself is under Technical: the owner's own number, which
          * nothing here can name. */
@@ -52,7 +53,8 @@ void flipso_cat_space_area(FuriString* out, const FlipsoFormat* f, const ItsoCar
  * ticket does not fill in.
  */
 void flipso_cat_space_codes(FuriString* out, const ItsoCard* card) {
-    const ItsoSpaceSaving* ss = &card->space;
+    const ItsoSpaceSaving* ss = card->space;
+    if(!ss) return;
     if(ss->area_kind == ItsoAreaFareCode) {
         furi_string_cat_printf(out, "Fare code: %lu\n", (unsigned long)ss->area_value);
     } else if(
@@ -69,9 +71,9 @@ void flipso_cat_space_codes(FuriString* out, const ItsoCard* card) {
  * when it falls within that band. A mismatch is a torn write or a misread.
  */
 void flipso_cat_space_backup(FuriString* out, const ItsoCard* card, const ItsoProduct* product) {
-    const ItsoSpaceSaving* ss = &card->space;
+    const ItsoSpaceSaving* ss = card->space;
     const char* count = itso_count_name(product->count_kind);
-    if(!product->space_saving || !ss->has_backup || !count) return;
+    if(!product->space_saving || !ss || !ss->has_backup || !count) return;
     if(ss->backup_step == 1) {
         furi_string_cat_printf(out, "Backup count: %u\n", ss->backup_count);
     } else {
@@ -95,8 +97,8 @@ void flipso_cat_last_use(
     const ItsoCard* card,
     const ItsoProduct* product,
     const char* place_label) {
-    if(!product->space_saving) return;
-    const ItsoSpaceSaving* ss = &card->space;
+    const ItsoSpaceSaving* ss = card->space;
+    if(!product->space_saving || !ss) return;
 
     /* TYP 29 revision 1 records one place and no time: where the holder last
      * got on, or last got off. On an SPT Subway ticket that is the station the
@@ -139,8 +141,8 @@ void flipso_cat_last_use(
  */
 void flipso_cat_space_saving(FlipsoPages* p, const ItsoCard* card, const ItsoProduct* product) {
     const ItsoTicketTerms* ticket = itso_product_ticket(product);
-    if(!product->space_saving) return;
-    const ItsoSpaceSaving* ss = &card->space;
+    const ItsoSpaceSaving* ss = card->space;
+    if(!product->space_saving || !ss) return;
     FuriString* rules = flipso_pages_at(p, FlipsoSlotRules);
     FuriString* left = flipso_pages_at(p, FlipsoSlotLeft);
 
@@ -165,7 +167,7 @@ void flipso_cat_space_saving(FlipsoPages* p, const ItsoCard* card, const ItsoPro
         for(size_t i = 0; i < COUNT_OF(ss->carnet_ticks); i++) {
             uint8_t tick = ss->carnet_ticks[i];
             if(tick == 0 || tick == 31 || tick > product->expiry) continue;
-            flipso_cat_date_line(left, "", "Day used", (uint16_t)(product->expiry - tick));
+            flipso_cat_date_line(left, "", "Day used", (ItsoDate)(product->expiry - tick));
         }
     }
 

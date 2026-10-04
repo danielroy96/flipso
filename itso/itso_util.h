@@ -40,16 +40,16 @@ bool itso_is_blank(const uint8_t* data, size_t len);
  * Convert a 14-bit EN1545 DateStamp to a Unix timestamp.
  * Days since 1997-01-01; a stored zero means the maximum date (2041-11-10).
  */
-uint32_t itso_date_to_unix(uint16_t date);
+ItsoUnixTime itso_date_to_unix(ItsoDate date);
 
 /**
  * Convert a 24-bit DTS to a Unix timestamp.
  * DTS is a two's complement count of minutes from the epoch 2028-11-24 20:16.
  */
-uint32_t itso_dts_to_unix(uint32_t dts);
+ItsoUnixTime itso_dts_to_unix(ItsoDts dts);
 
-/** True once the DATE has passed relative to @p now (a Unix timestamp). */
-bool itso_date_expired(uint16_t date, uint32_t now);
+/** True once the DATE has passed relative to @p now. */
+bool itso_date_expired(ItsoDate date, ItsoUnixTime now);
 
 /**
  * True for an expiry DATE that means "does not expire": zero, the EN1545 maximum
@@ -57,7 +57,7 @@ bool itso_date_expired(uint16_t date, uint32_t now);
  * is what TS 1000-10 table 42 gives a compact shell ("does not expire for the
  * foreseeable future"). Either would otherwise print as a day in 2041.
  */
-bool itso_date_open(uint16_t date);
+bool itso_date_open(ItsoDate date);
 
 /** HalfDayOfWeek as a ValidOnDayCode-style day mask: a day counts if either period does. */
 uint8_t itso_half_days_mask(uint16_t half_days);

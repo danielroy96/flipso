@@ -70,26 +70,26 @@ uint16_t itso_crc_b(const uint8_t* data, size_t len) {
     return (uint16_t)~crc;
 }
 
-uint32_t itso_date_to_unix(uint16_t date) {
+ItsoUnixTime itso_date_to_unix(ItsoDate date) {
     uint32_t days = (date == 0) ? ITSO_DATE_MAX : date;
     return ITSO_DATE_EPOCH + days * 86400UL;
 }
 
-uint32_t itso_dts_to_unix(uint32_t dts) {
+ItsoUnixTime itso_dts_to_unix(ItsoDts dts) {
     /* Sign-extend the 24-bit two's complement value before offsetting the epoch. */
     int32_t minutes = (int32_t)(dts & 0xFFFFFF);
     if(minutes & 0x800000) minutes -= 0x1000000;
     int64_t unix_time = (int64_t)ITSO_DTS_EPOCH + (int64_t)minutes * 60;
     if(unix_time < 0) return 0;
-    return (uint32_t)unix_time;
+    return (ItsoUnixTime)unix_time;
 }
 
-bool itso_date_expired(uint16_t date, uint32_t now) {
+bool itso_date_expired(ItsoDate date, ItsoUnixTime now) {
     /* A DATE is the last day of validity, so the product survives until midnight. */
     return now >= itso_date_to_unix(date) + 86400UL;
 }
 
-bool itso_date_open(uint16_t date) {
+bool itso_date_open(ItsoDate date) {
     return date == 0 || date == 0x3FFF;
 }
 

@@ -15,12 +15,12 @@ static void flipso_cat_minutes(FuriString* out, uint16_t minutes) {
  * portion good on its first day alone: "Outward: 13/03/2026 only". A start and
  * period both zero is a portion the ticket gives no validity of its own.
  */
-void flipso_cat_portion(FuriString* out, const char* label, uint32_t from_dts, uint16_t days) {
+void flipso_cat_portion(FuriString* out, const char* label, ItsoDts from_dts, uint16_t days) {
     if(from_dts == 0 && days == 0) {
         furi_string_cat_printf(out, "%s: No validity of its own\n", label);
         return;
     }
-    const uint32_t from = itso_dts_to_unix(from_dts);
+    const ItsoUnixTime from = itso_dts_to_unix(from_dts);
     furi_string_cat_printf(out, "%s: ", label);
     flipso_cat_timestamp(out, from, false);
     if(days) {
@@ -355,8 +355,12 @@ void flipso_cat_sold_at(
     const ItsoReservation* res) {
     if(!res || !res->valid) return;
     ItsoLocation sold_by;
-    if(!itso_product_sold_at(product, &sold_by) || strcmp(sold_by.code, res->vendor.code) != 0 ||
-       sold_by.code_kind != res->vendor.code_kind) {
+    char sold_by_code[ITSO_LOC_CODE_LEN];
+    char vendor_code[ITSO_LOC_CODE_LEN];
+    if(!itso_product_sold_at(product, &sold_by) ||
+       itso_location_code(&sold_by, sold_by_code, sizeof(sold_by_code)) !=
+           itso_location_code(&res->vendor, vendor_code, sizeof(vendor_code)) ||
+       strcmp(sold_by_code, vendor_code) != 0) {
         flipso_cat_location(out, f, "", "Sold at", &res->vendor);
     }
 }

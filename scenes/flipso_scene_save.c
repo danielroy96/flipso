@@ -43,9 +43,9 @@ static void flipso_scene_save_cat_count(
 }
 
 /** The "you have this card already" screen. */
-static void flipso_scene_save_ask_update(Flipso* app, uint32_t read_at) {
+static void flipso_scene_save_ask_update(Flipso* app, ItsoUnixTime read_at) {
     FuriString* name = furi_string_alloc();
-    flipso_saved_name(name, furi_string_get_cstr(app->save_path));
+    flipso_saved_name(name, furi_string_get_cstr(app->save.path));
 
     /* The name, and how old the record is: the date is the half that answers
      * the question being asked, which is what is about to be replaced. */
@@ -59,7 +59,7 @@ static void flipso_scene_save_ask_update(Flipso* app, uint32_t read_at) {
      * question. The record is not being thrown away - the journeys and
      * transactions that have rolled off the card since it was written are kept
      * - so what changes is that this read's are added to them. */
-    const FlipsoCaptureDiff* diff = &app->save_diff;
+    const FlipsoCaptureDiff* diff = &app->save.diff;
     const bool ticket = app->card.shell_compact;
     if(diff->new_taps || diff->new_values || diff->new_products || diff->changed_products) {
         flipso_scene_save_cat_count(text, diff->new_taps, "journey", "journeys");
@@ -124,8 +124,8 @@ static void flipso_scene_save_ask_name(Flipso* app) {
         snprintf(number, sizeof(number), "%s", app->card.isrn);
     }
     flipso_saved_suggest_name(
-        app->save_name,
-        sizeof(app->save_name),
+        app->save.name,
+        sizeof(app->save.name),
         number,
         flipso_operators_brand(app->operators, itso_card_issuer_oid(&app->card)));
 
@@ -135,8 +135,8 @@ static void flipso_scene_save_ask_name(Flipso* app) {
         app->text_input,
         flipso_scene_save_input_callback,
         app,
-        app->save_name,
-        sizeof(app->save_name),
+        app->save.name,
+        sizeof(app->save.name),
         true);
     text_input_set_minimum_length(app->text_input, 1);
 
@@ -150,10 +150,10 @@ static void flipso_scene_save_ask_name(Flipso* app) {
 
 void flipso_scene_save_on_enter(void* context) {
     Flipso* app = context;
-    memset(&app->save_diff, 0, sizeof(app->save_diff));
+    memset(&app->save.diff, 0, sizeof(app->save.diff));
 
-    uint32_t read_at = 0;
-    if(flipso_saved_find(app->capture, app->save_path, &read_at)) {
+    ItsoUnixTime read_at = 0;
+    if(flipso_saved_find(app->capture, app->save.path, &read_at)) {
         /* Take what that record knows before offering to replace it. A card
          * keeps only its last four journeys and its last couple of
          * transactions, so everything older than that exists solely in the
@@ -164,8 +164,8 @@ void flipso_scene_save_on_enter(void* context) {
          * because the merge only adds records to a capture that is thrown away
          * when the scan screen comes back. */
         FlipsoCapture* previous = flipso_capture_alloc();
-        if(flipso_saved_read(previous, furi_string_get_cstr(app->save_path))) {
-            flipso_capture_merge_history(app->capture, previous, &app->save_diff);
+        if(flipso_saved_read(previous, furi_string_get_cstr(app->save.path))) {
+            flipso_capture_merge_history(app->capture, previous, &app->save.diff);
         }
         flipso_capture_free(previous);
 
@@ -175,19 +175,19 @@ void flipso_scene_save_on_enter(void* context) {
     }
 }
 
-/** Write app->save_path and leave, or explain why it could not be written. */
+/** Write app->save.path and leave, or explain why it could not be written. */
 static void flipso_scene_save_commit(Flipso* app) {
-    if(flipso_saved_write(app->capture, furi_string_get_cstr(app->save_path))) {
+    if(flipso_saved_write(app->capture, furi_string_get_cstr(app->save.path))) {
         /* The card on screen is now that saved card, so the menu offers to
          * delete it rather than to save it again. */
-        furi_string_set(app->loaded_path, app->save_path);
+        furi_string_set(app->loaded_path, app->save.path);
         /* And it now knows more than the card in the reader does, so decode it
          * again: the history that came out of the file belongs on the screens
          * without waiting for the card to be opened afresh. Only when there was
          * something to merge, so a first save leaves the card exactly as the
          * read left it. */
-        if(app->save_diff.kept_taps || app->save_diff.kept_values ||
-           app->save_diff.kept_products) {
+        if(app->save.diff.kept_taps || app->save.diff.kept_values ||
+           app->save.diff.kept_products) {
             flipso_capture_decode(app->capture, &app->card);
         }
         notification_message(app->notifications, &flipso_sequence_saved);
@@ -207,13 +207,13 @@ bool flipso_scene_save_on_event(void* context, SceneManagerEvent event) {
 
     switch(event.event) {
     case FlipsoCustomEventSaveCommit:
-        /* The name screen wrote into app->save_name; turn it into a path. */
-        flipso_saved_path(app->save_path, app->save_name);
+        /* The name screen wrote into app->save.name; turn it into a path. */
+        flipso_saved_path(app->save.path, app->save.name);
         flipso_scene_save_commit(app);
         return true;
 
     case FlipsoCustomEventSaveReplace:
-        /* app->save_path is already the record that was found. */
+        /* app->save.path is already the record that was found. */
         flipso_scene_save_commit(app);
         return true;
 

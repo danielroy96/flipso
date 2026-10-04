@@ -92,6 +92,25 @@ typedef enum {
     FlipsoTextAbout,
 } FlipsoTextScreen;
 
+/**
+ * Where the save and rename screens are writing a card, and what they know
+ * about it. Neither is up while the other is, so they share it.
+ */
+typedef struct {
+    /** Where the card is about to go: a new file, or one being replaced. */
+    FuriString* path;
+
+    /** Name being edited on the save or rename screen. */
+    char name[FLIPSO_SAVED_NAME_LEN];
+
+    /**
+     * What the record being replaced knew that this read does not, and the
+     * other way round. Filled in when the save screen finds a record to update,
+     * because that is the one moment both are in hand.
+     */
+    FlipsoCaptureDiff diff;
+} FlipsoSaveState;
+
 typedef struct {
     Gui* gui;
     ViewDispatcher* view_dispatcher;
@@ -131,18 +150,7 @@ typedef struct {
     /** Detail text built by the error scene, alive only while that scene is. */
     FuriString* error_detail;
 
-    /** Where the save screen is about to write: a new file, or one being replaced. */
-    FuriString* save_path;
-
-    /** Name being edited on the save screen. */
-    char save_name[FLIPSO_SAVED_NAME_LEN];
-
-    /**
-     * What the record being replaced knew that this read does not, and the
-     * other way round. Filled in when the save screen finds a record to update,
-     * because that is the one moment both are in hand.
-     */
-    FlipsoCaptureDiff save_diff;
+    FlipsoSaveState save;
 
     /** What a card that is not an ITSO one said about itself. */
     FlipsoMedia media;
@@ -171,8 +179,8 @@ typedef struct {
 extern const NotificationSequence flipso_sequence_saved;
 extern const NotificationSequence flipso_sequence_deleted;
 
-/** Current time as a Unix timestamp, from the Flipper's RTC. */
-uint32_t flipso_now(void);
+/** The current time, from the Flipper's RTC. */
+ItsoUnixTime flipso_now(void);
 
 /** The lookup tables and the time, for the screen builders in flipso_format.h. */
 FlipsoFormat flipso_format_context(const Flipso* app);

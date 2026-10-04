@@ -261,7 +261,7 @@ static void flipso_merge_value_records(
  * the merge.
  */
 typedef struct {
-    uint32_t last_seen; /**< Unix time of the read that still saw it. */
+    ItsoUnixTime last_seen; /**< When the read that still saw it was. */
     uint8_t entry; /**< Directory entry it held then. */
     const uint8_t* dir_entry; /**< ITSO_DIR_ENTRY_LEN bytes that described it. */
     const uint8_t* group; /**< Its IPE and value record groups, chained. */

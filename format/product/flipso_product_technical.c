@@ -155,18 +155,23 @@ void flipso_cat_product_technical(
         flipso_cat_space_codes(out, card);
         flipso_cat_space_backup(out, card, product);
     }
-    if(product->space_saving && card->space.has_events) {
-        furi_string_cat_printf(out, "Event 1: %s\n", itso_transaction_name(card->space.event1));
-        furi_string_cat_printf(out, "Event 2: %s\n", itso_transaction_name(card->space.event2));
+    if(product->space_saving && card->space && card->space->has_events) {
+        furi_string_cat_printf(out, "Event 1: %s\n", itso_transaction_name(card->space->event1));
+        furi_string_cat_printf(out, "Event 2: %s\n", itso_transaction_name(card->space->event2));
     }
 
     if(res) flipso_cat_reservation_codes(out, product, res);
 
-    /* The capping strategy is the scheme's own number for its rule set, and
-     * means nothing without the scheme's tables. */
+    /* Which of the two capping records the card keeps (VGXRef, TS 1000-5
+     * clauses 4.1.1 and 4.1.2): the reduced one has one place for all four
+     * caps and no last fare, which is why those lines can be missing from the
+     * capping page. The strategy is the scheme's own number for its rule set,
+     * and means nothing without the scheme's tables. */
     ItsoCapping* cap = malloc(sizeof(ItsoCapping));
-    if(flipso_decode_capping(f, card, product, cap) && cap->strategy) {
-        furi_string_cat_printf(out, "Capping rules: %u\n", cap->strategy);
+    if(flipso_decode_capping(f, card, product, cap)) {
+        furi_string_cat_printf(
+            out, "Capping record: %s\n", cap->ref == 1 ? "Reduced (type 1)" : "Full (type 2)");
+        if(cap->strategy) furi_string_cat_printf(out, "Capping rules: %u\n", cap->strategy);
     }
     free(cap);
 }

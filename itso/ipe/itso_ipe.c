@@ -208,7 +208,7 @@ bool itso_product_sold_at(const ItsoProduct* product, ItsoLocation* out) {
     return itso_retailer_location(product->retailer, out);
 }
 
-void itso_product_off_card(ItsoProduct* product, uint32_t last_seen) {
+void itso_product_off_card(ItsoProduct* product, ItsoUnixTime last_seen) {
     product->on_card = false;
     product->last_seen = last_seen;
     for(uint8_t i = 0; i < product->value_history_count; i++) {

@@ -108,11 +108,11 @@ typedef struct {
     uint32_t photocard; /**< TYP 23 PhotocardNumber; 0 when not recorded. */
     /** Revisions 1 and 2 of TYP 22: ValidityStartDTS; TYP 24: OutPortionValidFrom.
      *  0 if unset. */
-    uint32_t valid_from_dts;
+    ItsoDts valid_from_dts;
     /* TYP 24 (tables 136 and 139): the parts of a reserved journey its summary
      * and list row need. The rest of its dataset, and its reservations, are
      * decoded on demand by itso_parse_reservation() - see ItsoReservation. */
-    uint32_t return_from_dts; /**< RtnPortionValidFrom; 0 if unset. */
+    ItsoDts return_from_dts; /**< RtnPortionValidFrom; 0 if unset. */
     uint16_t outward_days; /**< OutPortionPeriodOfValidity: days on from valid_from_dts. */
     uint16_t return_days; /**< RtnPortionPeriodOfValidity: days on from return_from_dts. */
     uint16_t journeys_sold; /**< NumberOfJourneysSold, "n". */
@@ -127,7 +127,7 @@ typedef struct {
     uint8_t discount[5];
     bool part_used; /**< JourneyPartUsedFlag: part-way through a leg. */
     uint16_t flags; /**< TYP22Flags, ITSO_T22_*, or TYP24Flags, ITSO_T24_*. */
-    uint16_t issue_date; /**< IssueDate DATE; 0 when not recorded. */
+    ItsoDate issue_date; /**< IssueDate; 0 when not recorded. */
     uint16_t expiry_time; /**< ExpiryTime, minutes; 1440 and over is the next day. */
     uint16_t start_time; /**< Revision 3 ValidityStartTime, minutes. */
     uint16_t pass_duration; /**< Length of one pass, in @c duration_unit. */
@@ -167,9 +167,9 @@ typedef struct {
     bool has_transfers;
     uint8_t transfers; /**< TYP 23 CountTransfers on the current journey. */
     bool has_stored_expiry;
-    uint16_t stored_expiry; /**< ExpiryDateSP/SRJ: expiry of the unactivated stock. */
+    ItsoDate stored_expiry; /**< ExpiryDateSP/SRJ: expiry of the unactivated stock. */
     bool has_current_expiry;
-    uint16_t current_expiry; /**< TYP 22 ExpiryDateCurrent: the pass in use. */
+    ItsoDate current_expiry; /**< TYP 22 ExpiryDateCurrent: the pass in use. */
 } ItsoTicketTerms;
 
 /**
@@ -201,12 +201,12 @@ typedef struct {
     uint8_t weeks_per_period;
     uint8_t max_transactions;
     bool has_last_reset;
-    uint16_t last_reset; /**< TYP 5 LastResetDate. */
+    ItsoDate last_reset; /**< TYP 5 LastResetDate. */
 
     /* Validity window carried inside the dataset, distinct from the directory
      * expiry: TYP 4/5 EndDate. */
     bool has_end_date;
-    uint16_t end_date;
+    ItsoDate end_date;
 
     /* Multi-leg journey in progress (TYP 2, 4 and 5 value records). */
     bool has_journey;
@@ -232,7 +232,7 @@ typedef struct {
     uint8_t entitlement_code; /**< EN1545 EntitlementTypeCode. */
     uint8_t concession_class; /**< EN1545 ProfileCodeIOP. */
     bool has_sub_expiry;
-    uint16_t sub_expiry; /**< Entitlement expiry, distinct from IPE expiry. */
+    ItsoDate sub_expiry; /**< Entitlement expiry, distinct from IPE expiry. */
     bool has_holder_id;
     uint32_t holder_id; /**< HolderID: the issuer's number for the holder or photo. */
     bool has_secondary_holder;
@@ -281,9 +281,15 @@ typedef union {
  * as it stands rather than a transaction that happened.
  */
 typedef struct {
-    uint32_t dts; /**< Raw DTS of the transaction. */
-    ItsoMoney amount; /**< Balance after it, for the types that keep money. */
-    uint32_t count; /**< Counter after it; meaning per ItsoProduct::count_kind. */
+    ItsoDts dts; /**< When the transaction was. */
+    /* A type keeps money or a counter in its tail, never both, so the two share
+     * their room and @c has_count says which is there. Read @c count only when
+     * it is set and @c amount only when it is not: the other one is the same
+     * bytes read as something they are not. */
+    union {
+        ItsoMoney amount; /**< Balance after it, for the types that keep money. */
+        uint32_t count; /**< Counter after it; meaning per ItsoProduct::count_kind. */
+    };
     uint16_t ts; /**< TS#: which write to the group this was. */
     uint8_t txn; /**< EventTypeCode: what the transaction was. */
     bool has_count;
@@ -296,7 +302,6 @@ typedef struct {
 
 /** One entry of the Directory Data Group, plus whatever its IPE dataset yielded. */
 typedef struct {
-    bool present;
     uint8_t dir_index; /**< 1-based position E(i) in the directory. */
 
     /**
@@ -308,8 +313,8 @@ typedef struct {
      * is not is a statement about the card as it is now.
      */
     bool on_card;
-    /** Unix time of the last read that found it on the card; 0 while it is. */
-    uint32_t last_seen;
+    /** The last read that found it on the card; 0 while it is. */
+    ItsoUnixTime last_seen;
 
     uint16_t oid; /**< Operator that owns the product, after any EF extension. */
     bool oid_extended; /**< EF was set: the operator is in the extended IPE-owner range. */
@@ -317,7 +322,7 @@ typedef struct {
     uint8_t ptyp;
     bool value_group; /**< VGP: a Value Record Data Group follows the IPE. */
     bool foreign_iin; /**< IINL: operator belongs to a different network. */
-    uint16_t expiry; /**< Raw DATE; 0 means "no expiry" (decodes to 2041-11-10). */
+    ItsoDate expiry; /**< 0 means "no expiry" (decodes to 2041-11-10). */
     ItsoProductStatus status;
 
     bool body_parsed; /**< The IPE dataset itself was read and understood. */
@@ -380,14 +385,23 @@ typedef struct {
      * type-specific fields below are for. */
     bool value_parsed; /**< A live value record was found and decoded. */
 
-    /* Every record the group held, newest first, value_history[0] being the
+    /**
+     * Every record the group held, newest first, value_history[0] being the
      * live one the fields below describe. A saved card read again adds the
      * records the file already had, so this grows past what the card itself
-     * keeps: see flipso_capture_merge_history(). */
-    ItsoValueRecord value_history[ITSO_MAX_VALUE_RECORDS];
+     * keeps: see flipso_capture_merge_history().
+     *
+     * Allocated to fit, one record at a time, and NULL while there are none:
+     * a card keeps two and an ID none, where a fixed array of
+     * ITSO_MAX_VALUE_RECORDS spent most of its room on slots nothing filled.
+     * The product owns it, so a product copied by assignment shares it with
+     * the original - free only one of them, with itso_product_free(), which
+     * itso_card_reset() does for every product a card holds.
+     */
+    ItsoValueRecord* value_history;
     uint8_t value_history_count;
 
-    uint32_t value_dts; /**< Raw DTS of the value record we picked. */
+    ItsoDts value_dts; /**< When the value record we picked was written. */
     uint8_t value_txn; /**< EventTypeCode: what the last transaction was. */
     uint16_t value_ts; /**< TS#: how many times the record has been written. */
     uint32_t value_isam; /**< ISAMIDModifier: the POST that wrote the record. */
@@ -405,7 +419,7 @@ typedef struct {
      * elements an ID, a period ticket, a journey ticket and a purse place
      * differently, but mean the same by. */
     bool has_start;
-    uint16_t start; /**< Entitlement or validity start, raw DATE. */
+    ItsoDate start; /**< Entitlement or validity start. */
     bool has_passback;
     uint8_t passback; /**< PassbackTime in minutes; 0 means the POST decides. */
 
@@ -418,7 +432,8 @@ typedef struct {
     ItsoTerms terms;
 
     /* A Space Saving IPE (TYP 27/28/29), the one product a CMD4 paper ticket
-     * carries. Its own elements are in ItsoCard::space; see ItsoSpaceSaving. */
+     * carries, decoded. Its own elements are in ItsoCard::space, which is set
+     * whenever this is; see ItsoSpaceSaving. */
     bool space_saving;
 
     ItsoLocation from;
@@ -441,6 +456,11 @@ const ItsoTicketTerms* itso_product_ticket(const ItsoProduct* product);
 
 /**
  * Decode the IPE Data Group (and any Value Record Data Group) for one product.
+ *
+ * @p product's value history must start empty, as a fresh card slot's does. The
+ * value records are allocated into ItsoProduct::value_history, so a product
+ * that is not one of a card's must be released with itso_product_free().
+ *
  * @param group  bytes of every chained sector, concatenated in chain order.
  */
 void itso_parse_ipe(ItsoProduct* product, const uint8_t* group, size_t len, uint8_t sector_size);
@@ -504,9 +524,18 @@ void itso_parse_value_history(ItsoProduct* product, const uint8_t* data, size_t 
  * captured them - and it is only knowing where the group came from that says
  * otherwise.
  *
- * @param last_seen Unix time of that read.
+ * @param last_seen the time of that read.
  */
-void itso_product_off_card(ItsoProduct* product, uint32_t last_seen);
+void itso_product_off_card(ItsoProduct* product, ItsoUnixTime last_seen);
+
+/** Release the value history @p product owns, leaving it with none. */
+void itso_product_free(ItsoProduct* product);
+
+/**
+ * True when two products decoded to the same thing: every field, and the value
+ * records themselves rather than where they happen to be allocated.
+ */
+bool itso_product_equal(const ItsoProduct* a, const ItsoProduct* b);
 
 /** True when value record @p a was written later than @p b, by TS#. */
 bool itso_value_record_newer(const uint8_t* a, const uint8_t* b);

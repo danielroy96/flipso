@@ -16,7 +16,7 @@
 #include <time.h>
 
 /** A DTS as a readable UTC timestamp, which is what a history is read by. */
-static const char* fmt_dts(uint32_t dts) {
+static const char* fmt_dts(ItsoDts dts) {
     static char buf[24];
     time_t when = (time_t)itso_dts_to_unix(dts);
     struct tm tm;
@@ -25,8 +25,8 @@ static const char* fmt_dts(uint32_t dts) {
     return buf;
 }
 
-/** A 14-bit DATE as a readable UTC day. */
-static const char* fmt_date(uint16_t date) {
+/** A DATE as a readable UTC day. */
+static const char* fmt_date(ItsoDate date) {
     static char buf[16];
     time_t when = (time_t)itso_date_to_unix(date);
     struct tm tm;
@@ -35,8 +35,16 @@ static const char* fmt_date(uint16_t date) {
     return buf;
 }
 
+/** A location's text, rendered into a buffer that lasts until the next call. */
+static const char* location_text(const ItsoLocation* loc) {
+    static char text[ITSO_LOC_LEN];
+    itso_location_text(loc, text, sizeof(text));
+    return text;
+}
+
 static void show_location(const char* label, const ItsoLocation* loc) {
-    if(loc->valid) printf("      %-12s %s (LocDefType %u)\n", label, loc->text, loc->def_type);
+    if(loc->valid)
+        printf("      %-12s %s (LocDefType %u)\n", label, location_text(loc), loc->def_type);
 }
 
 static void show_money(const char* label, const ItsoMoney* money) {
@@ -135,7 +143,7 @@ static void show_extras(const ItsoProduct* p, const uint8_t* group, size_t len, 
                     (long)c->uncapped.value,
                     c->day_count,
                     c->location.valid ? ", at " : "",
-                    c->location.valid ? c->location.text : "");
+                    c->location.valid ? location_text(&c->location) : "");
             }
         }
     }
@@ -202,7 +210,7 @@ int main(void) {
             itso_type2_frozen_pages(card.chip_lock));
         printf("  memory       %u bytes\n", card.chip_memory_len);
         printf("\nProducts\n  %u product(s)\n", card.product_count);
-        const ItsoSpaceSaving* ss = &card.space;
+        const ItsoSpaceSaving* ss = card.space;
         for(uint8_t p = 0; p < card.product_count; p++) {
             const ItsoProduct* product = &card.products[p];
             const ItsoTicketTerms* t = itso_product_ticket(product);
@@ -228,7 +236,7 @@ int main(void) {
                     itso_isam_oid(product->isam_id),
                     (unsigned long)product->isam_seq,
                     product->key_id);
-            if(!product->space_saving) continue;
+            if(!product->space_saving || !ss) continue;
 
             if(t->issue_date) printf("      %-12s %s\n", "issued", fmt_date(t->issue_date));
             show_money("price paid", &t->amount_paid);
@@ -271,7 +279,7 @@ int main(void) {
                 printf(
                     "      %-12s %s (LocDefType %u)\n",
                     ss->usage_alighted ? "last off at" : "last on at",
-                    product->from.text,
+                    location_text(&product->from),
                     product->from.def_type);
             if(product->typ == ItsoTypCarnet) {
                 printf(
@@ -417,15 +425,16 @@ int main(void) {
                 record->ts,
                 itso_transaction_name(record->txn),
                 fmt_dts(record->dts));
-            if(record->amount.valid) {
-                char money[24];
-                itso_format_money(&record->amount, money, sizeof(money));
-                printf("  %s", money);
-            } else if(record->has_count) {
+            /* has_count first: the counter and the balance share their room. */
+            if(record->has_count) {
                 printf(
                     "  %s %lu",
                     itso_count_name(product->count_kind) ?: "count",
                     (unsigned long)record->count);
+            } else if(record->amount.valid) {
+                char money[24];
+                itso_format_money(&record->amount, money, sizeof(money));
+                printf("  %s", money);
             }
             printf("%s\n", v ? "" : "  <- live");
         }
@@ -441,9 +450,8 @@ int main(void) {
         for(uint8_t i = 0; i < card.tap_count; i++) {
             const ItsoTap* tap = &card.taps[i];
             printf(
-                "  tap %u%s: %s, DTS %u\n",
+                "  tap %u: %s, DTS %u\n",
                 i,
-                tap->latest ? " (latest)" : "",
                 itso_transaction_name(tap->transaction_type),
                 tap->dts);
             show_money("fare", &tap->amount);

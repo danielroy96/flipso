@@ -91,7 +91,7 @@ void synthetic_review(ItsoCard* card) {
                 t->ride_value.value == 250);
         check(
             "journey locations still land after the terms",
-            j->from.valid && strcmp(j->from.text, "Station 5631") == 0);
+            j->from.valid && strcmp(loc_text(&j->from), "Station 5631") == 0);
         check(
             "journey RouteCode, revision 2",
             t->has_route_code && memcmp(t->route_code, "00000", 5) == 0);
@@ -138,7 +138,6 @@ void synthetic_review(ItsoCard* card) {
         memcpy(buf, src, len);
         ItsoProduct p;
         memset(&p, 0, sizeof(p));
-        p.present = true;
         p.typ = ItsoTypStoredTravelRights;
         p.value_group = true;
         itso_parse_ipe(&p, buf, len, 64);
@@ -170,7 +169,8 @@ void synthetic_review(ItsoCard* card) {
         check("unused accumulators are empty", cap->acc[2].rule == ItsoCapRuleNone);
         check(
             "where the last cap applied",
-            cap->acc[0].location.valid && strcmp(cap->acc[0].location.text, "Station 1072") == 0);
+            cap->acc[0].location.valid &&
+                strcmp(loc_text(&cap->acc[0].location), "Station 1072") == 0);
         if(ref == 2) {
             check("full form keeps the last fare", cap->acc[0].last_fare.value == 185);
             check(
@@ -190,6 +190,7 @@ void synthetic_review(ItsoCard* card) {
         check("capping survives every truncation", true);
         free(cap);
         free(buf);
+        itso_product_free(&p);
     }
     {
         ItsoCapping cap;

@@ -9,7 +9,7 @@
  * misread: each is a case the decoder got wrong or left out.
  */
 void spec_review_fields(void) {
-    ItsoProduct p;
+    ItsoProduct p = {0};
 
     /* Limits, deposits and prices are VALI - unsigned (TS 1000-1 table 5) - so
      * GBP 400 is 40000 pence, not a negative number. A purse's balance is the
@@ -131,7 +131,8 @@ void spec_review_fields(void) {
     check("a rev 3 RouteCode", t->has_route_code && memcmp(t->route_code, "00700", 5) == 0);
     check(
         "a rev 3 journey's ends land after the route",
-        strcmp(p.from.text, "Station 1072") == 0 && strcmp(p.to.text, "Station 1444") == 0);
+        strcmp(loc_text(&p.from), "Station 1072") == 0 &&
+            strcmp(loc_text(&p.to), "Station 1444") == 0);
     check("TYP23Flags print receipt", p.print_flags == ITSO_PRINT_RECEIPT);
     check("AutoRenewQuantity", t->renew_quantity == 2);
 
@@ -187,4 +188,5 @@ void spec_review_fields(void) {
         }
     }
     check("the new elements survive every truncation", 1);
+    itso_product_free(&p);
 }

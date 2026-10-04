@@ -24,14 +24,16 @@ static void flipso_cat_value_record(
     furi_string_cat_printf(out, "%s\n", itso_transaction_name(record->txn));
     flipso_cat_datetime_line(out, "  ", "When", record->dts);
 
-    if(record->amount.valid) {
-        flipso_cat_money(
-            out, "  ", purse->balance_is_spend ? "Spent so far" : "Balance", &record->amount);
-    } else if(record->has_count) {
+    /* has_count first: the counter and the balance share their room, so the
+     * balance is only there to be read when the counter is not. */
+    if(record->has_count) {
         /* The counter means whatever the product's type says it means, and it
          * means the same thing in every record. */
         const char* label = itso_count_name(product->count_kind);
         if(label) furi_string_cat_printf(out, "  %s: %lu\n", label, (unsigned long)record->count);
+    } else if(record->amount.valid) {
+        flipso_cat_money(
+            out, "  ", purse->balance_is_spend ? "Spent so far" : "Balance", &record->amount);
     }
 }
 

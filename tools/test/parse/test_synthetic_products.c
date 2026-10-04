@@ -240,10 +240,12 @@ void synthetic_period(ItsoCard* card) {
     dump_location("to", &card->products[2].to);
     check(
         "period ticket from NLC 1072",
-        card->products[2].from.valid && strcmp(card->products[2].from.text, "Station 1072") == 0);
+        card->products[2].from.valid &&
+            strcmp(loc_text(&card->products[2].from), "Station 1072") == 0);
     check(
         "period ticket to NLC 1444",
-        card->products[2].to.valid && strcmp(card->products[2].to.text, "Station 1444") == 0);
+        card->products[2].to.valid &&
+            strcmp(loc_text(&card->products[2].to), "Station 1444") == 0);
     check(
         "validity start 2025-01-01",
         card->products[2].has_start &&
@@ -326,7 +328,6 @@ void synthetic_period(ItsoCard* card) {
         memcpy(buf, period_rev1_group, sizeof(period_rev1_group));
         ItsoProduct p;
         memset(&p, 0, sizeof(p));
-        p.present = true;
         p.typ = ItsoTypPeriodTicket;
         p.value_group = true;
         itso_parse_ipe(&p, buf, sizeof(period_rev1_group), 64);
@@ -362,6 +363,7 @@ void synthetic_period(ItsoCard* card) {
                 fmt_unix(itso_date_to_unix(itso_product_ticket(&p)->current_expiry)),
                 "2026-02-05 00:00") == 0);
         free(buf);
+        itso_product_free(&p);
     }
 
     /* Revision 2, shaped like a South Western Railway annual season: AmountPaid
@@ -371,15 +373,14 @@ void synthetic_period(ItsoCard* card) {
         memcpy(buf, period_rev2_group, sizeof(period_rev2_group));
         ItsoProduct p;
         memset(&p, 0, sizeof(p));
-        p.present = true;
         p.typ = ItsoTypPeriodTicket;
         itso_parse_ipe(&p, buf, sizeof(period_rev2_group), 64);
         const ItsoTicketTerms* t = itso_product_ticket(&p);
         printf(
             "  rev 2 period: paid %ld, from %s to %s\n",
             (long)t->amount_paid.value,
-            p.from.text,
-            p.to.text);
+            loc_text(&p.from),
+            loc_text(&p.to));
         check("revision 2 ticket terms read", t->valid);
         check(
             "revision 2 paid GBP 4040.00 by card",
@@ -396,9 +397,10 @@ void synthetic_period(ItsoCard* card) {
         check("revision 2 ends 04:30 the next day", t->expiry_time == 1710);
         check(
             "revision 2 locations behind RouteCode",
-            p.from.valid && strcmp(p.from.text, "Station 5685") == 0 && p.to.valid &&
-                strcmp(p.to.text, "Station 0035") == 0);
+            p.from.valid && strcmp(loc_text(&p.from), "Station 5685") == 0 && p.to.valid &&
+                strcmp(loc_text(&p.to), "Station 0035") == 0);
         free(buf);
+        itso_product_free(&p);
     }
 
     /* Revision 3's duration group, which counts in a unit of its own. */
@@ -407,7 +409,6 @@ void synthetic_period(ItsoCard* card) {
         memcpy(buf, period_rev3_group, sizeof(period_rev3_group));
         ItsoProduct p;
         memset(&p, 0, sizeof(p));
-        p.present = true;
         p.typ = ItsoTypPeriodTicket;
         itso_parse_ipe(&p, buf, sizeof(period_rev3_group), 64);
         const ItsoTicketTerms* t = itso_product_ticket(&p);
@@ -420,6 +421,7 @@ void synthetic_period(ItsoCard* card) {
             t->has_stock_duration && t->stock_duration == 365);
         check("revision 3 without CPICC reads none", !p.has_cpicc);
         free(buf);
+        itso_product_free(&p);
     }
 
     /* The day formatter on its own: ranges, lists and the empty case. */
@@ -466,10 +468,12 @@ void synthetic_journey(ItsoCard* card) {
             card->products[3].retailer == (0x8000 | (5 << 10) | 631));
     check(
         "journey ticket from NLC 5631",
-        card->products[3].from.valid && strcmp(card->products[3].from.text, "Station 5631") == 0);
+        card->products[3].from.valid &&
+            strcmp(loc_text(&card->products[3].from), "Station 5631") == 0);
     check(
         "journey ticket to NLC 5685",
-        card->products[3].to.valid && strcmp(card->products[3].to.text, "Station 5685") == 0);
+        card->products[3].to.valid &&
+            strcmp(loc_text(&card->products[3].to), "Station 5685") == 0);
 
     /* Both value records carry the same DTS, so only TS# distinguishes them. The
      * live one is the later of the two: the ride has been spent. */

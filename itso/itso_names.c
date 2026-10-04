@@ -201,8 +201,8 @@ const char* itso_status_name(ItsoProductStatus status) {
     }
 }
 
-const char* itso_shell_reject_name(ItsoShellReject reject) {
-    switch(reject) {
+const char* itso_shell_reject_name(ItsoShellVerdict verdict) {
+    switch(verdict) {
     case ItsoShellRejectShort:
         return "Too short";
     case ItsoShellRejectIin:

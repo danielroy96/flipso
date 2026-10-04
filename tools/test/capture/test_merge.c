@@ -20,9 +20,9 @@ void merge_history(void) {
      * next. Both timestamps are taken from the card rather than written down:
      * a DTS is a signed count of minutes from an epoch in 2028, so every record
      * here is a negative number and the arithmetic reads backwards. */
-    uint32_t oldest_dts = reference.taps[reference.tap_count - 1].dts;
-    uint32_t new_tap_dts = reference.taps[0].dts + 1440; /* A day later. */
-    uint32_t new_value_dts = new_tap_dts + 1;
+    ItsoDts oldest_dts = reference.taps[reference.tap_count - 1].dts;
+    ItsoDts new_tap_dts = reference.taps[0].dts + 1440; /* A day later. */
+    ItsoDts new_value_dts = new_tap_dts + 1;
 
     FlipsoCapture* previous = flipso_capture_alloc();
     fill(previous, &reference);
@@ -87,13 +87,7 @@ void merge_history(void) {
               }
               !duplicate;
           }));
-    check("exactly one journey is the card's own latest", ({
-              uint8_t latest = 0;
-              for(uint8_t i = 0; i < merged.tap_count; i++) {
-                  if(merged.taps[i].latest) latest++;
-              }
-              latest == 1;
-          }));
+    check("the new journey is the newest, listed first", merged.taps[0].dts == new_tap_dts);
     check("only the journey the file remembered is marked as from past reads", ({
               uint8_t past = 0;
               bool oldest_is_past = false;
@@ -269,7 +263,7 @@ void merge_replaced_product(void) {
 void merge_cap(void) {
     static ItsoCard reference;
     reference_decode(&reference);
-    uint32_t oldest_dts = reference.taps[reference.tap_count - 1].dts;
+    ItsoDts oldest_dts = reference.taps[reference.tap_count - 1].dts;
 
     /* A file saved from an earlier read: its own live log, plus a full history
      * of records older than any of them. */

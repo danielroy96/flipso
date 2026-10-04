@@ -38,16 +38,20 @@ void write_text(const char* path, const char* text);
 /** Empty and remove the saved-cards folder, however the last run left it. */
 void clean(void);
 /** A capture holding one card's shell and directory, stamped with a time. */
-FlipsoCapture*
-    make(const uint8_t* shell, size_t shell_len, const uint8_t* dir, size_t dir_len, uint32_t when);
+FlipsoCapture* make(
+    const uint8_t* shell,
+    size_t shell_len,
+    const uint8_t* dir,
+    size_t dir_len,
+    ItsoUnixTime when);
 /** Files in the saved-cards folder. */
 size_t count_files(void);
 /** True when the saved-cards folder holds @p name. */
 bool exists(const char* name);
 /** The read time of the card saved as @p name, or 0 when it will not load. */
-uint32_t read_time(const char* name);
+ItsoUnixTime read_time(const char* name);
 /** Write a card as @p name with @p suffix after its extension, as a save would. */
-void leave(const char* name, const char* suffix, uint32_t read_at);
+void leave(const char* name, const char* suffix, ItsoUnixTime read_at);
 
 /* --- The tests, in the order test_saved.c runs them --- */
 

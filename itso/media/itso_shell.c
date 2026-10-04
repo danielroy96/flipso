@@ -45,7 +45,7 @@ bool itso_shell_is_compact(const uint8_t* data, size_t len) {
  * which test it failed. ItsoShellAccepted means only that the header is
  * plausible - the geometry has not been looked at yet.
  */
-static ItsoShellReject itso_shell_header_reject(const uint8_t* data, size_t len) {
+static ItsoShellVerdict itso_shell_header_reject(const uint8_t* data, size_t len) {
     /* A compact shell has no IIN to check and is only three bytes long, so it is
      * settled before the full-shell tests that would reject it as short. */
     if(itso_shell_is_compact(data, len)) return ItsoShellAccepted;
@@ -61,8 +61,8 @@ static ItsoShellReject itso_shell_header_reject(const uint8_t* data, size_t len)
 }
 
 bool itso_looks_like_shell(const uint8_t* data, size_t len) {
-    ItsoShellReject reject = itso_shell_header_reject(data, len);
-    return reject != ItsoShellRejectShort && reject != ItsoShellRejectIin;
+    ItsoShellVerdict verdict = itso_shell_header_reject(data, len);
+    return verdict != ItsoShellRejectShort && verdict != ItsoShellRejectIin;
 }
 
 /**
@@ -164,7 +164,7 @@ bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
     card->fvc = data[11];
     card->ksc = data[12];
     card->kvc = data[13];
-    card->expiry = itso_bits(data, 114, 14); /* 2 RFU bits precede the 14-bit DATE. */
+    card->expiry = (ItsoDate)itso_bits(data, 114, 14); /* 2 RFU bits precede it. */
     card->sector_size = data[16];
     card->sector_count = data[17];
     card->dir_entries = data[18];
@@ -173,10 +173,10 @@ bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
     card->mcrn_present = (bitmap & 0x02) != 0;
     if(card->mcrn_present && len >= 30) {
         /* BCD, terminated and padded with 0xF to a fixed 10 bytes. */
-        char digits[21];
-        itso_bcd(data, 160, 20, digits);
+        char digits[ITSO_MCRN_DIGITS + 1];
+        itso_bcd(data, 160, ITSO_MCRN_DIGITS, digits);
         char* out = card->mcrn;
-        for(uint8_t i = 0; i < 20 && digits[i] != 'F'; i++) {
+        for(uint8_t i = 0; i < ITSO_MCRN_DIGITS && digits[i] != 'F'; i++) {
             *out++ = digits[i];
         }
         *out = '\0';

@@ -6,6 +6,10 @@
 
 #include <gui/scene_manager.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Scene enum: FlipsoSceneScan, FlipsoSceneMenu, ... */
 #define ADD_SCENE(prefix, name, id) FlipsoScene##id,
 typedef enum {
@@ -29,3 +33,7 @@ extern const SceneManagerHandlers flipso_scene_handlers;
 #define ADD_SCENE(prefix, name, id) void prefix##_scene_##name##_on_exit(void* context);
 #include "flipso_scene_config.h"
 #undef ADD_SCENE
+
+#ifdef __cplusplus
+}
+#endif

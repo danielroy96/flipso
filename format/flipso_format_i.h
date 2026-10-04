@@ -16,6 +16,10 @@
 #include <locale/locale.h>
 #include <string.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Room for any amount itso_format_money() writes. */
 #define FLIPSO_MONEY_LEN 24
 
@@ -23,7 +27,7 @@
 void flipso_cat_datetime_struct(FuriString* out, const DateTime* dt, bool with_time);
 
 /** Append a Unix time as a date, and optionally its time, in the user's formats. */
-void flipso_cat_timestamp(FuriString* out, uint32_t timestamp, bool with_time);
+void flipso_cat_timestamp(FuriString* out, ItsoUnixTime timestamp, bool with_time);
 
 /**
  * Start a page: a page break, unless it is the screen's first, then its title.
@@ -49,10 +53,10 @@ void flipso_cat_money(
     const ItsoMoney* money);
 
 /** "Label: dd/mm/yyyy". */
-void flipso_cat_date_line(FuriString* out, const char* indent, const char* label, uint16_t date);
+void flipso_cat_date_line(FuriString* out, const char* indent, const char* label, ItsoDate date);
 
 /** "Label: dd/mm/yyyy hh:mm" for a DTS. */
-void flipso_cat_datetime_line(FuriString* out, const char* indent, const char* label, uint32_t dts);
+void flipso_cat_datetime_line(FuriString* out, const char* indent, const char* label, ItsoDts dts);
 
 /** An expiry date, labelled @p past_label once it has passed, or "No expiry". */
 void flipso_cat_expiry(
@@ -60,8 +64,8 @@ void flipso_cat_expiry(
     const char* indent,
     const char* label,
     const char* past_label,
-    uint16_t date,
-    uint32_t now);
+    ItsoDate date,
+    ItsoUnixTime now);
 
 /** "VAT: 20.00%", from a rate in 0.01% steps. Nothing for a rate of zero. */
 void flipso_cat_vat(FuriString* out, const char* indent, uint16_t vat);
@@ -167,4 +171,8 @@ void flipso_cat_ticket_state(
     FuriString* out,
     const char* label,
     const ItsoCard* card,
-    uint32_t now);
+    ItsoUnixTime now);
+
+#ifdef __cplusplus
+}
+#endif

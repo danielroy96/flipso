@@ -29,7 +29,7 @@ void itso_ipe_period_dataset(ItsoProduct* product, const uint8_t* data, size_t l
     if(t->flags & ITSO_T22_PRINT_RECEIPT) product->print_flags |= ITSO_PRINT_RECEIPT;
     product->passback = (uint8_t)itso_bits(data, 58, 6);
     product->has_passback = true;
-    t->issue_date = (uint16_t)itso_bits(data, 64, 14);
+    t->issue_date = (ItsoDate)itso_bits(data, 64, 14);
     t->expiry_time = (uint16_t)itso_bits(data, 78, 11);
     t->renew_quantity = (uint8_t)itso_bits(data, 90, 6);
     t->travel_class = (uint8_t)itso_bits(data, 96, 3);
@@ -39,7 +39,7 @@ void itso_ipe_period_dataset(ItsoProduct* product, const uint8_t* data, size_t l
      * whose start date and time take four bytes where the DTS took three. */
     size_t b; /* Byte of PromotionCode. */
     if(format_rev >= 3) {
-        product->start = (uint16_t)itso_bits(data, 106, 14); /* ValidityStartDate. */
+        product->start = (ItsoDate)itso_bits(data, 106, 14); /* ValidityStartDate. */
         product->has_start = true;
         t->start_time = (uint16_t)itso_bits(data, 125, 11);
         t->has_start_time = true;
@@ -149,8 +149,8 @@ void itso_ipe_period_value(ItsoProduct* product, const uint8_t* newest) {
     /* Clear, the ticket is one continuous period and AutoRenewQuantity1
      * counts days rather than passes (rules 5 and 6 of 2.9.1.4). */
     ticket->stored_passes = (flags & 0x02) != 0;
-    ticket->stored_expiry = (uint16_t)itso_bits(newest, 92, 14);
+    ticket->stored_expiry = (ItsoDate)itso_bits(newest, 92, 14);
     ticket->has_stored_expiry = true;
-    ticket->current_expiry = (uint16_t)itso_bits(newest, 106, 14);
+    ticket->current_expiry = (ItsoDate)itso_bits(newest, 106, 14);
     ticket->has_current_expiry = true;
 }

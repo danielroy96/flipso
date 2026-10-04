@@ -123,7 +123,7 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
              * and a product with no Sector Chain Table claims no status. Only
              * an area recorded as a journey's two ends has a From line. */
             char what[160];
-            if(!t2.space.area[1].valid) {
+            if(!t2.space->area[1].valid) {
                 snprintf(what, sizeof(what), "%s has no From line", tickets[i].name);
                 check(what, !shows(text, "From: "));
             }

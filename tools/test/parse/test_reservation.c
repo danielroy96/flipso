@@ -59,7 +59,8 @@ void reservation_ticket(void) {
     check("travellers", t->adults == 1 && t->children == 1 && t->concessions == 0);
     check(
         "origin and destination walked to",
-        strcmp(p.from.text, "Station 1072") == 0 && strcmp(p.to.text, "Station 1444") == 0);
+        strcmp(loc_text(&p.from), "Station 1072") == 0 &&
+            strcmp(loc_text(&p.to), "Station 1444") == 0);
     check("Route after four LOC1s", t->has_route_code && memcmp(t->route_code, "00700", 5) == 0);
     check(
         "the outward portion starts",
@@ -100,9 +101,9 @@ void reservation_ticket(void) {
             res.restricted_days == 0x06);
     check(
         "alternative ends, one of them null",
-        strcmp(res.alt_from.text, "Station 0035") == 0 && !res.alt_to.valid);
-    check("VendorLoc", strcmp(res.vendor.text, "Station 5685") == 0);
-    check("bitmap bit 2: the optional groups", res.has_options && !res.overrun);
+        strcmp(loc_text(&res.alt_from), "Station 0035") == 0 && !res.alt_to.valid);
+    check("VendorLoc", strcmp(loc_text(&res.vendor), "Station 5685") == 0);
+    check("bitmap bit 2: the optional groups, none overrunning", !res.overrun);
     check("an associated IPE", res.associated_count == 1 && res.associated[0] == 2);
     check(
         "a discount by percentage",
@@ -116,8 +117,9 @@ void reservation_ticket(void) {
     check("a supplement", res.supplement_count == 1 && strcmp(res.supplements[0], "SLP") == 0);
     check(
         "an interchange, read before the transfers",
-        res.interchange_count == 1 && strcmp(res.interchanges[0].exit.text, "Station 5148") == 0 &&
-            strcmp(res.interchanges[0].entry.text, "Station 5143") == 0 &&
+        res.interchange_count == 1 &&
+            strcmp(loc_text(&res.interchanges[0].exit), "Station 5148") == 0 &&
+            strcmp(loc_text(&res.interchanges[0].entry), "Station 5143") == 0 &&
             res.interchanges[0].minutes == 45);
     check(
         "break of journey, rail's transfer type 2, unlimited",
@@ -131,12 +133,13 @@ void reservation_ticket(void) {
             !res.time_bands[0].location.valid);
     check(
         "a specific train, fourteen bytes with a six-byte LOC1",
-        res.service_count == 1 && strcmp(res.services[0].departs.text, "Station 1444") == 0 &&
+        res.service_count == 1 &&
+            strcmp(loc_text(&res.services[0].departs), "Station 1444") == 0 &&
             memcmp(res.services[0].service, "GR1234", 6) == 0 && res.services[0].time == 1110 &&
             res.services[0].restriction);
     check(
         "a routing point",
-        res.route_count == 1 && strcmp(res.routes[0].location.text, "Station 1555") == 0 &&
+        res.route_count == 1 && strcmp(loc_text(&res.routes[0].location), "Station 1555") == 0 &&
             res.routes[0].via == 1);
     check(
         "bitmap bit 1: the passenger, after every group",
@@ -145,7 +148,7 @@ void reservation_ticket(void) {
         "the extension's fixed part",
         res.has_extension && strcmp(res.booking, "ABC12345") == 0 &&
             strcmp(fmt_unix(itso_dts_to_unix(res.last_validation)), "2026-10-01 08:02") == 0 &&
-            strcmp(res.last_validation_at.text, "Station 1072") == 0);
+            strcmp(loc_text(&res.last_validation_at), "Station 1072") == 0);
     check("two reserved legs", res.leg_count == 2);
     if(res.leg_count == 2) {
         const ItsoReservedLeg* a = &res.legs[0];
@@ -153,8 +156,9 @@ void reservation_ticket(void) {
         check(
             "the outward leg, coach and seat without rail's left padding",
             strcmp(fmt_unix(itso_dts_to_unix(a->departs)), "2026-10-01 08:30") == 0 &&
-                strcmp(a->service, "GR1234") == 0 && strcmp(a->from.text, "Station 1072") == 0 &&
-                strcmp(a->to.text, "Station 1444") == 0 && strcmp(a->coach, "C") == 0 &&
+                strcmp(a->service, "GR1234") == 0 &&
+                strcmp(loc_text(&a->from), "Station 1072") == 0 &&
+                strcmp(loc_text(&a->to), "Station 1444") == 0 && strcmp(a->coach, "C") == 0 &&
                 strcmp(a->seat, "42") == 0 && strcmp(a->attribute, "WNDW") == 0 &&
                 a->direction == ITSO_SEAT_FACING && a->berth == 0 && a->type == 0 && !a->together);
         check(
@@ -180,7 +184,8 @@ void reservation_ticket(void) {
         &p, ItsoTypReservationTicket, true, reservation_atco_group, sizeof(reservation_atco_group));
     check(
         "a bus ticket's ends by AtcoCode",
-        strcmp(p.from.text, "Stop 450016879") == 0 && strcmp(p.to.text, "Stop 450030236") == 0);
+        strcmp(loc_text(&p.from), "Stop 450016879") == 0 &&
+            strcmp(loc_text(&p.to), "Stop 450030236") == 0);
     check(
         "and the terms after them, walked to",
         itso_product_ticket(&p)->amount_paid.value == 420 &&
@@ -196,7 +201,6 @@ void reservation_ticket(void) {
         plain[1] &= (uint8_t) ~(0x08 << 4);
         ItsoProduct q;
         memset(&q, 0, sizeof(q));
-        q.present = true;
         q.typ = ItsoTypReservationTicket;
         q.value_group = true;
         itso_parse_ipe(&q, plain, sizeof(reservation_atco_group), 64);
@@ -204,27 +208,28 @@ void reservation_ticket(void) {
         check(
             "without bitmap bit 3 the count is not kept",
             itso_product_ticket(&q)->reservations == 0);
+        itso_product_free(&q);
     }
     ok = parse_reservation_exact(
         reservation_atco_group,
         sizeof(reservation_atco_group),
         itso_product_ticket(&p)->reservations,
         &res);
-    check("its VendorLoc", ok && strcmp(res.vendor.text, "Stop 450030236") == 0);
+    check("its VendorLoc", ok && strcmp(loc_text(&res.vendor), "Stop 450030236") == 0);
     check(
         "an interchange of two AtcoCodes",
         res.interchange_count == 1 &&
-            strcmp(res.interchanges[0].exit.text, "Stop 450030236") == 0 &&
+            strcmp(loc_text(&res.interchanges[0].exit), "Stop 450030236") == 0 &&
             res.interchanges[0].minutes == 0);
     check(
         "and a not-via routing point after it",
-        res.route_count == 1 && strcmp(res.routes[0].location.text, "Stop 450016879") == 0 &&
+        res.route_count == 1 && strcmp(loc_text(&res.routes[0].location), "Stop 450016879") == 0 &&
             res.routes[0].via == 0);
     check("no passenger without bitmap bit 1", !res.has_passenger);
     check(
         "a leg between AtcoCodes",
-        res.leg_count == 1 && strcmp(res.legs[0].from.text, "Stop 450016879") == 0 &&
-            strcmp(res.legs[0].to.text, "Stop 450030236") == 0 &&
+        res.leg_count == 1 && strcmp(loc_text(&res.legs[0].from), "Stop 450016879") == 0 &&
+            strcmp(loc_text(&res.legs[0].to), "Stop 450030236") == 0 &&
             strcmp(res.legs[0].seat, "12") == 0 && res.legs[0].coach[0] == '\0' &&
             res.legs[0].type == 3);
     check("a null place of last validation", !res.last_validation_at.valid);
@@ -337,4 +342,5 @@ void reservation_ticket(void) {
             res.time_band_count == capped.time_band_count && !res.has_passenger);
     itso_reservation_free(&capped);
     itso_reservation_free(&res);
+    itso_product_free(&p);
 }

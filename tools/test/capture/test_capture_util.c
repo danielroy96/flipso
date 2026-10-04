@@ -76,7 +76,7 @@ void free_lines(char** lines, size_t count) {
 }
 
 /** A copy of tap record @p from, restamped, which is a different journey. */
-void restamp_tap(uint8_t* out, const uint8_t* from, uint32_t dts) {
+void restamp_tap(uint8_t* out, const uint8_t* from, ItsoDts dts) {
     memcpy(out, from, ITSO_TAP_RECORD_LEN);
     /* DateTimeStamp is 24 bits at bit 32, so bytes 4 to 6. */
     out[4] = (uint8_t)(dts >> 16);
@@ -85,7 +85,7 @@ void restamp_tap(uint8_t* out, const uint8_t* from, uint32_t dts) {
 }
 
 /** A copy of value record @p from with a new TS#, timestamp and balance. */
-void restamp_value(uint8_t* out, const uint8_t* from, uint16_t ts, uint32_t dts, int16_t amount) {
+void restamp_value(uint8_t* out, const uint8_t* from, uint16_t ts, ItsoDts dts, int16_t amount) {
     memcpy(out, from, ITSO_VALUE_RECORD_LEN);
     /* TS# is 12 bits at bit 4 and the DTS 24 bits at bit 16; a purse keeps its
      * balance in the two bytes at 10 (TS 1000-5 table 4). */
@@ -99,7 +99,7 @@ void restamp_value(uint8_t* out, const uint8_t* from, uint16_t ts, uint32_t dts,
 }
 
 /** True when a decoded card holds a journey stamped @p dts. */
-bool holds_tap(const ItsoCard* card, uint32_t dts) {
+bool holds_tap(const ItsoCard* card, ItsoDts dts) {
     for(uint8_t i = 0; i < card->tap_count; i++) {
         if(card->taps[i].dts == dts) return true;
     }
