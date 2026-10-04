@@ -497,6 +497,21 @@ def main():
     check("and each frame keeps its pixels",
           tuple(rows[6 + 8 + 9][(6 + 5) * 3:(6 + 5) * 3 + 3]) == flipctl.PALETTES["screen"][0])
 
+    # The qflipper sheet: orange screens on a transparent background, so the
+    # README's sits on GitHub's dark theme as well as its light one.
+    with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+        flipctl.write_sheet([bytes(frame)] * 2, ["00", "01"], tmp.name, cols=2, scale=1,
+                            palette="qflipper")
+        data = open(tmp.name, "rb").read()
+    raw = zlib.decompress(data[data.index(b"IDAT") + 4:data.index(b"IEND") - 8])
+    row = lambda y: raw[y * (1 + 4 * (2 * 128 + 3 * 6)) + 1:]
+    check("a qflipper sheet is RGBA", data[25] == 6)
+    check("transparent between the frames, orange and black on them",
+          row(0)[3] == 0 and tuple(row(6 + 8)[(6 + 1) * 4:(6 + 1) * 4 + 4]) == (0xFE, 0x8A, 0x2C, 0xFF)
+          and tuple(row(6 + 8)[6 * 4:6 * 4 + 4]) == (0, 0, 0, 0xFF))
+    check("and its numbers in a grey both themes can read",
+          tuple(row(6 + 1)[6 * 4:6 * 4 + 4]) == (0x80, 0x80, 0x80, 0xFF))
+
     print("FAILED" if failures else "All flipctl recovery tests passed")
     return 1 if failures else 0
 
