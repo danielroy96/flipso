@@ -1577,22 +1577,31 @@ SHEET_DIGITS = ("111101101101111", "010110010010111", "111001111100111",
                 "111101111001111")
 
 
-def write_sheet(frames: list, labels: list, path: str, cols: int = 3, scale: int = 2):
+def write_sheet(frames: list, labels: list, path: str, cols: int = 3, scale: int = 2,
+                palette: str = "screen"):
     """Tile frames into one PNG, each numbered above its top-left corner, so a
-    whole walk is one image to look at rather than one per screen."""
+    whole walk is one image to look at rather than one per screen.
+
+    The qflipper sheet is the screens in qFlipper's orange on a transparent
+    background, which sits on GitHub's light and dark themes alike - the
+    README's sheet is one."""
     import struct
     import zlib
 
-    W, H, gap, band = 128 * scale, 64 * scale, 6 * scale, 8 * scale
+    W, H, gap = 128 * scale, 64 * scale, 6 * scale
+    band = 8 * scale
     cols = max(1, min(cols, len(frames)))
     rows_n = (len(frames) + cols - 1) // cols
     width = cols * W + (cols + 1) * gap
     height = rows_n * (H + band) + (rows_n + 1) * gap
-    bg, on, off, ink = (0xFF, 0xFF, 0xFF), *PALETTES["screen"], (0x60, 0x60, 0x60)
-    img = [bytearray(bytes(bg) * width) for _ in range(height)]
-
-    def put(x, y, rgb):
-        img[y][x * 3:x * 3 + 3] = bytes(rgb)
+    on, off = PALETTES[palette]
+    if palette == "screen":
+        bpp, alpha, bg, ink = 3, b"", (0xFF, 0xFF, 0xFF), (0x60, 0x60, 0x60)
+    else:
+        bpp, alpha, bg, ink = 4, b"\xff", (0, 0, 0), (0x80, 0x80, 0x80)
+    on, off, ink = bytes(on) + alpha, bytes(off) + alpha, bytes(ink) + alpha
+    clear = bytes(bg) + (b"\x00" if alpha else b"")
+    img = [bytearray(clear * width) for _ in range(height)]
 
     for n, frame in enumerate(frames):
         ox = gap + (n % cols) * (W + gap)
@@ -1605,21 +1614,21 @@ def write_sheet(frames: list, labels: list, path: str, cols: int = 3, scale: int
                 for gx in range(3):
                     if glyph[gy * 3 + gx] == "1":
                         for dy in range(scale):
-                            for dx in range(scale):
-                                put(ox + (i * 4 + gx) * scale + dx, oy + (1 + gy) * scale + dy, ink)
+                            x = ox + (i * 4 + gx) * scale
+                            img[oy + (1 + gy) * scale + dy][x * bpp:(x + scale) * bpp] = ink * scale
         oy += band
         for y in range(H):
             line = img[oy + y]
             for x in range(128):
-                rgb = bytes(on if frame_pixel(frame, x, y // scale) else off) * scale
-                line[(ox + x * scale) * 3:(ox + (x + 1) * scale) * 3] = rgb
+                px = (on if frame_pixel(frame, x, y // scale) else off) * scale
+                line[(ox + x * scale) * bpp:(ox + (x + 1) * scale) * bpp] = px
 
     def chunk(tag, payload):
         body = tag + payload
         return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
 
     png = b"\x89PNG\r\n\x1a\n"
-    png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6 if alpha else 2, 0, 0, 0))
     png += chunk(b"IDAT", zlib.compress(b"".join(b"\x00" + bytes(r) for r in img), 9))
     png += chunk(b"IEND", b"")
     with open(path, "wb") as fh:
@@ -1763,7 +1772,8 @@ def cmd_walk(args):
         s.close()
 
     path = args.sheet or os.path.join(args.out, "sheet.png")
-    write_sheet(sheet, labels, path, cols=args.cols)
+    write_sheet(sheet, labels, path, cols=args.cols, scale=args.sheet_scale,
+                palette=args.sheet_palette)
     print(f"sheet: {path} ({len(sheet)} frames)")
     if args.repeat > 1 and heaps:
         ends = [next(free for r, free in reversed(heaps) if r == rep)
@@ -2354,7 +2364,8 @@ def build_parser():
                "  flipctl walk OUT ok right --until-same           # open a row, every page\n"
                "  flipctl walk OUT ok back --repeat 5              # leak check: open, close\n"
                "  flipctl walk docs/screenshots --steps-file docs/screenshots/walk.txt \\\n"
-               "      --launch --qflipper --named-only --sheet /tmp/readme.png  # README shots")
+               "      --launch --qflipper --named-only --sheet docs/screenshots/sheet.png \\\n"
+               "      --sheet-palette qflipper --sheet-scale 4         # README shots")
     s.add_argument("out", help="directory for the frames and sheet.png")
     s.add_argument("steps", nargs="*", metavar="STEP",
                    help="keys for one step: 'down down ok', 'ok:long', '@1.5' waits; "
@@ -2378,6 +2389,11 @@ def build_parser():
     s.add_argument("--cols", type=int, default=3, help="contact sheet columns (default: 3)")
     s.add_argument("--sheet", metavar="PATH", help="where the contact sheet goes "
                                                    "(default: OUT/sheet.png)")
+    s.add_argument("--sheet-palette", choices=sorted(PALETTES), default="screen",
+                   help="the sheet's colours: screen, the grey for reading (default), "
+                        "or qflipper, orange on transparent")
+    s.add_argument("--sheet-scale", type=int, default=2,
+                   help="pixels a screen pixel on the sheet (default: 2)")
     s.add_argument("--settle", type=float, default=0.2, help="pause between keys (default: 0.2)")
     s.add_argument("--settle-max", type=float, default=2.0,
                    help="longest wait for the screen to change after a step (default: 2)")

@@ -29,38 +29,25 @@ shows you everything that was on it.
 
 ## What it shows you
 
-ITSO cards contain a surprising amount of data in 4 KB of chip storage, all 
-laid out by the ITSO TS 1000 specification. Flipso decodes as much of it 
+ITSO cards contain a surprising amount of data in 4 KB of chip storage, all
+laid out by the ITSO TS 1000 specification. Flipso decodes as much of it
 as it can:
 
 - **Tickets** — journey, period and carnet products, with operator, validity and the stations they cover
 - **Pay as you go** — balance, owning operator and purse, and the most recent transactions
 - **Cardholder** — name, date of birth, concession and entitlements
 - **Journeys** — recent taps and completed journeys, with origin, destination, and fare
-- **Paper tickets** — ITSO's compact paper tickets, like Glasgow Subway paper NFC singles, returns and day tickets: rides left, price, when and at which station they were last used
-- **NFC tag tickets** — ITSO cards on NTAG215/216 and MIFARE Ultralight EV1 tags (CMD9 and CMD10), read like a smartcard, with the chip's lock bits and, on an NTAG, how many uses it has left
+- **Paper tickets** — ITSO's compact paper tickets, like Glasgow Subway paper NFC singles, returns and day tickets:
+  rides left, price, when and at which station they were last used
+- **NFC tag tickets** — ITSO cards on NTAG215/216 and MIFARE Ultralight EV1 tags (CMD9 and CMD10), read like a
+  smartcard, with the chip's lock bits and, on an NTAG, how many uses it has left
 
 Station and operator names are resolved on the device from bundled reference
 data.
 
-<table>
-  <tr>
-    <td width="50%" align="center" valign="top"><img src="docs/screenshots/card.png" width="250" alt="Card number 633597 0289 0100 0016 and expiry"></td>
-    <td width="50%" align="center" valign="top"><img src="docs/screenshots/id.png" width="250" alt="ITSO ID: name, expiry, status, entitlement and concession"></td>
-  </tr>
-  <tr>
-    <td width="50%" align="center" valign="top"><b>Card</b><br><sub>The 18-digit ISRN, its issuer and expiry, validated on the device</sub></td>
-    <td width="50%" align="center" valign="top"><b>ID &amp; entitlement</b><br><sub>Holder identity, concession and entitlement, validity and companion rules</sub></td>
-  </tr>
-  <tr>
-    <td width="50%" align="center" valign="top"><img src="docs/screenshots/products.png" width="250" alt="Products list with a per-type icon on each row"></td>
-    <td width="50%" align="center" valign="top"><img src="docs/screenshots/product-detail.png" width="250" alt="Period ticket: the stations it covers, its validity and its status"></td>
-  </tr>
-  <tr>
-    <td width="50%" align="center" valign="top"><b>Products</b><br><sub>Every ticket on the card, each with an icon for its type and a flag for expired, blocked or unused.</sub></td>
-    <td width="50%" align="center" valign="top"><b>Product detail</b><br><sub>The stations a ticket covers, its validity window, status, remaining passes and operator</sub></td>
-  </tr>
-</table>
+<p align="center">
+  <img src="docs/screenshots/sheet.png" width="816" alt="Twelve Flipso screens, numbered in the order a walk through the demo cards reaches them: the scan screen, the demo card list, a card menu, the card number and expiry, Pay as you go, the products list, a period ticket, a blocked card's menu, an ITSO ID, the last tap, a Subway paper ticket with one ride left, and the screen asking for a card to be held against the back">
+</p>
 
 ## Getting started
 
@@ -82,15 +69,21 @@ ufbt launch
 ### Bus stop names
 
 Copy `data/naptan.dat` to `apps_data/flipso/naptan.dat` on the SD card if you
-want Flipso to decode bus stop NaPTANs. There are nearly half a million bus
-stops in the UK (21 MB), so this data set is shipped alongside the app rather
-than bundled into it.
+want Flipso to decode bus stop NaPTANs. There are over 300k bus stops in the
+UK (21 MB), so this data set is shipped alongside the app rather than bundled
+into it.
 
 ## Contributing
 
-Contributions are welcome — particularly **other media types**, **operator
-names and card branding**, **station codes**, and **fixes for cards that do not
-read**.
+Contributions are welcome — particularly **operator names and card branding**
+and **fixes for cards that do not read**.
+
+Whilst Flipso has been developed and tested against real cards, some media
+types and IPEs are rather uncommon and I haven't seen them in the wild.
+
+Some of these have been implemented speculatively based on the ITSO 
+specification. As such some of the more unusual products are untested 
+against real media.
 
 ### Claude Code
 
@@ -119,6 +112,11 @@ Railway NLC codes kindly provided by
 been made to [Swindon Food Collective](https://www.swindonfoodcollective.org)
 in exchange for the use of this dataset.
 
+### Bus stop NaPTANs
+
+Bus stop NaPTANs published by the [Department for Transport](https://beta-naptan.dft.gov.uk) under
+the Open Government Licence.
+
 ### ITSO specification
 
 Field offsets are taken from ITSO TS 1000 version 2.1.5 (March 2025), published
@@ -126,13 +124,13 @@ by ITSO Ltd under the Open Government Licence. Each part is available to downloa
 from the [ITSO technical specification](https://www.itso.org.uk/itso-specification/itso-technical-specification)
 site. Flipso is written against:
 
-| Part | Title | Contents |
-| --- | --- | --- |
-| [TS 1000-0](https://www.itso.org.uk/hubfs/TS_1000-0_V2_1_5_2025_03.pdf) | Concept and Context | An overview of the scheme |
-| [TS 1000-1](https://www.itso.org.uk/hubfs/TS_1000-1_V2_1_5_2025_03.pdf) | General Reference | Data types: dates, timestamps, values, locations |
-| [TS 1000-2](https://www.itso.org.uk/hubfs/TS_1000-2_V2_1_5_2025_03.pdf) | Customer Media Format and Data Record Definitions | The shell, directory, product (IPE) and value record layouts |
-| [TS 1000-5](https://www.itso.org.uk/hubfs/TS_1000-5_V2_1_5_2025_03.pdf) | Customer Media Data and Customer Media Architecture | The fields of each product type, and the journey log |
-| [TS 1000-7](https://www.itso.org.uk/hubfs/TS_1000-7_V2_1_5_2025_03.pdf) | ITSO Security Subsystem | Cryptography Flipso can't do without an ISAM |
-| [TS 1000-10](https://www.itso.org.uk/hubfs/TS_1000-10_V2_1_5_2025_03.pdf) | Customer Media Definitions | Where the data sits on each kind of card (CMD2, CMD4, CMD7, CMD9, CMD10) |
+| Part                                                                      | Title                                               | Contents                                                                 |
+|---------------------------------------------------------------------------|-----------------------------------------------------|--------------------------------------------------------------------------|
+| [TS 1000-0](https://www.itso.org.uk/hubfs/TS_1000-0_V2_1_5_2025_03.pdf)   | Concept and Context                                 | An overview of the scheme                                                |
+| [TS 1000-1](https://www.itso.org.uk/hubfs/TS_1000-1_V2_1_5_2025_03.pdf)   | General Reference                                   | Data types: dates, timestamps, values, locations                         |
+| [TS 1000-2](https://www.itso.org.uk/hubfs/TS_1000-2_V2_1_5_2025_03.pdf)   | Customer Media Format and Data Record Definitions   | The shell, directory, product (IPE) and value record layouts             |
+| [TS 1000-5](https://www.itso.org.uk/hubfs/TS_1000-5_V2_1_5_2025_03.pdf)   | Customer Media Data and Customer Media Architecture | The fields of each product type, and the journey log                     |
+| [TS 1000-7](https://www.itso.org.uk/hubfs/TS_1000-7_V2_1_5_2025_03.pdf)   | ITSO Security Subsystem                             | Cryptography Flipso can't do without an ISAM                             |
+| [TS 1000-10](https://www.itso.org.uk/hubfs/TS_1000-10_V2_1_5_2025_03.pdf) | Customer Media Definitions                          | Where the data sits on each kind of card (CMD2, CMD4, CMD7, CMD9, CMD10) |
 
 See [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for further information on Flipso's implementation.
