@@ -76,6 +76,8 @@ void flipso_scene_menu_on_enter(void* context) {
         app->card.shell_blocked ? "Blocked card" :
         retired                 ? "Retired card" :
                                   (brand ? brand : "ITSO card"));
+    /* The header keeps a copy, and nothing else here looks a name up. */
+    flipso_names_release();
     flipso_menu_view_set_header_icon(
         menu, app->card.shell_blocked || retired ? &I_warning_10px : &I_card_10px);
 

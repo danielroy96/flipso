@@ -25,6 +25,8 @@
 #define TAG "Flipso"
 
 struct FlipsoReader {
+    /** Only while a scan runs: its worker thread's 8 KB stack is allocated with
+     *  it, not when the thread starts. */
     Nfc* nfc;
     NfcPoller* poller;
     NfcScanner* scanner; /**< Running instead of a poller in the detect stage. */
@@ -34,11 +36,9 @@ struct FlipsoReader {
     /** Which transport runs next, and what the scan has learned so far. */
     FlipsoScanSession session;
 
-    /** The DESFire transport, which most cards are read by. */
+    /* Each transport's buffers, only while that transport runs. */
     FlipsoDesfire* desfire;
-    /** Allocated the first time the ISO 7816 transport is used. */
     FlipsoCmd2* cmd2;
-    /** Allocated the first time the Type 2 transport is used. */
     FlipsoType2* type2;
 
     ItsoCard* card;
@@ -166,8 +166,6 @@ static NfcCommand flipso_type2_poller_callback(NfcGenericEvent event, void* cont
 FlipsoReader* flipso_reader_alloc(void) {
     FlipsoReader* reader = malloc(sizeof(FlipsoReader));
     memset(reader, 0, sizeof(FlipsoReader));
-    reader->nfc = nfc_alloc();
-    reader->desfire = flipso_desfire_alloc();
     reader->status = FlipsoReaderStatusIdle;
     flipso_scan_session_begin(&reader->session);
     return reader;
@@ -176,10 +174,6 @@ FlipsoReader* flipso_reader_alloc(void) {
 void flipso_reader_free(FlipsoReader* reader) {
     furi_assert(reader);
     flipso_reader_stop(reader);
-    if(reader->cmd2) flipso_cmd2_free(reader->cmd2);
-    if(reader->type2) flipso_type2_free(reader->type2);
-    flipso_desfire_free(reader->desfire);
-    nfc_free(reader->nfc);
     free(reader);
 }
 
@@ -193,24 +187,53 @@ static void flipso_reader_start_transport(FlipsoReader* reader) {
         reader->scanner = nfc_scanner_alloc(reader->nfc);
         nfc_scanner_start(reader->scanner, flipso_reader_scanner_callback, reader);
     } else if(transport == FlipsoTransportIso7816) {
-        /* Only cards that are not DESFire get this far, so the buffers it owns
-         * are worth allocating late rather than for every read. */
-        if(!reader->cmd2) reader->cmd2 = flipso_cmd2_alloc();
+        reader->cmd2 = flipso_cmd2_alloc();
         reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolIso14443_4a);
         nfc_poller_start(reader->poller, flipso_iso7816_callback, reader);
     } else if(transport == FlipsoTransportType2) {
         /* Read the raw Type 2 tag over the base ISO 14443-3A poller: it activates
          * with anticollision and select but no RATS, which is all a Type 2 tag
-         * answers. Allocated late, like the CMD2 buffers, and freed as soon as
-         * the poller stops. */
-        if(!reader->type2) reader->type2 = flipso_type2_alloc();
+         * answers. */
+        reader->type2 = flipso_type2_alloc();
         reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolIso14443_3a);
         nfc_poller_start(reader->poller, flipso_type2_poller_callback, reader);
     } else {
+        reader->desfire = flipso_desfire_alloc();
         reader->poller = nfc_poller_alloc(reader->nfc, NfcProtocolMfDesfire);
         nfc_poller_start_ex(reader->poller, flipso_desfire_callback, reader);
     }
     reader->running = true;
+}
+
+/** Stop whichever transport is running, keeping the NFC stack for the next. */
+static void flipso_reader_stop_transport(FlipsoReader* reader) {
+    if(!reader->running) return;
+
+    if(reader->scanner) {
+        nfc_scanner_stop(reader->scanner);
+        nfc_scanner_free(reader->scanner);
+        reader->scanner = NULL;
+    } else {
+        nfc_poller_stop(reader->poller);
+        nfc_poller_free(reader->poller);
+        reader->poller = NULL;
+    }
+    /* Each transport's buffers are a kilobyte or more, and nothing reads them
+     * once the poller has stopped: the card and its blocks are copied out by
+     * then. A retry allocates them again. */
+    if(reader->desfire) {
+        flipso_desfire_free(reader->desfire);
+        reader->desfire = NULL;
+    }
+    if(reader->cmd2) {
+        flipso_cmd2_free(reader->cmd2);
+        reader->cmd2 = NULL;
+    }
+    if(reader->type2) {
+        flipso_type2_free(reader->type2);
+        reader->type2 = NULL;
+    }
+    reader->running = false;
 }
 
 void flipso_reader_start(
@@ -237,6 +260,9 @@ void flipso_reader_start(
      * Back stopped the last part way through: a -4 transport left over from
      * that scan would hang on a Type 2 tag. */
     flipso_scan_session_begin(&reader->session);
+    /* The NFC stack costs over 9 KB, almost all of it the worker's stack, and
+     * a card on screen needs that room more than a reader that is switched off. */
+    if(!reader->nfc) reader->nfc = nfc_alloc();
     flipso_reader_start_transport(reader);
 }
 
@@ -245,35 +271,22 @@ bool flipso_reader_advance(FlipsoReader* reader, FlipsoReaderStatus* status) {
     furi_assert(status);
 
     /* Stop polling from this thread: the poller cannot stop itself. */
-    flipso_reader_stop(reader);
+    flipso_reader_stop_transport(reader);
 
     *status = reader->status;
     if(flipso_scan_session_step(&reader->session, status)) {
         flipso_reader_start_transport(reader);
         return true;
     }
+    flipso_reader_stop(reader);
     return false;
 }
 
 void flipso_reader_stop(FlipsoReader* reader) {
     furi_assert(reader);
-    if(!reader->running) return;
-
-    if(reader->scanner) {
-        nfc_scanner_stop(reader->scanner);
-        nfc_scanner_free(reader->scanner);
-        reader->scanner = NULL;
-    } else {
-        nfc_poller_stop(reader->poller);
-        nfc_poller_free(reader->poller);
-        reader->poller = NULL;
+    flipso_reader_stop_transport(reader);
+    if(reader->nfc) {
+        nfc_free(reader->nfc);
+        reader->nfc = NULL;
     }
-    /* The Type 2 page buffer is nearly a kilobyte, and nothing reads it once
-     * the poller has stopped: the card and its blocks are copied out by then.
-     * A retry allocates it again. */
-    if(reader->type2) {
-        flipso_type2_free(reader->type2);
-        reader->type2 = NULL;
-    }
-    reader->running = false;
 }

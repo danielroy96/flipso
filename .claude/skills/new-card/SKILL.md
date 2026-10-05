@@ -111,7 +111,10 @@ brand never comes from a product owner on a full shell (docs/PROTOCOL.md,
 
 ## 3. Add the entry
 
-`itso/itso_operators.c`, table `itso_operator_table`:
+`itso/names/itso_operators.c`, table `itso_operator_table`. The table is
+compiled only on the host: the device reads it from `assets/names.dat`, so
+rebuild that after the edit with `tools/names/build_names.sh` and commit it with
+the table (`tools/test/run.sh` fails until you do).
 
 - **Keep it sorted by OID.** Lookup is a binary search, so an entry out of
   order silently disappears.
@@ -135,7 +138,7 @@ table is still sorted, and a `same()` pair for the name and the brand.
 Only add the OIDs the user asked for. Other unknown OIDs on the card go in
 the report, with what the operators table says about them, not into the table
 on a guess. A wrong name is worse than a number (see the header comment in
-`itso_operators.c`).
+`itso/names/itso_operators.c`).
 
 ## 4. Check the ticket details
 
@@ -260,11 +263,11 @@ finds, and re-run `run.sh` and `ufbt lint`. Then:
 
 ```bash
 git status --short     # only source files: no .flipso, dump.txt or replay_data.h
-git add <the files you changed>
+git add <the files you changed>   # the table and assets/names.dat together
 git commit             # "Name <Operator> and title its <Brand> cards"
 ```
 
-The subject line follows the history: `git log --oneline -- itso/itso_operators.c`.
+The subject line follows the history: `git log --oneline -- itso/names/itso_operators.c itso/itso_operators.c`.
 The body says where the OID was read, anything the check in step 4 found and
 fixed, and what the new demo card covers. The operator entry and the demo card
 can be one commit or two; two reads better when the demo card needed builder

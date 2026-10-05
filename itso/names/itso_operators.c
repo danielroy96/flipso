@@ -14,8 +14,13 @@
  * creating the operators file described in the README.
  *
  * Entries must stay sorted by OID: lookup is a binary search.
+ *
+ * Compiled only on the host, like itso_name_tables.c, which says why: the
+ * device reads these names from assets/names.dat, which tools/names/ builds
+ * from this table. Rebuild it after an edit here - tools/test/run.sh fails
+ * until it is.
  */
-#include "itso_operators.h"
+#include "../itso_operators.h"
 
 #include <stddef.h>
 
@@ -216,12 +221,6 @@ static const ItsoOperatorEntry* itso_operator_entry(uint16_t oid) {
     }
 
     return NULL;
-}
-
-const char* itso_iin_name(uint32_t iin) {
-    /* ITSO holds a single registered six-digit issuer number, used by every
-     * ITSO shell (TS 1000-2 clause 4.1.4.1). */
-    return (iin == 633597) ? "ITSO" : NULL;
 }
 
 const char* itso_operator_name(uint16_t oid) {

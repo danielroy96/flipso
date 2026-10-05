@@ -1,6 +1,14 @@
 /**
  * @file itso_names.h
  * @brief Human-readable names for coded values.
+ *
+ * The long tables - entitlement, profile, transaction, payment, railcard, seat
+ * attribute and Subway station, and the operators in itso_operators.h - are
+ * read from the SD card on the device (lookup/flipso_names.h). Their names are
+ * then valid only until FLIPSO_NAMES_SLOTS more have been looked up or the
+ * scene releases them, so use one or copy it; never keep the pointer. The rest
+ * are string constants, which is why itso_typ_name(), whose answer the product
+ * list keeps, is one of them.
  */
 #pragma once
 
@@ -15,7 +23,7 @@ const char* itso_typ_name(uint8_t typ);
 /**
  * SPT Glasgow Subway station name for its 1-15 station id, or NULL if out of
  * range. Scheme-specific, not from the ITSO spec: see the table's provenance in
- * itso_names.c. The Subway's tickets are a compact-shell Type 2 medium
+ * names/itso_name_tables.c. The Subway's tickets are a compact-shell Type 2 medium
  * (@c shell_compact) and number their stations this way rather than by NLC.
  */
 const char* itso_spt_subway_station(uint8_t id);
@@ -55,6 +63,12 @@ const char* itso_class_name(uint8_t code);
  */
 const char* itso_railcard_name(const uint8_t* code, size_t len, bool* card);
 
+/**
+ * The railcard code itso_railcard_name() looks up, as its three bytes in a
+ * word: false when @p code is not three characters once trailing spaces go.
+ */
+bool itso_railcard_key(const uint8_t* code, size_t len, uint32_t* key);
+
 /** True for the DiscountCode a discount taken from an entitlement on the card
  *  carries: "XXXXX" (RSPS3002 3.8.3). */
 bool itso_discount_from_card(const uint8_t* code, size_t len);
@@ -64,6 +78,10 @@ bool itso_discount_from_card(const uint8_t* code, size_t len);
  * NULL for a code the table does not know, which is then shown as it stands.
  */
 const char* itso_seat_attribute_name(const char* code);
+
+/** The code itso_seat_attribute_name() looks up, as its four bytes in a word:
+ *  false when it is not four characters. */
+bool itso_seat_attribute_key(const char* code, uint32_t* key);
 
 /** Label for a product counter, e.g. "Rides left". NULL for ItsoCountNone. */
 const char* itso_count_name(ItsoCountKind kind);

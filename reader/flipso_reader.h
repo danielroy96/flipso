@@ -13,7 +13,8 @@
  * Each transport needs its own poller, so switching between them means stopping
  * one and starting the next; which comes next is flipso_scan_session.h's to say.
  *
- * The reader owns the NFC stack. Polling runs on the NFC worker thread; the
+ * The reader owns the NFC stack, and holds it only from flipso_reader_start()
+ * until the scan is over or stopped. Polling runs on the NFC worker thread; the
  * result callback is invoked from that thread, so it must only signal the UI
  * (for example via view_dispatcher_send_custom_event) and return promptly.
  */
