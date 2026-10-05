@@ -341,15 +341,6 @@ static bool
         cmd2->dir_len = len_b; /* Neither looked complete; use whatever we have. */
     }
 
-    FURI_LOG_D(
-        TAG,
-        "CMD2 directory: copy A seq %u (%u bytes), copy B seq %u (%u bytes), using %c",
-        sequence_a,
-        (unsigned)len_a,
-        sequence_b,
-        (unsigned)len_b,
-        use_b ? 'B' : 'A');
-
     if(cmd2->dir_len == 0) return false;
     if(itso_parse_directory(card, cmd2->dir, cmd2->dir_len)) return true;
 
@@ -431,10 +422,8 @@ FlipsoReaderStatus flipso_cmd2_read(
 
     if(!flipso_cmd2_select_application(cmd2, poller)) {
         if(cmd2->link_error) {
-            FURI_LOG_D(TAG, "Card left the field during select (CMD2)");
             return FlipsoReaderStatusCardError;
         }
-        FURI_LOG_D(TAG, "No ITSO application on this card (CMD2)");
         return FlipsoReaderStatusNotItso;
     }
     /* From here on the application is known to be there, so a link error means
@@ -475,7 +464,6 @@ FlipsoReaderStatus flipso_cmd2_read(
         /* CardLost rather than CardError: the application selected, so this is
          * the right transport and the card simply went (see the status). */
         if(cmd2->link_error) {
-            FURI_LOG_D(TAG, "Card left the field before the shell was read (CMD2)");
             return FlipsoReaderStatusCardLost;
         }
         FURI_LOG_W(TAG, "ITSO application present but no readable shell (CMD2)");
@@ -483,17 +471,6 @@ FlipsoReaderStatus flipso_cmd2_read(
     }
 
     flipso_log_shell_owner(card);
-
-    FURI_LOG_D(
-        TAG,
-        "CMD2 shell: FVC %u, B=%u S=%u E=%u SCTL=%u, SFI %u, path %u bytes",
-        card->fvc,
-        card->sector_size,
-        card->sector_count,
-        card->dir_entries,
-        card->sct_len,
-        cmd2->sfi,
-        cmd2->path_len);
 
     if(card->sector_count < 4 || card->sector_size == 0) {
         FURI_LOG_W(TAG, "CMD2 geometry unusable");

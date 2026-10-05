@@ -309,7 +309,7 @@ changes.
 ```bash
 tools/flipper/flipctl log --seconds 30            # filtered to app/NFC/errors
 tools/flipper/flipctl log --all                   # everything, until stopped
-tools/flipper/flipctl log --grep 'E[0-9]:'        # just the product lines
+tools/flipper/flipctl log --grep 'Shell owner'    # just the card's issuer
 tools/flipper/flipctl log --arm --seconds 120     # arm, prove it, then watch
 ```
 

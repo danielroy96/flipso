@@ -3,6 +3,7 @@ App(
     name="Flipso",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="flipso_app",
+    targets=["f7"],
     stack_size=4 * 1024,
     fap_category="NFC",
     fap_icon="flipso.png",
@@ -10,12 +11,6 @@ App(
     fap_version="1.0",
     fap_description="Read UK ITSO public transport smartcards",
     fap_weburl="https://github.com/danielroy96/flipso",
-    # Listed explicitly: a bare "*.c" is matched recursively and would pull in the
-    # host-side decoder tests under tools/. fbt tries each pattern from every
-    # directory in the tree, so "dir/*.c" takes the files of any directory called
-    # dir - no directory under tools/ may share a name with one listed here, which
-    # tools/test/lint_sources.py checks - but not dir/'s subdirectories, which are
-    # listed one by one.
     sources=[
         "flipso.c",
         "reader/flipso_reader.c",
@@ -38,21 +33,11 @@ App(
         "scenes/*.c",
         "views/*.c",
     ],
-    # The station table and the demo cards, bundled into the .fap as a
-    # non-loadable section and unpacked by the firmware to
-    # /ext/apps_assets/flipso/. Neither reaches RAM: see tools/stations/FORMAT.md
-    # and tools/demo/README.md. The stop table is deliberately NOT here
-    # - at 21 MB it would be re-uploaded on every install - and ships in data/
-    # for copying to the card instead; see data/README.md.
     fap_file_assets="assets",
-    # Compiled into the .fap as I_<name> symbols in flipso_icons.h. The pixel
-    # art they are generated from lives in tools/icons/build_icons.py.
     fap_icon_assets="images",
     requires=[
         "gui",
         "notification",
-        # Saved cards: the file browser and the "cannot save" message both come
-        # from the dialogs service.
         "dialogs",
         "storage",
     ],

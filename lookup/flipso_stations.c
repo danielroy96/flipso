@@ -95,7 +95,6 @@ static bool flipso_stations_try(FlipsoStations* instance, const char* path) {
          * the app hangs before its first frame, behind the desktop, and the
          * loader cannot close it. The SDK says so on storage_file_open(). */
         storage_file_close(instance->file);
-        FURI_LOG_D(TAG, "No station table at %s", path);
         return false;
     }
 
