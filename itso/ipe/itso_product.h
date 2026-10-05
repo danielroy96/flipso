@@ -26,7 +26,8 @@ typedef enum {
 } ItsoJourneyMode;
 
 /* PrintTicket and PrintReceipt: flags 5 and 6 of TYP2Flags, TYP4Flags,
- * TYP5Flags, TYP22Flags and TYP23Flags (TS 1000-5 tables 5, 13, 18, 30 and 34),
+ * TYP5Flags, TYP22Flags, TYP23Flags, TYP25Flags and TYP26Flags (TS 1000-5
+ * tables 5, 13, 18, 30, 34, 39 and 43),
  * and for PrintTicket alone IDFlags bit 5 (table 24) - what a machine should
  * print when the product is used. */
 #define ITSO_PRINT_TICKET  0x01
@@ -95,8 +96,9 @@ typedef enum {
 
 /**
  * The terms a TYP 22 period ticket, TYP 23 journey ticket, TYP 24 reserved
- * journey or TYP 25 voucher is sold on (TS 1000-5 tables 27, 27a, 3.27, 31,
- * 31a, 31b, 136 and 36), and what its live value record says about it now.
+ * journey, TYP 25 voucher or TYP 26 toll pass is sold on (TS 1000-5 tables 27,
+ * 27a, 3.27, 31, 31a, 31b, 136, 36 and 40), and what its live value record
+ * says about it now.
  *
  * The ticket family's ItsoTerms: a Space Saving IPE (TYP 27-29) fills the
  * elements it shares with them. They share most of these elements, at offsets
@@ -129,6 +131,9 @@ typedef struct {
     bool has_discount;
     uint8_t discount[5];
     bool part_used; /**< JourneyPartUsedFlag: part-way through a leg. */
+    /** TYP 26 TYP26Class: the owner's class of vehicle or service, by its own
+     *  numbering - not the EN1545 code in @c travel_class. */
+    uint8_t vehicle_class;
     uint16_t flags; /**< TYP22Flags, ITSO_T22_*, or TYP24Flags, ITSO_T24_*. */
     ItsoDate issue_date; /**< IssueDate; 0 when not recorded. */
     uint16_t expiry_time; /**< ExpiryTime, minutes; 1440 and over is the next day. */
@@ -138,7 +143,7 @@ typedef struct {
     uint16_t vat; /**< AmountPaidVATSalesTax in 0.01% steps. */
     uint8_t valid_days; /**< ValidOnDayCode, ITSO_DOW_*. */
     /** AutoRenewQuantity1: passes or days per renewal; TYP 25's
-     *  AutoRenewQuantity2: uses. */
+     *  AutoRenewQuantity2: uses; TYP 26's AutoRenewQuantity3: crossings. */
     uint8_t renew_quantity;
     uint8_t travel_class; /**< EN1545 AccommodationClassCode. */
     uint8_t validity_code; /**< Owner-defined; zero is the null condition. */
@@ -256,10 +261,10 @@ typedef struct {
 
 /** Which ItsoTerms a type fills. */
 typedef enum {
-    ItsoFamilyOther, /**< None: loyalty, tolling and anything unknown. */
+    ItsoFamilyOther, /**< None: loyalty and anything unknown. */
     ItsoFamilyPurse, /**< ItsoPurseTerms: TYP 2, 4 and 5. */
     ItsoFamilyId, /**< ItsoIdTerms: TYP 14 and 16. */
-    ItsoFamilyTicket, /**< ItsoTicketTerms: TYP 22-25 and 27-29. */
+    ItsoFamilyTicket, /**< ItsoTicketTerms: TYP 22-29. */
 } ItsoFamily;
 
 /**
@@ -591,6 +596,21 @@ bool itso_value_record_newer(const uint8_t* a, const uint8_t* b);
  * @return false for a product sold by an operator, leaving @p out empty.
  */
 bool itso_product_sold_at(const ItsoProduct* product, ItsoLocation* out);
+
+/** TYP 26's UserDefined: seven bytes the toll operator uses as it likes. */
+#define ITSO_TOLL_USER_DATA_LEN 7
+
+/**
+ * A toll pass's UserDefined (TS 1000-5 table 40), from its IPE Data Group.
+ *
+ * Read from the card's bytes when a screen wants it rather than kept in every
+ * product, since only a TYP 26 has one and nothing but its Technical page
+ * shows it.
+ *
+ * @param group the product's sector chain, from the IPE Data Group's header.
+ * @return false when the dataset is not a revision 1 one, or ends before it.
+ */
+bool itso_toll_user_data(const uint8_t* group, size_t len, uint8_t out[ITSO_TOLL_USER_DATA_LEN]);
 
 /** IDFlags bit 0: the card surface carries a photo of the holder. */
 static inline bool itso_id_personalised(uint8_t id_flags) {

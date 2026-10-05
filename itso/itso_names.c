@@ -375,6 +375,8 @@ const char* itso_count_name(ItsoCountKind kind) {
         return "Journeys left";
     case ItsoCountUses:
         return "Uses left";
+    case ItsoCountCrossings:
+        return "Crossings left";
     default:
         return NULL;
     }

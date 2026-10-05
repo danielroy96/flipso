@@ -131,7 +131,7 @@ static const ItsoIpeType itso_ipe_types[] = {
      itso_ipe_reservation_dataset,
      itso_ipe_reservation_value},
     {ItsoTypVoucher, ItsoFamilyTicket, itso_ipe_voucher_dataset, itso_ipe_voucher_value},
-    {ItsoTypTolling, ItsoFamilyOther, NULL, itso_ipe_voucher_value},
+    {ItsoTypTolling, ItsoFamilyTicket, itso_ipe_tolling_dataset, itso_ipe_voucher_value},
     {ItsoTypPeriodCompact, ItsoFamilyTicket, NULL, NULL},
     {ItsoTypCarnet, ItsoFamilyTicket, NULL, NULL},
     {ItsoTypMultiUse, ItsoFamilyTicket, NULL, NULL},

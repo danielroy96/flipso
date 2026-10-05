@@ -492,6 +492,29 @@ voucher_group = (
                  value_record(7, 3, dts(2026, 9, 9, 8, 15), voucher_tail(4, auto_renew=True))],
                 format_rev=1) + instance_and_seal())
 
+# A toll pass (TS 1000-5 table 40), every element set and bitmap bit 1's
+# AutoRenewQuantity3 after them. PassbackTime sits two bits earlier than in
+# any other type, and UserDefined is bytes that are not text, so its line
+# reads as hex.
+ipe26 = Bits(24)
+ipe26.put(0, 6, 6)          # IPELength = 6 blocks = 24 bytes
+ipe26.put(6, 6, 0b000010)   # IPEBitMap: AutoRenewQuantity3
+ipe26.put(12, 4, 1)         # IPEFormatRevision = 1
+ipe26.buf[2] = 30
+ipe26.putb(3, (0x0456).to_bytes(2, "big"))  # ProductRetailer
+ipe26.put(42, 6, 45)        # PassbackTime
+ipe26.buf[6] = 0b01000000   # TYP26Flags: print receipt
+ipe26.buf[7] = 3            # TYP26Class
+ipe26.put(66, 14, date_stamp(2026, 8, 3))      # IssueDate
+ipe26.put(80, 24, dts(2026, 8, 4, 6, 0))       # ValidityStartDTS
+ipe26.putb(13, bytes([0x00, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC]))  # UserDefined
+ipe26.buf[20] = 20          # AutoRenewQuantity3
+tolling_group = (
+    pad(bytes(ipe26.buf) + instance_and_seal(), 64) +
+    value_group([value_record(1, 2, dts(2026, 8, 4, 6, 0), voucher_tail(20, auto_renew=True)),
+                 value_record(7, 3, dts(2026, 9, 1, 17, 40), voucher_tail(19, auto_renew=True))],
+                format_rev=1) + instance_and_seal())
+
 # A period ticket at revision 3 carrying the IdentityDocumentID its bitmap bit
 # 2 adds (table 3.27): after the route and both locations, a three-bit type, a
 # five-bit length, then the document - here as text. TYP22Flags sets
@@ -970,6 +993,7 @@ with open("card_data.h", "w") as f:
     f.write(carr("entitlement_rev2_group", entitlement_rev2_group))
     f.write(carr("journey_rev3_group", journey_rev3_group))
     f.write(carr("voucher_group", voucher_group))
+    f.write(carr("tolling_group", tolling_group))
     f.write(carr("period_rev3_id_group", period_rev3_id_group))
     f.write(carr("period_rev3_long_id_group", period_rev3_long_id_group))
     f.write(carr("reservation_group", reservation_group))

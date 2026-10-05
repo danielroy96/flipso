@@ -714,7 +714,7 @@ Beyond that:
 | TYP 23 — Journey ticket (rev 1, 2, 3) | Origin, destination, rides remaining, transfers made, auto-renew, used flag, stored-ride expiry (rev 3); issue date, validity start (rev 3), end time, class, party size, amount paid with payment and VAT, photocard number, CPICC, validity and promotion codes, RouteCode, print flags, and the mode group — how rides are counted (rev 3 adds return pairs), transfer and time limits, ride value in its own currency code |
 | TYP 24 — Reserved journey (rev 2) | The railcard it is valid only with, and the railcard number, on the first page and on the Summary; journeys remaining, transfers remaining (one total), part-used flag; single, return or either-way and journeys sold; outward and return portions, each a start and a period in days; origin, destination and their alternatives, Route, the station or operator that sold it; TYP24Flags (test ticket first, the others only when set, the clear ones under Technical); days it may be used and days restrictions apply, the operator it is limited to, class, party size, amount paid and how; the eight optional groups - associated products, out-of-station interchanges, break of journey and other transfers, valid times, specific trains, routing points, and under Technical the discount code, percentage and code type, and the supplement codes - the passenger's name and gender, ticket number, FTOT, restriction code and ID type; and the reserved legs of its VGXRef 3 extension: the kind of place, coach, seat or berth, which way it faces and where it is (below) |
 | TYP 25 — Voucher | Uses remaining and auto-renew, with the uses each renewal adds (AutoRenewQuantity2); issue date, validity start, expiry time, the most it buys (MaxValue25, in its own currency), amount paid with payment and VAT, ServiceID and UserDefined, print flags, passback |
-| TYP 26 — Tolling | Rides remaining and auto-renew only; the dataset is not decoded ([handoff](handoff/typ26-tolling.md)) |
+| TYP 26 — Tolling | Crossings remaining (CountRemainingRidesJourneys) and auto-renew, with the crossings each renewal adds (AutoRenewQuantity3); vehicle class (TYP26Class, the owner's own numbering rather than EN1545's class code), issue date, validity start, print flags, passback, and under Technical the seven UserDefined bytes, read from the card's bytes as the screen is drawn |
 | TYP 27 — Period ticket (space saving) | Issue date, price paid and currency, adult or child, class, passback, off-peak and weekday restrictions, expiry time, where it is valid (fare code, fare value, or a LOC4 of origin, destination and via), last use, both event codes, photocard number, the expiry offset from the directory date, the InstanceID, and blocking by a zero Seal |
 | TYP 28 — Carnet of day passes (space saving) | As TYP 27 without the child flag, photocard or events, and with a LOC3 area; passes left (counting the expiry-day pass), the day each used pass was used, validity on the day of issue and of expiry |
 | TYP 29 — Multi-use ticket (space saving) | Revision 1: rides or coupons left, issue date, price paid, class, restrictions, area, and where it was last used and whether getting on or off (an SPT fare stage named as its Subway station). Revision 2: journeys left, when the latest journey began with the journeys begun that day and the changes made on it, the daily journey limit, the changes allowed, passback, last use. Both: area (fare code, fare value or LOC3), expiry time, the ScaledQtyBackup's count and whether it agrees with the ride count, the InstanceID, and blocking by a zero Seal |
@@ -982,11 +982,10 @@ LocDefType 212 carries several stops and names the first, counting the rest.
 - CMD9 and CMD10 are decoded from the specification alone: no real card of
   either has been read. A CMD10's one-way transaction counter is not read (see
   above), so a retired CMD10 is not flagged as one.
-- TYP 26 (tolling) is reported from its directory entry and value record
-  alone; its dataset is not decoded. The brief is in
-  [docs/handoff](handoff/README.md).
-- TYP 25 (vouchers) is decoded from the specification alone: no real one has
-  been read.
+- TYP 25 (vouchers) and TYP 26 (toll passes) are decoded from the
+  specification alone: no real one of either has been read. A toll pass's
+  vehicle class is a number, as no owner publishes what its classes are, and
+  its UserDefined is not shown for a pass the card has dropped.
 - TYP 24 (reserved journeys) is decoded from the specification alone: no real
   one has been read, and table 136 leaves several codings undefined - see
   [Reserved journeys](#reserved-journeys). Its reservations and optional

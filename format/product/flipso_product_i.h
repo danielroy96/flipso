@@ -36,7 +36,8 @@ typedef enum {
     FlipsoKindId, /**< TYP 16: the ITSO ID. */
     FlipsoKindEntitlement, /**< TYP 14. */
     FlipsoKindVoucher, /**< TYP 25: a car park or a meal bought with a ticket. */
-    FlipsoKindOther, /**< Loyalty, tolls and anything else. */
+    FlipsoKindToll, /**< TYP 26: a bridge, tunnel or ferry crossing. */
+    FlipsoKindOther, /**< Loyalty and anything else. */
 } FlipsoKind;
 
 /**
@@ -127,13 +128,16 @@ void flipso_cat_product_technical(
     const ItsoProduct* product,
     const ItsoReservation* res);
 
-/* --- flipso_product_ticket.c: TYP 22 and 23, and what TYP 27-29 share --- */
+/* --- flipso_product_ticket.c: TYP 22, 23, 25 and 26, and what TYP 27-29 share --- */
 
 /** The days, times, renewal and travellers a ticket was sold on. */
 void flipso_cat_ticket_terms(FlipsoPages* p, const ItsoProduct* product);
 
 /** When a ticket was issued and what was paid for it. */
 void flipso_cat_ticket_price(FuriString* out, const ItsoProduct* product);
+
+/** A toll pass's owner data, read from the capture, for Technical. */
+void flipso_cat_toll_codes(FuriString* out, const FlipsoFormat* f, const ItsoProduct* product);
 
 /* --- flipso_product_reservation.c: TYP 24 --- */
 
