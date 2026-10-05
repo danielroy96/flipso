@@ -51,7 +51,9 @@ Settlement Plan's RSPS3002, whose worked examples use real organisations, and
 table 1 of Harley Watson's 2019 dissertation on ITSO, which lists the OID of
 each of eighteen UK cards the author collected. Each entry cites its source.
 
-`itso/itso_operators.c` holds one table with two columns for each OID:
+`itso/names/itso_operators.c` holds one table with two columns for each OID
+(the device reads it from `assets/names.dat`, which `tools/names/` builds from
+it, rather than carry it in RAM):
 
 - the **name** of the organisation, shown against every product that OID owns;
 - the **brand**, the name the card is sold under, which titles the menu.
@@ -850,7 +852,7 @@ uses it - TYP 24 being, in practice, rail's:
   code such as `DIS`, or `XXXXX` when the discount came from an entitlement on
   the card. A ticket is not valid without its railcard, so the railcard leads
   the product screen and goes on the Summary as **Valid only with: Disabled
-  Persons Railcard**. The names come from a table in `itso/itso_names.c`,
+  Persons Railcard**. The names come from a table in `itso/names/itso_name_tables.c`,
   compiled from SAP Concur's published rail discount codes, a list of
   fares-data railcards, and the RailUK fares guide; an unknown code is shown as
   **Discount:** and the code. A TYP 22's IdentityDocumentID is the same kind of

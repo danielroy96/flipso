@@ -19,6 +19,9 @@ ROOT = Path(__file__).resolve().parents[2]
 # Not app sources, though fbt's walk goes through them: only names starting
 # with "." are hidden from it, as from SCons's Glob (SCons/Node/FS.py, _glob1).
 NOT_APP = {"tools", "build", "dist", "__pycache__"}
+# Host-only sources: tables the device reads from an asset instead, so the .fap
+# must not take them (see itso/names/itso_name_tables.c).
+HOST_ONLY = {"itso/names"}
 
 
 def fam_sources() -> list[str]:
@@ -50,7 +53,8 @@ def main() -> int:
         taken |= matches(pattern)
     app = {p for p in ROOT.rglob("*.c")
            if p.relative_to(ROOT).parts[0] not in NOT_APP
-           and not any(part.startswith(".") for part in p.relative_to(ROOT).parts)}
+           and not any(part.startswith(".") for part in p.relative_to(ROOT).parts)
+           and p.parent.relative_to(ROOT).as_posix() not in HOST_ONLY}
     problems = [f"  {p.relative_to(ROOT)} is not an app source but application.fam takes it"
                 for p in sorted(taken - app)]
     problems += [f"  {p.relative_to(ROOT)} is an app source no pattern takes"

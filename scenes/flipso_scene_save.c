@@ -128,6 +128,7 @@ static void flipso_scene_save_ask_name(Flipso* app) {
         sizeof(app->save.name),
         number,
         flipso_operators_brand(app->operators, itso_card_issuer_oid(&app->card)));
+    flipso_names_release();
 
     text_input_reset(app->text_input);
     text_input_set_header_text(app->text_input, "Name this card");

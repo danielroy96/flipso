@@ -25,6 +25,8 @@ App(
         "lookup/flipso_operators.c",
         "lookup/flipso_stations.c",
         "lookup/flipso_naptan.c",
+        "lookup/flipso_names.c",
+        "lookup/flipso_names_itso.c",
         "format/*.c",
         "format/product/*.c",
         "itso/*.c",

@@ -21,8 +21,9 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 PARTS = {
-    # The decoder: see itso/itso.h for how it is laid out.
-    "itso": ["itso/*.c", "itso/media/*.c", "itso/ipe/*.c"],
+    # The decoder: see itso/itso.h for how it is laid out. Its long name tables,
+    # names/, are host-only: the device reads them from assets/names.dat.
+    "itso": ["itso/*.c", "itso/media/*.c", "itso/ipe/*.c", "itso/names/*.c"],
     # The text of every screen.
     "format": ["format/*.c", "format/*/*.c"],
     # A read's raw blocks, and the file they are saved as.
@@ -33,6 +34,9 @@ PARTS = {
     "operators": ["lookup/flipso_operators.c"],
     "stations": ["lookup/flipso_stations.c"],
     "naptan": ["lookup/flipso_naptan.c"],
+    # The device's reader of assets/names.dat, and the key helpers it shares
+    # with the tables it is built from.
+    "names": ["lookup/flipso_names.c", "itso/itso_names.c"],
     "views": ["views/flipso_glyphs.c"],
     "menu_view": ["views/flipso_menu_view.c"],
     "text_view": ["views/flipso_text_view.c"],

@@ -24,6 +24,7 @@
  */
 #pragma once
 
+#include <furi.h>
 #include <gui/view.h>
 
 #ifdef __cplusplus
@@ -63,6 +64,15 @@ View* flipso_text_view_get_view(FlipsoTextView* instance);
  *             heading.
  */
 void flipso_text_view_set_text(FlipsoTextView* instance, const char* text);
+
+/**
+ * flipso_text_view_set_text(), taking @p text rather than copying it: the view
+ * owns it from here, and frees it along with whatever it held before. A
+ * screen's text is the largest thing on the heap while it is open, so this is
+ * how the app hands it over - it is never held twice, and taking an empty
+ * string gives back the last screen's whole buffer.
+ */
+void flipso_text_view_take_text(FlipsoTextView* instance, FuriString* text);
 
 /**
  * Icons a heading can name, numbered from 1 in the order given.

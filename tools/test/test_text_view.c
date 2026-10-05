@@ -18,6 +18,10 @@
 #include <stdio.h>
 #include <string.h>
 
+/* ASan's count of the bytes allocated and not yet freed; see
+ * capture/test_history_memory.c for why it is declared here. */
+size_t __sanitizer_get_current_allocated_bytes(void);
+
 static Canvas canvas;
 
 static void render(FlipsoTextView* text) {
@@ -407,6 +411,23 @@ int main(void) {
     flipso_text_view_set_text(text, "");
     render(text);
     check("an empty panel draws nothing", canvas.text_count == 0 || line_drawn(""));
+
+    /* --- Taking a screen's text rather than copying it. --- */
+    flipso_text_view_take_text(text, furi_string_alloc());
+    size_t idle = __sanitizer_get_current_allocated_bytes();
+    FuriString* screen = furi_string_alloc();
+    for(int i = 0; i < 100; i++) {
+        furi_string_cat_printf(screen, "Line %d of a long screen\n", i);
+    }
+    size_t built = __sanitizer_get_current_allocated_bytes();
+    flipso_text_view_take_text(text, screen);
+    check("a screen's text is not held twice", __sanitizer_get_current_allocated_bytes() <= built);
+    render(text);
+    check("the text taken is the text shown", line_drawn("Line 0 of a long screen"));
+    flipso_text_view_take_text(text, furi_string_alloc());
+    check(
+        "an empty screen gives the last one's buffer back",
+        __sanitizer_get_current_allocated_bytes() == idle);
 
     flipso_text_view_free(text);
 

@@ -78,7 +78,6 @@ void flipso_scene_text_on_enter(void* context) {
     }
 
     flipso_show_text(app, text);
-    furi_string_free(text);
 }
 
 bool flipso_scene_text_on_event(void* context, SceneManagerEvent event) {
@@ -89,5 +88,6 @@ bool flipso_scene_text_on_event(void* context, SceneManagerEvent event) {
 
 void flipso_scene_text_on_exit(void* context) {
     Flipso* app = context;
-    flipso_text_view_set_text(app->text_view, "");
+    /* Not just emptied: the screen's buffer goes back to the heap. */
+    flipso_text_view_take_text(app->text_view, furi_string_alloc());
 }

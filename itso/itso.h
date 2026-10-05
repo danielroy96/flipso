@@ -24,7 +24,9 @@
  *                    its value records, and the extensions decoded on demand
  *   itso_log.h       the taps in the cyclic log
  *   itso_card.h      the card those all decode into
- *   itso_names.h     names for coded values
+ *   itso_names.h     names for coded values. The long tables are in names/,
+ *                    which only the host compiles: the device answers the
+ *                    same functions from assets/names.dat (lookup/flipso_names.h)
  */
 #pragma once
 

@@ -73,6 +73,13 @@ static inline void furi_string_grow(FuriString* s, size_t extra) {
     s->data = realloc(s->data, s->cap);
 }
 
+/* Takes over @p src's buffer, and frees @p src. */
+static inline void furi_string_move(FuriString* s, FuriString* src) {
+    free(s->data);
+    *s = *src;
+    free(src);
+}
+
 static inline void furi_string_reset(FuriString* s) {
     s->len = 0;
     s->data[0] = '\0';

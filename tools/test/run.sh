@@ -124,8 +124,25 @@ python3 "$ROOT/tools/flipper/test_flipctl.py"
 
 echo
 echo "Operator names and branding"
-build test_operators -I"$ROOT" -Istub test_operators.c $(src operators) "$ROOT/itso/itso_operators.c"
+build test_operators -I"$ROOT" -Istub test_operators.c $(src operators) "$ROOT/itso/names/itso_operators.c"
 ./test_operators
+
+echo
+echo "Name tables"
+# The device reads the long name tables from assets/names.dat, built from the C
+# tables the other suites use: it has to be what the builder writes now, and
+# the device's reader has to agree with those tables code by code.
+NAMES=$(mktemp)
+"$ROOT/tools/names/build_names.sh" "$NAMES" >/dev/null
+if cmp -s "$NAMES" "$ROOT/assets/names.dat"; then
+  echo "  [PASS] the packaged names.dat is the builder's"
+else
+  echo "  [FAIL] the packaged names.dat is stale: run tools/names/build_names.sh"
+  exit 1
+fi
+rm -f "$NAMES"
+build test_names -I"$ROOT" -I"$ROOT/itso" -Istub test_names.c $(src names)
+./test_names "$ROOT/assets/names.dat"
 
 echo
 echo "Screen text"

@@ -3,7 +3,6 @@
  * @brief What the transports share once a card has answered: see flipso_transport.h.
  */
 #include "flipso_transport.h"
-#include "../itso/itso_operators.h"
 
 #include <furi.h>
 
@@ -12,8 +11,9 @@
 void flipso_log_shell_owner(const ItsoCard* card) {
     if(!card->shell_valid) return;
 
-    const char* name = itso_operator_name(card->oid);
-    FURI_LOG_I(TAG, "Shell owner: OID %u (%s)", card->oid, name ? name : "unknown");
+    /* The number only: this runs on the NFC worker, and the names are read
+     * from the SD card by the UI thread (flipso_names.h). */
+    FURI_LOG_I(TAG, "Shell owner: OID %u", card->oid);
 }
 
 /* ------------------------------------------------------------------ */

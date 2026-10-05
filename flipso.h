@@ -11,6 +11,7 @@
 #include "lookup/flipso_operators.h"
 #include "lookup/flipso_stations.h"
 #include "lookup/flipso_naptan.h"
+#include "lookup/flipso_names.h"
 #include "format/flipso_format.h"
 #include "itso/itso.h"
 #include "views/flipso_menu_view.h"
@@ -135,6 +136,9 @@ typedef struct {
     /** Bus stop names, likewise, when the user has built the table. */
     FlipsoNaptan* naptan;
 
+    /** The long name tables, read from the SD card while a screen is built. */
+    FlipsoNames* names;
+
     ItsoCard card;
 
     /**
@@ -195,8 +199,8 @@ const Icon* flipso_icon(FlipsoIcon icon);
  */
 void flipso_reset_card_menus(Flipso* app);
 
-/** Put a screen built by flipso_format.h on the text view and show it. */
-void flipso_show_text(Flipso* app, const FuriString* text);
+/** Put a screen built by flipso_format.h on the text view and show it. Takes @p text. */
+void flipso_show_text(Flipso* app, FuriString* text);
 
 /** Open one of the scrolling text screens on top of the current scene. */
 void flipso_open_text(Flipso* app, FlipsoTextScreen screen);

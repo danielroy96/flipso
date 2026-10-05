@@ -109,8 +109,10 @@ void flipso_reset_card_menus(Flipso* app) {
     app->selected_product = 0;
 }
 
-void flipso_show_text(Flipso* app, const FuriString* text) {
-    flipso_text_view_set_text(app->text_view, furi_string_get_cstr(text));
+void flipso_show_text(Flipso* app, FuriString* text) {
+    /* The names in it have been copied into the text by now. */
+    flipso_names_release();
+    flipso_text_view_take_text(app->text_view, text);
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipsoViewText);
 }
 
@@ -202,6 +204,7 @@ static Flipso* flipso_alloc(void) {
     app->operators = flipso_operators_alloc();
     app->stations = flipso_stations_alloc();
     app->naptan = flipso_naptan_alloc();
+    app->names = flipso_names_alloc();
 
     return app;
 }
@@ -222,6 +225,7 @@ static void flipso_free(Flipso* app) {
     flipso_operators_free(app->operators);
     flipso_stations_free(app->stations);
     flipso_naptan_free(app->naptan);
+    flipso_names_free(app->names);
 
     view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewScan);
     view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewMenu);

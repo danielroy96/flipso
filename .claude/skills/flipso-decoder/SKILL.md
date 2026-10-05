@@ -23,7 +23,9 @@ the rest of the app includes, and its comment maps the parts.
   Value Record Data Group; capping (`itso_capping.c`), reservations
   (`itso_ipe_reservation.c`) and Space Saving (`itso_space_saving.c`) beside it.
 - `itso/itso_log.c` the taps, `itso_location.c` LOC1-LOC4, `itso_card.c` the
-  card's lifecycle, `itso_names.c` the names of codes.
+  card's lifecycle, `itso_names.c` the names of codes - the short lists; the
+  long ones are in `itso/names/`, host-only, and reach the device as
+  `assets/names.dat` (rebuild it with `tools/names/build_names.sh`).
 
 An `ItsoLocation` keeps the record's raw bytes (LocDefType, length, the first
 `ITSO_LOC_BODY_LEN` of the body), not its text: read it through

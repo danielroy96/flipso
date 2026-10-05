@@ -465,17 +465,22 @@ View* flipso_text_view_get_view(FlipsoTextView* instance) {
     return instance->view;
 }
 
-void flipso_text_view_set_text(FlipsoTextView* instance, const char* text) {
+void flipso_text_view_take_text(FlipsoTextView* instance, FuriString* text) {
     furi_assert(instance);
     furi_assert(text);
     with_view_model(
         instance->view,
         FlipsoTextModel * model,
         {
-            furi_string_set_str(model->text, text);
+            /* Moved rather than copied, and the old text freed rather than
+             * emptied, which would keep its buffer at the longest screen's
+             * size until the app exits. */
+            furi_string_move(model->text, text);
             model->page = 0;
             model->pages = 1;
-            for(const char* c = text; (c = strchr(c, FLIPSO_TEXT_PAGE)) != NULL; c++) {
+            for(const char* c = furi_string_get_cstr(model->text);
+                (c = strchr(c, FLIPSO_TEXT_PAGE)) != NULL;
+                c++) {
                 model->pages++;
             }
             model->scroll = 0;
@@ -483,6 +488,11 @@ void flipso_text_view_set_text(FlipsoTextView* instance, const char* text) {
             model->rows = 0;
         },
         true);
+}
+
+void flipso_text_view_set_text(FlipsoTextView* instance, const char* text) {
+    furi_assert(text);
+    flipso_text_view_take_text(instance, furi_string_alloc_set_str(text));
 }
 
 void flipso_text_view_set_icons(FlipsoTextView* instance, const Icon* const* icons, uint8_t count) {
