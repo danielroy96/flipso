@@ -153,25 +153,6 @@ static size_t flipso_desfire_read_file(
 }
 
 /**
- * Log a block of card bytes as hex, for diagnosing a read we then rejected.
- *
- * Only ever called on a failure path: a shell is at most 64 bytes, which is two
- * log lines, and the alternative is asking the user to tap the card again with
- * a debug build on.
- */
-static void flipso_log_bytes(const char* what, const uint8_t* data, size_t len) {
-    char hex[3 * 32 + 1];
-    for(size_t offset = 0; offset < len; offset += 32) {
-        size_t chunk = len - offset;
-        if(chunk > 32) chunk = 32;
-        for(size_t i = 0; i < chunk; i++) {
-            snprintf(hex + i * 3, 4, "%02X ", data[offset + i]);
-        }
-        FURI_LOG_D(TAG, "%s[%u]: %s", what, (unsigned)offset, hex);
-    }
-}
-
-/**
  * Map an ITSO logical sector number to a DESFire file number.
  *
  * TS 1000-10 table 66 lays CMD7 out back to front: logical sector 0 (the shell)
@@ -225,15 +206,11 @@ static bool flipso_read_shell(FlipsoDesfire* desfire, MfDesfirePoller* poller) {
         if(len && itso_looks_like_shell(desfire->shell, len)) {
             if(!itso_parse_shell(desfire->card, desfire->shell, len)) {
                 flipso_log_shell_rejected(desfire->card, preferred[i], len);
-                flipso_log_bytes("Shell", desfire->shell, len);
                 return false;
             }
             flipso_capture_add(desfire->capture, FlipsoBlockShell, 0, desfire->shell, len);
             desfire->shell_fid = preferred[i];
             return true;
-        }
-        if(len) {
-            FURI_LOG_D(TAG, "File %u is not shell-shaped (%u bytes)", preferred[i], (unsigned)len);
         }
     }
 
@@ -246,7 +223,6 @@ static bool flipso_read_shell(FlipsoDesfire* desfire, MfDesfirePoller* poller) {
         if(len && itso_looks_like_shell(desfire->shell, len)) {
             if(!itso_parse_shell(desfire->card, desfire->shell, len)) {
                 flipso_log_shell_rejected(desfire->card, fid, len);
-                flipso_log_bytes("Shell", desfire->shell, len);
                 return false;
             }
             flipso_capture_add(desfire->capture, FlipsoBlockShell, 0, desfire->shell, len);
@@ -335,10 +311,8 @@ FlipsoReaderStatus flipso_desfire_read(
          * field are different problems with different advice, and only the first
          * of them is worth trying the next transport for. */
         if(error == MfDesfireErrorNotPresent || error == MfDesfireErrorTimeout) {
-            FURI_LOG_D(TAG, "Card left the field during select");
             return FlipsoReaderStatusCardError;
         }
-        FURI_LOG_D(TAG, "No ITSO application on this card");
         return flipso_desfire_read_other(poller, desfire->media, desfire->capture);
     }
 

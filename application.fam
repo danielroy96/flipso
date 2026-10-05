@@ -3,6 +3,8 @@ App(
     name="Flipso",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="flipso_app",
+    # The f7 is the Flipper Zero; the f18 target has no NFC reader to scan with.
+    targets=["f7"],
     stack_size=4 * 1024,
     fap_category="NFC",
     fap_icon="flipso.png",

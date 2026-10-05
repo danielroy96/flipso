@@ -118,15 +118,6 @@ static FlipsoReaderStatus flipso_type2_read_full(
      * the sector map is only true of that geometry: a shell that states another
      * is not one whose sectors could be found. */
     size_t needed = itso_type2_full_len(card);
-    FURI_LOG_D(
-        TAG,
-        "Type 2 full shell: FVC %u, B=%u S=%u E=%u SCTL=%u, %u bytes of sectors",
-        card->fvc,
-        card->sector_size,
-        card->sector_count,
-        card->dir_entries,
-        card->sct_len,
-        (unsigned)needed);
     if(needed == 0 || needed > sizeof(type2->pages)) {
         card->shell_reject = ItsoShellRejectGeometry;
         card->shell_valid = false;
@@ -147,19 +138,6 @@ static FlipsoReaderStatus flipso_type2_read_full(
         return FlipsoReaderStatusBadShell;
     }
 
-    /* The lines the smartcard transports log for each product, for the same
-     * reason: they are what to watch while someone taps a card. */
-    for(uint8_t i = 0; i < card->product_count; i++) {
-        const ItsoProduct* product = &card->products[i];
-        FURI_LOG_D(
-            TAG,
-            "E%u: TYP %u.%u, rev %u, bitmap 0x%02X",
-            product->dir_index,
-            product->typ,
-            product->ptyp,
-            product->format_rev,
-            product->bitmap);
-    }
     FURI_LOG_I(
         TAG,
         "Type 2 ITSO card: FVC %u, directory %s, DIRS# %u, %u tap(s)",
@@ -191,7 +169,6 @@ FlipsoReaderStatus flipso_type2_read(
         /* Every Type 2 tag has at least the 64 bytes of an Ultralight, so fewer
          * means the tag left the field mid-read: a fumbled tap to retry, not a
          * verdict on the card - and not a half-read ticket to show or save. */
-        FURI_LOG_D(TAG, "Type 2: read stopped after %u bytes", (unsigned)len);
         return FlipsoReaderStatusCardError;
 
     case ItsoType2FullShell:
@@ -209,7 +186,6 @@ FlipsoReaderStatus flipso_type2_read(
     }
 
     case ItsoType2NotItso:
-        FURI_LOG_D(TAG, "Type 2: no ITSO shell in %u bytes", (unsigned)len);
         return FlipsoReaderStatusNotItso;
 
     case ItsoType2Compact:

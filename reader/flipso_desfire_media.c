@@ -13,8 +13,6 @@
 #include <furi.h>
 #include <lib/toolbox/simple_array.h>
 
-#define TAG "Flipso"
-
 /* Transport for London's, likewise: the bytes spell "OY1" read the other way.
  * An Oyster is a DESFire, but what it holds is TfL's own scheme under TfL's own
  * keys rather than an ITSO shell, so this is a card to recognise and explain
@@ -257,7 +255,6 @@ FlipsoReaderStatus
         return FlipsoReaderStatusNotItso;
     }
 
-    FURI_LOG_D(TAG, "Oyster application present");
     flipso_desfire_describe(poller, media, capture);
     /* The select above proved it is there, whatever the listing said. */
     flipso_media_add_app(media, FLIPSO_AID_OYSTER);

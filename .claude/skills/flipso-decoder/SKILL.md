@@ -194,16 +194,20 @@ says which: test `has_count` before reading either.
 
 ## Debug logging
 
-`FURI_LOG_D(TAG, ...)` in the reader is the cheapest way to see what a real card
-produced. The existing line reports each directory entry's type, size, format
-revision and bitmap:
+The app ships no debug-level logging: the Apps Catalog sends back an app that
+leaves its development logging in, and `tools/test/lint_logs.py` (run by
+`run.sh`) fails on any `FURI_LOG_D` or `FURI_LOG_T` in the app sources. What it
+does log - which transport read the card, `Shell owner: OID ...`, and a warning
+for each way a read fails - is what a user's bug report needs.
 
-```
-[D][Flipso] E3: TYP 23.4, 192 bytes, rev 2, bitmap 0x0A
-```
+To see what a real card produced, save it in the app and replay the file (see
+CLAUDE.md): that gives every block, decoded, rather than a log line about each.
+For a read that fails before there is a card to save, add a `FURI_LOG_D(TAG,
+...)` along the path locally, or build `tools/debug/flipso_dump.c` in, and take
+it out again before committing.
 
-Watch it with `tools/flipper/flipctl log --arm --grep 'E[0-9]'` while the user
-taps — `--arm` starts the scan, proves the NFC field is polling and refuses to
-stream if it is not, so the silence before the tap means something. See the
+Watch the log with `tools/flipper/flipctl log --arm` while the user taps —
+`--arm` starts the scan, proves the NFC field is polling and refuses to stream
+if it is not, so the silence before the tap means something. See the
 **flipper-hardware** skill for streaming it into the chat live, and for why no
 other check settles whether a tap will be read.

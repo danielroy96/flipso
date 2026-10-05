@@ -34,16 +34,6 @@ FlipsoReaderStatus flipso_transport_read_groups(
             itso_parse_ipe(product, group, len, card->sector_size);
         }
 
-        FURI_LOG_D(
-            TAG,
-            "E%u: TYP %u.%u, %u bytes, rev %u, bitmap 0x%02X",
-            product->dir_index,
-            product->typ,
-            product->ptyp,
-            (unsigned)len,
-            product->format_rev,
-            product->bitmap);
-
         /* A product that could not be read is not a product the card does not
          * have. Carrying on would finish the scan with entries the directory
          * names and nothing behind them, chirp success and show the user a card

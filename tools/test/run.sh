@@ -93,6 +93,12 @@ echo "Storage opens close on failure"
 python3 "$ROOT/tools/test/lint_storage.py"
 
 echo
+echo "No debug logging"
+# The Apps Catalog sends back an app that ships its development logging. See
+# the script.
+python3 "$ROOT/tools/test/lint_logs.py"
+
+echo
 echo "Firmware sources"
 # fbt tries every pattern in application.fam from every directory, so a test
 # directory named like an app one ends up in the .fap. See the script.

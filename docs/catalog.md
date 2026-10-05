@@ -22,7 +22,7 @@ somewhere on the card. If you have a card that won't read - save your card dump 
 ## Bus stop names
 
 Copy [naptan.dat](https://github.com/danielroy96/flipso/raw/main/data/naptan.dat) to Flipso's app data directory
-the SD card if you want Flipso to decode bus stop NaPTANs. There are over 300k bus stops in the UK (21 MB),
+on the SD card if you want Flipso to decode bus stop NaPTANs. There are over 300k bus stops in the UK (21 MB),
 so this data set is shipped alongside the app rather than bundled into it.
 
 ## Data and licences
