@@ -1,7 +1,7 @@
 /**
  * @file flipso_product_ticket.c
- * @brief The terms a TYP 22 period ticket, TYP 23 journey ticket or TYP 25 voucher was
- * sold on, and its price.
+ * @brief The terms a TYP 22 period ticket, TYP 23 journey ticket, TYP 25 voucher or
+ * TYP 26 toll pass was sold on, and its price.
  */
 #include "flipso_product_i.h"
 
@@ -84,9 +84,11 @@ void flipso_cat_ticket_terms(FlipsoPages* p, const ItsoProduct* product) {
     }
 
     /* AutoRenewQuantity1 counts passes in stored-pass mode and days otherwise
-     * (rules 5 and 6 of TS 1000-5 clause 2.9.1.4). A voucher's counts uses,
-     * and flipso_cat_product_details() shows it beside its auto-renew. */
-    if(product->auto_renew && t->renew_quantity && product->typ != ItsoTypVoucher) {
+     * (rules 5 and 6 of TS 1000-5 clause 2.9.1.4). A voucher's counts uses
+     * and a toll pass's crossings, and flipso_cat_product_details() shows each
+     * beside its auto-renew. */
+    if(product->auto_renew && t->renew_quantity && product->typ != ItsoTypVoucher &&
+       product->typ != ItsoTypTolling) {
         const bool one = t->renew_quantity == 1;
         furi_string_cat_printf(
             left,
@@ -127,6 +129,12 @@ void flipso_cat_ticket_terms(FlipsoPages* p, const ItsoProduct* product) {
 
     const char* travel_class = itso_class_name(t->travel_class);
     if(travel_class) furi_string_cat_printf(who, "Class: %s\n", travel_class);
+    /* TYP26Class is numbered by the toll's owner - a car, a van, a lorry -
+     * with no published table to name it from, and zero is as much a class as
+     * any other (TS 1000-5 table 40). */
+    if(product->typ == ItsoTypTolling) {
+        furi_string_cat_printf(who, "Vehicle class: %u\n", t->vehicle_class);
+    }
     if(product->typ == ItsoTypPeriodTicket && (t->flags & ITSO_T22_TRANSFERABLE)) {
         flipso_cat_flag(who, "", "Transferable", true);
     }
@@ -146,4 +154,21 @@ void flipso_cat_ticket_price(FuriString* out, const ItsoProduct* product) {
             furi_string_cat_printf(out, "  Paid by: %s\n", itso_payment_name(t->paid_mop));
         flipso_cat_vat(out, "  ", t->vat);
     }
+}
+
+/*
+ * A toll pass's UserDefined is read from the capture as the screen is drawn
+ * rather than kept in every product: seven bytes only a TYP 26 has, which
+ * nothing but this line shows.
+ */
+void flipso_cat_toll_codes(FuriString* out, const FlipsoFormat* f, const ItsoProduct* product) {
+    if(product->typ != ItsoTypTolling || !itso_product_ticket(product)->valid) return;
+    if(!product->on_card || !f->capture) return;
+    size_t len = 0;
+    const uint8_t* group = flipso_capture_product_group(f->capture, product->dir_index, &len);
+    uint8_t data[ITSO_TOLL_USER_DATA_LEN];
+    if(!group || !itso_toll_user_data(group, len, data)) return;
+    furi_string_cat(out, "Owner data: ");
+    flipso_cat_code_bytes(out, data, sizeof(data));
+    furi_string_push_back(out, '\n');
 }

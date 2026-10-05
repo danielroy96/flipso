@@ -138,7 +138,7 @@ itso/                       the decoder - pure C, no firmware headers
   ipe/                        what a product holds
     itso_ipe.c                  elements every IPE shares, and the table of types
     itso_ipe_<kind>.c           one per family: purse, id, period, journey,
-                                reservation, voucher, loyalty
+                                reservation, voucher, tolling, loyalty
     itso_value.c                value records
     itso_capping.c              the capping extension, decoded on demand
     itso_space_saving.c         TYP 27-29 paper tickets
@@ -399,7 +399,7 @@ dataset, one for the tail of the live value record.
 | 23 | Ticket | `itso_ipe_journey_dataset` | `itso_ipe_journey_value` |
 | 24 | Ticket | `itso_ipe_reservation_dataset` | `itso_ipe_reservation_value` |
 | 25 | Ticket | `itso_ipe_voucher_dataset` | `itso_ipe_voucher_value` |
-| 26 | Other | - | `itso_ipe_voucher_value` |
+| 26 | Ticket | `itso_ipe_tolling_dataset` | `itso_ipe_voucher_value` |
 | 27, 28, 29 | Ticket | `itso_parse_space_saving()`, called by the CMD4 path | - |
 
 A type not in the table is still listed, from its directory entry and its
@@ -409,15 +409,15 @@ value record's common header. Adding a type means a row here and a file
 ### Decoded on demand
 
 Some structures are too large, or too rarely looked at, to keep decoded in
-every product: the fare capping extension (four accumulator sets) and a TYP 24's
-reservations and legs. These are decoded from the capture's raw group by the
+every product: the fare capping extension (four accumulator sets), a TYP 24's
+reservations and legs, and a TYP 26's seven bytes of owner data. These are decoded from the capture's raw group by the
 screen that shows them, into memory that screen frees before the text is
 displayed:
 
 ```mermaid
 flowchart LR
-    screen["format/product/<br/>flipso_product_purse.c<br/>flipso_product_reservation.c"] -->|"flipso_capture_product_group()"| raw["raw IPE + value groups"]
-    raw -->|"itso_parse_capping()<br/>itso_parse_reservation()"| temp["ItsoCapping /<br/>ItsoReservation<br/>(heap, this screen only)"]
+    screen["format/product/<br/>flipso_product_purse.c<br/>flipso_product_reservation.c<br/>flipso_product_ticket.c"] -->|"flipso_capture_product_group()"| raw["raw IPE + value groups"]
+    raw -->|"itso_parse_capping()<br/>itso_parse_reservation()<br/>itso_toll_user_data()"| temp["ItsoCapping /<br/>ItsoReservation /<br/>toll owner data<br/>(this screen only)"]
     temp --> text["page text"]
     temp -->|"freed before the<br/>text is shown"| gone(("free"))
 ```

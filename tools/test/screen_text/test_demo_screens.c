@@ -142,7 +142,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         {ItsoTypChargeToAccount2, "Charge to account|Account|History|Technical"},
         {ItsoTypVoucher, "Voucher|Conditions|Purchase|History|Technical"},
         {ItsoTypLoyalty1, "Loyalty|History|Technical"},
-        {ItsoTypTolling, "Toll pass|Technical"},
+        {ItsoTypTolling, "Toll pass|Conditions|Purchase|History|Technical"},
     };
     for(size_t k = 0; k < COUNT_OF(kinds); k++) {
         for(uint8_t i = 0; i < card->product_count; i++) {
@@ -153,6 +153,23 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             snprintf(what, sizeof(what), "a %s has its pages in order", kinds[k].pages);
             check(what, titles_are(text, kinds[k].pages));
         }
+    }
+    /* The toll pass, from the saved file: its owner data is read from the
+     * capture as the screen is drawn, and is text. */
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        if(card->products[i].typ != ItsoTypTolling) continue;
+        furi_string_reset(text);
+        flipso_format_product(text, f, card, &card->products[i]);
+        check(
+            "the toll pass has never been used, and counts crossings",
+            on_page(text, "Toll pass", "Crossings left: 10\n") &&
+                on_page(text, "Toll pass", "Status: Unused\n") &&
+                on_page(text, "Toll pass", "  Renewal adds: 10 crossings\n"));
+        check("the toll pass's vehicle class", on_page(text, "Conditions", "Vehicle class: 2\n"));
+        check(
+            "the toll pass's owner data, as text, from the saved file",
+            technical(text, "Owner data: DC00417\n") &&
+                technical(text, "Passback timeout: Set by the operator\n"));
     }
     furi_string_reset(text);
     flipso_format_payg(text, f, card);

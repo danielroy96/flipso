@@ -55,7 +55,8 @@ FlipsoIcon flipso_product_icon(const ItsoProduct* product) {
 bool flipso_product_used_up(const ItsoProduct* product, ItsoUnixTime now) {
     if(product->count != 0) return false;
     if(product->count_kind == ItsoCountRides || product->count_kind == ItsoCountCoupons ||
-       product->count_kind == ItsoCountJourneys || product->count_kind == ItsoCountUses) {
+       product->count_kind == ItsoCountJourneys || product->count_kind == ItsoCountUses ||
+       product->count_kind == ItsoCountCrossings) {
         return true;
     }
     /* A period ticket with no passes in stock is still good for the rest of

@@ -139,7 +139,7 @@ typedef enum {
  */
 typedef enum {
     ItsoCountNone,
-    ItsoCountRides, /**< TYP 23 and 26: rides or tickets left. */
+    ItsoCountRides, /**< TYP 23: rides or tickets left. */
     ItsoCountPasses, /**< TYP 22: unactivated passes left. */
     ItsoCountTransactions, /**< TYP 5: charge transactions used this period. */
     ItsoCountPoints, /**< TYP 3: loyalty points held. */
@@ -150,6 +150,9 @@ typedef enum {
     /** TYP 25 CountUsesAvailable (table 38): a voucher buys a car park or a
      *  meal, not a ride. */
     ItsoCountUses,
+    /** TYP 26 CountRemainingRidesJourneys (table 42): a toll pass's rides are
+     *  crossings of a bridge, a tunnel or a ferry. */
+    ItsoCountCrossings,
 } ItsoCountKind;
 
 /* DAYOFWEEK, TS 1000-5 annex A.6: Monday is the most significant bit and the

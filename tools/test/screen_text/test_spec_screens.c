@@ -160,6 +160,47 @@ void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
         "a voucher's codes, under Technical",
         shows(text, "Service code: 42\nOwner data: 7\n") && shows(text, "Print ticket: Yes\n"));
 
+    /* A toll pass's owner data is read from the capture as the screen is
+     * drawn, so it is put in one at the slot product_screen() gives it. */
+    {
+        FlipsoCapture* capture = flipso_capture_alloc();
+        flipso_capture_add(capture, FlipsoBlockProduct, 9, tolling_group, sizeof(tolling_group));
+        FlipsoFormat with = *f;
+        with.capture = capture;
+        product_screen(
+            text, &with, card, &p, ItsoTypTolling, true, tolling_group, sizeof(tolling_group));
+        check(
+            "a toll pass has its pages",
+            titles_are(text, "Toll pass|Conditions|Purchase|History|Technical"));
+        check(
+            "a toll pass counts crossings, and renews by them",
+            on_page(text, "Toll pass", "Crossings left: 19\n") &&
+                on_page(text, "Toll pass", "Auto-renew: On\n  Renewal adds: 20 crossings\n"));
+        check(
+            "a toll pass is good from its ValidityStartDTS",
+            on_page(text, "Toll pass", "Valid from: 04/08/2026 06:00\n"));
+        check("and has no end time to show", !shows(text, "Ends at: "));
+        check(
+            "its renewal is not a period ticket's days or passes",
+            !shows(text, "Renewal adds: 20 days") && !shows(text, "Renewal adds: 20 passes"));
+        check(
+            "a toll pass's vehicle class is the owner's number",
+            on_page(text, "Conditions", "Vehicle class: 3\n"));
+        check("not an EN1545 class", !shows(text, "Class: "));
+        check("a toll pass's issue date", on_page(text, "Purchase", "Issued: 03/08/2026\n"));
+        check(
+            "a toll pass's print flags and passback, under Technical",
+            technical(text, "Print ticket: No\nPrint receipt: Yes\nPassback timeout: 45 min\n"));
+        check("its owner data, as hex", technical(text, "Owner data: 00123456789ABC\n"));
+        flipso_capture_free(capture);
+    }
+    /* An entry the directory lists with no dataset that could be read: the
+     * screen says so rather than showing an empty product. */
+    product_screen(text, f, card, &p, ItsoTypTolling, false, tolling_group, 1);
+    check(
+        "a product whose dataset could not be read says so",
+        technical(text, "Details: Not decoded\n") && !shows(text, "Vehicle class: "));
+
     product_screen(
         text,
         f,

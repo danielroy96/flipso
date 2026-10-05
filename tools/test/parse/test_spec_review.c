@@ -162,6 +162,61 @@ void spec_review_fields(void) {
         "uses left, auto-renewing", p.count_kind == ItsoCountUses && p.count == 4 && p.auto_renew);
     check("Uses left", strcmp(itso_count_name(p.count_kind), "Uses left") == 0);
 
+    /* TYP 26: the toll pass's dataset, its class kept apart from EN1545's. */
+    parse_group(&p, ItsoTypTolling, true, tolling_group, sizeof(tolling_group));
+    t = itso_product_ticket(&p);
+    check("a toll pass's terms are read", t->valid);
+    check("a toll pass is a ticket", itso_product_family(ItsoTypTolling) == ItsoFamilyTicket);
+    check("its ProductRetailer", p.has_retailer && p.retailer == 0x0456);
+    check("its PassbackTime, two bits early", p.has_passback && p.passback == 45);
+    check(
+        "TYP26Flags print receipt",
+        p.print_defined == (ITSO_PRINT_TICKET | ITSO_PRINT_RECEIPT) &&
+            p.print_flags == ITSO_PRINT_RECEIPT);
+    check("TYP26Class", t->vehicle_class == 3);
+    check("and no EN1545 class", t->travel_class == 0);
+    check(
+        "a toll pass's IssueDate",
+        strcmp(fmt_unix(itso_date_to_unix(t->issue_date)), "2026-08-03 00:00") == 0);
+    check(
+        "a toll pass's ValidityStartDTS",
+        strcmp(fmt_unix(itso_dts_to_unix(t->valid_from_dts)), "2026-08-04 06:00") == 0);
+    check("no ExpiryTime and no price", t->expiry_time == 0 && !t->amount_paid.valid);
+    check("AutoRenewQuantity3", t->renew_quantity == 20);
+    check(
+        "crossings left, auto-renewing",
+        p.count_kind == ItsoCountCrossings && p.count == 19 && p.auto_renew);
+    check("Crossings left", strcmp(itso_count_name(p.count_kind), "Crossings left") == 0);
+    {
+        static const uint8_t expect[ITSO_TOLL_USER_DATA_LEN] = {
+            0x00, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC};
+        uint8_t ud[ITSO_TOLL_USER_DATA_LEN];
+        check(
+            "a toll pass's UserDefined",
+            itso_toll_user_data(tolling_group, sizeof(tolling_group), ud) &&
+                memcmp(ud, expect, sizeof(ud)) == 0);
+        /* Each cut an exactly sized allocation, so ASan sees a read past it;
+         * only a cut that keeps the whole dataset may find the bytes. */
+        bool bounded = true;
+        for(size_t cut = 0; cut < 24; cut++) {
+            uint8_t* exact = malloc(cut ? cut : 1);
+            memcpy(exact, tolling_group, cut);
+            bounded = bounded && !itso_toll_user_data(exact, cut, ud);
+            free(exact);
+        }
+        check("not past the end of a short dataset", bounded);
+    }
+    {
+        /* Bitmap bit 1 clear: no renewal quantity, whatever byte 20 holds. */
+        uint8_t bare[sizeof(tolling_group)];
+        memcpy(bare, tolling_group, sizeof(bare));
+        bare[1] &= ~0x20; /* IPEBitMap is header bits 6 to 11, bit 1 at bit 10 */
+        parse_group(&p, ItsoTypTolling, true, bare, sizeof(bare));
+        check(
+            "AutoRenewQuantity3 only with its bitmap bit",
+            itso_product_ticket(&p)->valid && itso_product_ticket(&p)->renew_quantity == 0);
+    }
+
     /* TYP 22 revision 3 IdentityDocumentID, after the route and locations. */
     parse_group(
         &p, ItsoTypPeriodTicket, false, period_rev3_id_group, sizeof(period_rev3_id_group));
@@ -205,6 +260,8 @@ void spec_review_fields(void) {
         {ItsoTypEntitlement, false, entitlement_rev1_group, sizeof(entitlement_rev1_group)},
         {ItsoTypEntitlement, false, entitlement_rev2_group, sizeof(entitlement_rev2_group)},
         {ItsoTypJourneyTicket, false, journey_rev3_group, sizeof(journey_rev3_group)},
+        {ItsoTypVoucher, true, voucher_group, sizeof(voucher_group)},
+        {ItsoTypTolling, true, tolling_group, sizeof(tolling_group)},
         {ItsoTypPeriodTicket, false, period_rev3_id_group, sizeof(period_rev3_id_group)},
         {ItsoTypPeriodTicket, false, period_rev3_long_id_group, sizeof(period_rev3_long_id_group)},
     };

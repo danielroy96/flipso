@@ -280,7 +280,7 @@ from each.
 | 23 | Pre-defined Specific Journey Ticket | Journey ticket | A number of rides. |
 | 24 | Pre-defined Specific Journey Ticket Including Reservations | Reserved journey | A rail ticket with reservations, railcard and route. |
 | 25 | Travel Related Voucher | Voucher | Something that goes with travel, such as parking or a meal. |
-| 26 | Open System Tolling Ticket | Toll pass | Road or bridge tolls. Only the directory entry and value record are decoded. |
+| 26 | Open System Tolling Ticket | Toll pass | A bridge, tunnel or ferry crossing whose fee does not depend on distance: crossings left, vehicle class, dates. |
 | 27 | Period Ticket (space saving) | Paper period ticket | A paper day ticket. |
 | 28 | Carnet Ticket (space saving) supporting day passes | Book of tickets | Up to eight paper day passes. |
 | 29 | Multi-Use Ticket (space saving) | Multi-use ticket | A paper carnet of singles, coupons or a journey of several legs. |

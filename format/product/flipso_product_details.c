@@ -270,17 +270,19 @@ void flipso_cat_product_details(
     /* A paper ticket keeps no journey log, so when or where it was last used
      * is what its first page has in place of a last tap. */
     flipso_cat_last_use(main, f, card, product, NULL);
-    /* A toll pass's renewal is all there is to say about how it is used. A
-     * voucher's AutoRenewQuantity2 counts the uses each renewal adds (TS
-     * 1000-5 table 36), and is a detail of the renewal. */
+    /* A voucher's AutoRenewQuantity2 counts the uses each renewal adds, and a
+     * toll pass's AutoRenewQuantity3 the crossings (TS 1000-5 tables 36 and
+     * 40): each is a detail of the renewal. */
     if(product->auto_renew) {
         furi_string_cat(kind == FlipsoKindOther ? main : left, "Auto-renew: On\n");
-        if(kind == FlipsoKindVoucher && ticket->renew_quantity) {
+        if((kind == FlipsoKindVoucher || kind == FlipsoKindToll) && ticket->renew_quantity) {
+            const bool one = ticket->renew_quantity == 1;
             furi_string_cat_printf(
                 left,
-                "  Renewal adds: %u use%s\n",
+                "  Renewal adds: %u %s\n",
                 ticket->renew_quantity,
-                ticket->renew_quantity == 1 ? "" : "s");
+                kind == FlipsoKindVoucher ? (one ? "use" : "uses") :
+                                            (one ? "crossing" : "crossings"));
         }
     }
 

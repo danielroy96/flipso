@@ -372,6 +372,29 @@ def card_the_key():
              b" C", b" 61", b"AISL", 2, 0, 0, False),
         ]))
 
+    # ---- E11: a toll pass (TS 1000-5 table 40) for the Dartford Crossing,
+    # which a Kent driver might carry - hypothetical, as no toll is paid by
+    # ITSO card today - from an operator the table does not know. Bought on
+    # Saturday and not yet driven through: ten crossings for a car, topping up
+    # by ten more when they run out. UserDefined is the operator's account
+    # reference, as text; PassbackTime is left to the barrier.
+    toll = Bits(24)
+    toll.put(0, 6, 6)                            # IPELength = 6 blocks = 24 bytes
+    toll.put(6, 6, 0b000010)                     # IPEBitMap: AutoRenewQuantity3
+    toll.put(12, 4, 1)
+    toll.buf[2] = 30                             # RemoveDate: 30 days after expiry
+    toll.putb(3, (4410).to_bytes(2, "big"))      # ProductRetailer: the owner
+    toll.put(42, 6, 0)                           # PassbackTime: the reader's own
+    toll.buf[6] = 0b01000000                     # TYP26Flags: print a receipt
+    toll.buf[7] = 2                              # TYP26Class: the owner's car class
+    toll.put(66, 14, date_stamp(2026, 9, 19))    # IssueDate
+    toll.put(80, 24, dts(2026, 9, 20, 0, 0))     # ValidityStartDTS
+    toll.putb(13, b"DC00417")                    # UserDefined
+    toll.buf[20] = 10                            # AutoRenewQuantity3: ten rides
+    toll_values = value_group([
+        value_record(1, 1, dts(2026, 9, 19, 10, 15), voucher_tail(10, auto_renew=True)),
+    ], format_rev=1)
+
     entries = [
         dir_entry(289, 2, 0, True, EXP),                             # E1 purse
         dir_entry(246, 16, 1, False, EXP),                           # E2 ITSO ID
@@ -386,18 +409,15 @@ def card_the_key():
         # E9 uses the extended IPE-owner range: raw 5678 with the flag set is 13870.
         dir_entry(5678, 17, 0, False, date_stamp(2027, 5, 31), extended=True),
         dir_entry(289, 24, 0, True, date_stamp(2026, 4, 12)),        # E10 expired
-        # E11: a toll pass for the Dartford Crossing, which a Kent driver might
-        # carry - hypothetical, as no toll is paid by ITSO card today - from an
-        # operator the table does not know. It has no block at all: an entry the
-        # card lists and Flipso could not read, which is what "Details: Not
-        # decoded" is for.
-        dir_entry(4410, 26, 0, False, date_stamp(2029, 1, 31)),
+        # E11: the toll pass. Its chain ends on itself, so it has never been
+        # used - the third of the states the list flags.
+        dir_entry(4410, 26, 0, True, date_stamp(2029, 1, 31)),
         log_entry(ptr=3, eei=1, when=dts(2026, 9, 21, 17, 46), record_offset=0,
                   passback=20),
     ]
     chain = {1: 13, 13: ACTIVE, 2: ACTIVE, 3: 15, 15: ACTIVE, 4: 16, 16: ACTIVE,
              5: 17, 17: ACTIVE, 6: 18, 18: ACTIVE, 7: 19, 19: ACTIVE, 8: ACTIVE,
-             9: 20, 20: BLOCKED, 10: 12, 12: 14, 14: 21, 21: 22, 22: ACTIVE, 11: 11}
+             9: 20, 20: BLOCKED, 10: 12, 12: 14, 14: 21, 21: 22, 22: ACTIVE, 11: 23, 23: 23}
 
     # The cyclic log: four slots, and Record Offset names the next one to be
     # written, so slot 3 holds the newest record and the log entry above agrees
@@ -454,6 +474,7 @@ def card_the_key():
         ("Product 8", group(ent, B)),
         ("Product 9", group(partner, B)),
         ("Product 10", group(reserved, B, reserved_values)),
+        ("Product 11", group(toll, B, toll_values)),
         ("Log", log),
     ]
 

@@ -91,6 +91,7 @@ void flipso_cat_product_technical(
         furi_string_cat_printf(out, "Service code: %u\n", ticket->service_id);
         furi_string_cat_printf(out, "Owner data: %u\n", ticket->user_defined);
     }
+    flipso_cat_toll_codes(out, f, product);
     /* IdentityDocumentID's coding, when it is one table 3.27 leaves RFU: the
      * line above has shown its bytes. */
     if(ticket->has_id_doc &&

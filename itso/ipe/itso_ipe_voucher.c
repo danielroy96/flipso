@@ -1,7 +1,7 @@
 /**
  * @file itso_ipe_voucher.c
- * @brief TYP 25 and 26: the voucher and the tolling product (TS 1000-5 clauses 2.12 and
- * 2.13). A voucher's dataset is decoded; a tolling product's is not.
+ * @brief TYP 25, the voucher (TS 1000-5 clause 2.12), and the value record it
+ * shares with TYP 26, the toll pass (itso_ipe_tolling.c).
  */
 #include "itso_ipe_i.h"
 
@@ -48,7 +48,7 @@ void itso_ipe_voucher_dataset(ItsoProduct* product, const uint8_t* data, size_t 
 void itso_ipe_voucher_value(ItsoProduct* product, const uint8_t* newest) {
     const ItsoValueRecord* live = &product->value_history[0];
     /* TS 1000-5 tables 38 and 42, which are identical. */
-    product->count_kind = product->typ == ItsoTypVoucher ? ItsoCountUses : ItsoCountRides;
+    product->count_kind = product->typ == ItsoTypVoucher ? ItsoCountUses : ItsoCountCrossings;
     product->count = live->count;
     product->auto_renew = (newest[11] & 0x01) != 0;
 }
