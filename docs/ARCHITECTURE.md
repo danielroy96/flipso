@@ -127,8 +127,10 @@ itso/                       the decoder - pure C, no firmware headers
   itso_card.c                 the card, and the arrays it owns
   itso_log.c                  the cyclic log's journey records
   itso_location.c             LocDefTypes: a location's text and lookup code
-  itso_names.c                coded values to words
-  itso_operators.c            the built-in OID table
+  itso_names.c                coded values to words: the short lists
+  names/                      the long lists and the built-in OID table, compiled
+                              only on the host: the device reads them from
+                              assets/names.dat, which tools/names/ builds
   itso_util.c                 bit fields, dates, money
   media/                      the card as storage
     itso_shell.c                Shell Environment
@@ -175,6 +177,8 @@ lookup/                     names for codes, from tables on the SD card
   flipso_operators.c          OID to operator and brand: built-in table and the user's file
   flipso_stations.c           NLC to station
   flipso_naptan.c             NaptanCode and AtcoCode to bus stop
+  flipso_names.c              the long name tables, from assets/names.dat
+  flipso_names_itso.c         the device's itso_ name functions, which read through it
 
 scenes/                     one file per scene; the list is flipso_scene_config.h
 views/                      the icon list, the paged text panel, the scan screen,
@@ -229,7 +233,8 @@ The NFC stack runs its pollers on a worker thread. Flipso keeps that thread's
 part to the minimum: a poller callback runs one transport's read, records a
 status and posts an event. Everything else - stopping the poller, deciding
 what comes next, starting the next transport, changing scene - happens on the
-UI thread, because a poller cannot stop itself.
+UI thread, because a poller cannot stop itself. The NFC stack itself, and with
+it the worker's 8 KB stack, exists only from the start of a scan to its end.
 
 ```mermaid
 sequenceDiagram
@@ -814,7 +819,8 @@ in memory whole.
 
 | Table | Source | Where it lives | How it is searched |
 | --- | --- | --- | --- |
-| Operators | Built-in `itso_operators.c`, plus the user's `operators.txt` | Built-in in the `.fap`; the user's file read at launch, capped at 48 entries | The user's entries first, then a binary search of the built-in table, so a local correction wins |
+| Operators | Built-in `itso/names/itso_operators.c`, plus the user's `operators.txt` | The built-in table in `assets/names.dat`, built by `tools/names/`; the user's file read at launch, capped at 48 entries | The user's entries first, then a binary search of the built-in table on the SD card, so a local correction wins |
+| Coded values (payment, profile, railcard, ...) | The long tables in `itso/names/` | `assets/names.dat` too, opened by the first lookup and closed once a screen is built | A direct read for a one-byte code, a binary search for the others |
 | Stations (NLC) | `assets/stations.dat`, built by `tools/stations/` | Packaged as a `.fapassets` file; a newer table at `/ext/apps_data/flipso/stations.dat` takes over | Binary search over fixed-width entries on the SD card: about a dozen short reads |
 | Bus stops (NaPTAN) | `data/naptan.dat`, built by `tools/naptan/` | Copied to the SD card by the user; about 20 MB | Binary search, the same design |
 
@@ -844,10 +850,10 @@ into it before `main()` runs. Memory is the constraint every structural
 decision is checked against.
 
 ```mermaid
-pie showData title Heap with the app at its idle scan screen (KB, measured 2026-10-04)
-    "Flipso's .fap in RAM" : 91
-    "Free" : 31
-    "Firmware and services" : 68
+pie showData title Heap with the app at its idle scan screen (KB, measured 2026-10-05)
+    "Flipso's .fap in RAM" : 89
+    "Free" : 43
+    "Firmware and services" : 58
 ```
 
 The firmware's share is approximate: it moves by up to 15 KB between boots.
@@ -862,7 +868,10 @@ What the design does about it:
 | Locations kept as bytes and rendered when drawn | Part of what took a tap from 204 bytes to 128 |
 | Capping and reservations decoded on demand, freed before the text is shown | About 750 bytes for the longest demo, only while it is built |
 | Paper-ticket and non-ITSO DESFire structures allocated only for those cards | Nothing on any other card |
-| CMD2 and Type 2 transport buffers allocated on first use | Nothing on a DESFire read |
+| The NFC stack allocated when a scan starts and freed when it ends | About 9 KB on every screen but the scan: `nfc_alloc()` allocates its worker's 8 KB stack at once |
+| Each transport's buffers allocated while it runs | 1.4 KB DESFire, 1 KB CMD2, 0.9 KB Type 2, none of them outside a read |
+| The long name tables in `assets/names.dat`, read while a screen is built | About 2.5 KB of RAM image; the file is open only while text is being built |
+| A screen's text moved into the text panel, not copied, and freed when it closes | The text's size while it is open, and all of it after |
 | Capture arena grown to fit | A DESFire card uses about a tenth of the ceiling |
 
 `tools/flipper/flipctl size` reports which sections reach RAM, and

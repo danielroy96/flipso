@@ -64,7 +64,11 @@ itso/                 the decoder: pure C, no firmware dependency, host-testable
                         table of types), one itso_ipe_<kind>.c per TYP family,
                         itso_value.c (value records), itso_capping.c,
                         itso_space_saving.c
-  itso_log.c, itso_card.c, itso_location.c, itso_names.c, itso_operators.c
+  itso_log.c, itso_card.c, itso_location.c, itso_names.c
+  names/                the long name tables and the operator table: host-only.
+                        The device reads them from assets/names.dat, which
+                        tools/names/build_names.sh builds; run.sh fails when it
+                        is stale
 format/               the text of every screen, one file per screen
                       (flipso_format_<screen>.c) and the line builders they share
                       (flipso_format_lines.c, flipso_format_i.h); host-tested by
@@ -98,7 +102,9 @@ cards/                flipso_capture*.c: the raw blocks a read produced (the sto
                       cards (flipso_saved_demos.c), power-cut recovery
                       (flipso_saved_recover.c) and the rule a saved card's name
                       follows (flipso_name_validator.c)
-lookup/               flipso_operators.c operator id -> name, built-in table plus the
+lookup/               flipso_names.c the long name tables from assets/names.dat,
+                      and flipso_names_itso.c the device's itso_ functions over it;
+                      flipso_operators.c operator id -> name, built-in table plus the
                       user's file; flipso_stations.c NLC -> station name, binary search
                       over the SD card table; flipso_naptan.c NaptanCode/AtcoCode ->
                       bus stop name, same design
@@ -122,6 +128,7 @@ tools/demo/           the builder for the synthetic demo cards the About menu op
 assets/demo/          those demo cards, generated - rerun the builder, never edit;
                       run.sh fails when they are stale
 tools/stations/       station table builder and its data provenance
+tools/names/          names.dat builder: runs the itso/names/ tables into the asset
 data/                 reference data shipped but not packaged; see its README
 tools/naptan/         stop table builder; data/naptan.dat is its output
 tools/icons/          pixel art the images/ icons are generated from
@@ -150,14 +157,21 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-91.0 KB of the 290 KB file as of 2026-10-04 - 1.8 KB of that came with
+88.9 KB of the 294 KB file as of 2026-10-05, down from 91.0 KB when the long
+name tables moved to `assets/names.dat` (`itso/names/`) - 1.8 KB of that came with
 splitting the sources a responsibility to a file (a call between files is not
 inlined, and a string used in several files is stored once in each), 2.2 KB
 with the paged screens and the title icons, 10.4 KB with the TYP 24 decoder, its screen and the rail
 railcard and seat tables, 76 KB before - because the 79 KB station table and the 26 KB of demo cards live in
 `.fapassets`, which the firmware unpacks to the SD card and never maps.
-Anything added as a `const` array *does* reach RAM. With the app at its idle
-scan screen 30.9 KB of the heap is free (measured 2026-10-04). A card on
+Anything added as a `const` array *does* reach RAM, and so does every string
+literal - which is why the long name tables are an asset. With the app at its
+idle scan screen 43.5 KB of the heap is free (measured 2026-10-05; 30.9 KB the
+day before). Most of that came from the reader: `nfc_alloc()` allocates the
+NFC worker's 8 KB stack straight away, not when the thread starts, so the
+reader now allocates the NFC stack, and each transport its buffers, only while
+a scan runs. A scan takes about 15 KB back while it does, 4 KB of it the
+firmware scanner's own thread. A card on
 screen costs what it holds: `ItsoCard` allocates its products (268 bytes each
 on the device since 2026-10-04; 672 before, when every product carried every
 type's fields, eight value records and its locations as display text), each
@@ -175,12 +189,11 @@ and freed before the text is shown. With it open, 22.1 KB is free (measured
 left 29.4 KB at idle and 18.0 KB with it open, so the review gave back 1.5 KB
 at idle and 4.1 KB with a card on screen.
 
-The text panel keeps its string at the size of the longest screen shown until
-the app exits, so a screen's text is not given back when it closes: back at
-the scan screen the heap is 1.5 KB short of idle after a period ticket and
-2.8 KB short after Demo 01's reserved journey, Flipso's longest screen. That
-is a high-water mark, not a leak - five open-and-close cycles leave the heap
-to the byte where one did (measured 2026-10-02) - so compare like with like:
+A screen's text is handed to the text panel rather than copied
+(`flipso_text_view_take_text()`), so it is never held twice, and the panel
+gives the buffer back when the screen closes; the long name tables' file is
+open only while a screen is being built (`flipso_names_release()`). So a
+screen costs nothing once it is closed - but still compare like with like:
 measure a leak as cycles against the same screen, not against a fresh launch.
 The firmware's file browser takes 7.4 KB while the saved-card list is open,
 and a screenshot or push borrows about 12 KB for its RPC session, which takes

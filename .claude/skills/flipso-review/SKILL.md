@@ -54,9 +54,8 @@ tools/flipper/flipctl walk <scratch>/leak ok back --repeat 5      # open Demo 01
 
 `--repeat` repeats every step it is given, so get to the screen first and
 repeat only the open and close. The drift line at the end should read
-`+0 bytes (steady)`. The text panel keeps its longest string
-until the app exits, so compare cycles against the same screen, never against
-a fresh launch (CLAUDE.md, "Memory is the constraint").
+`+0 bytes (steady)`. Compare cycles against the same screen, never against a
+fresh launch (CLAUDE.md, "Memory is the constraint").
 
 ### 2. Architecture
 
