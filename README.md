@@ -61,10 +61,7 @@ Flipso works on both official Flipper Zero and Momentum firmwares.
 
 ### Build and install
 
-```bash
-ufbt
-ufbt launch
-```
+Build and deploy Flipso to your Flipper Zero by running `ufbt launch`.
 
 ### Bus stop names
 
