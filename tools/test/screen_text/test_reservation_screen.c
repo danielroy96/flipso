@@ -46,7 +46,7 @@ void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
     check(
         "the journeys it has left lead its details",
         page_starts(text, "Details", "Journeys left: 1\n"));
-    check("a rail retailer is the station that sold it", shows(text, "Sold by: Station 5685\n"));
+    check("a rail retailer the table cannot name", shows(text, "Sold by: Retailer 5685\n"));
     check("a return of two journeys", shows(text, "Sold as: Return\n  Journeys sold: 2\n"));
     check(
         "the outward portion and its last day",

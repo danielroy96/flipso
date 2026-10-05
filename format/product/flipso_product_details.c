@@ -9,6 +9,17 @@
  * of the two encodings of "no expiry" (itso_date_open()). A second date is only
  * worth its line when it differs from the expiry.
  */
+/* A rail ProductRetailer is the NLC of the office that sold the ticket
+ * (RSPS3002 3.6.3) - a station's ticket office, or an operator's web or phone
+ * sales - so a code the table cannot name is a retailer, not a station. */
+static void
+    flipso_cat_rail_retailer(FuriString* out, const FlipsoFormat* f, const ItsoLocation* sold_at) {
+    char code[ITSO_LOC_CODE_LEN];
+    itso_location_code(sold_at, code, sizeof(code));
+    const char* name = flipso_stations_name(f->stations, code);
+    furi_string_cat_printf(out, "Sold by: %s%s\n", name ? "" : "Retailer ", name ? name : code);
+}
+
 static bool flipso_same_date(ItsoDate a, ItsoDate b) {
     return a == b || (itso_date_open(a) && itso_date_open(b));
 }
@@ -296,7 +307,7 @@ void flipso_cat_product_details(
     flipso_cat_booking(purchase, product, res);
     ItsoLocation sold_at;
     if(itso_product_sold_at(product, &sold_at)) {
-        flipso_cat_location(purchase, f, "", "Sold by", &sold_at);
+        flipso_cat_rail_retailer(purchase, f, &sold_at);
     } else if(product->has_retailer && product->retailer != product->oid) {
         flipso_cat_operator(purchase, f, "", "Sold by", product->retailer);
     }

@@ -220,6 +220,15 @@ int main(void) {
     check(
         "0035 is a zone group",
         lookup("0035") && strcmp(lookup("0035"), "London Zone R1256") == 0);
+    /* A season bought online names the operator's web sales as its retailer,
+     * not a station. */
+    check(
+        "7175 is a retailer",
+        lookup("7175") && strcmp(lookup("7175"), "Great Western Railway Websales") == 0);
+    /* 8385 was a travel agent's before it was SWR's web ticketing system. */
+    check(
+        "8385 is the operator's channel, not the agent",
+        lookup("8385") && strcmp(lookup("8385"), "South Western Railway Webtis") == 0);
     check("0000 is absent", lookup("0000") == NULL);
 
     /* Walk the index and look every code up, so the search is exercised over

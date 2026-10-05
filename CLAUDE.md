@@ -156,7 +156,7 @@ The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 splitting the sources a responsibility to a file (a call between files is not
 inlined, and a string used in several files is stored once in each), 2.2 KB
 with the paged screens and the title icons, 10.4 KB with the TYP 24 decoder, its screen and the rail
-railcard and seat tables, 76 KB before - because the 79 KB station table and the 26 KB of demo cards live in
+railcard and seat tables, 76 KB before - because the 93 KB station table and the 26 KB of demo cards live in
 `.fapassets`, which the firmware unpacks to the SD card and never maps.
 Anything added as a `const` array *does* reach RAM. With the app at its idle
 scan screen 30.9 KB of the heap is free (measured 2026-10-04). A card on

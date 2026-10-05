@@ -50,7 +50,7 @@ void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
     check(
         "a rail journey ticket was sold by a station",
         on_page(text, "Journey ticket", "Operator: South Western Railway\n") &&
-            on_page(text, "Purchase", "Sold by: Station 5631\n"));
+            on_page(text, "Purchase", "Sold by: Retailer 5631\n"));
     furi_string_reset(text);
     flipso_format_product(text, f, card, &card->products[2]);
     check(
