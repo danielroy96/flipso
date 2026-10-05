@@ -26,6 +26,7 @@ loop, the hardware, and the things that have wasted time before.
 | Every screen of a saved card, on this machine | `tools/test/screens.py card.flipso` |
 | Search the ITSO spec, or rail's RSPS3002 | `tools/spec/itso_spec.py grep PATTERN [--part rsps3002]` |
 | Check HEAD against the Apps Catalog | `tools/catalog/validate.sh` |
+| Check a version is ready to tag | `tools/release/check.sh v1.1` |
 | Refresh the IDE's index of the sources | `tools/ide/compdb.py` |
 
 Slash commands wrap the common ones: `/deploy`, `/drive`, `/watch`, `/mem`,
@@ -117,6 +118,7 @@ tools/spec/           itso_spec.py: fetch and search the TS 1000 parts
 tools/debug/          opt-in card-dump instrumentation
 tools/catalog/        the Apps Catalog manifest, and validate.sh to run the
                       catalog's own bundler over HEAD
+tools/release/        check.sh: whether a tag can be released, and its notes
 tools/demo/           the builder for the synthetic demo cards the About menu opens;
                       new_encodings.py says what a real card has that they lack
 assets/demo/          those demo cards, generated - rerun the builder, never edit;
@@ -249,6 +251,29 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
   off; the registration outlives the app, and the next launch's open of the
   same path waits for ever. `tools/test/lint_storage.py`, run by `run.sh`,
   catches the `if(!open(...)) { return; }` shape.
+
+## Releases
+
+A version is published by pushing its tag, `vX.Y`, and nothing else:
+
+1. On a branch, set `fap_version="X.Y"` in `application.fam` and add a `vX.Y:`
+   entry to the top of `changelog.md`. The entry is the GitHub release's notes
+   and the catalog's changelog, so write it for someone deciding whether to
+   update. `tools/release/check.sh vX.Y` passes when both are right.
+2. Merge, then tag the merge on main: `git tag vX.Y && git push origin vX.Y`.
+3. `.github/workflows/release.yml` runs `check.sh` over the tag, all of CI over
+   the tagged commit, and publishes a GitHub release with that run's `.fap`.
+   Its summary holds the Apps Catalog manifest for the commit - the only run
+   that shows it, since only a tagged commit should go to the catalog.
+
+To build an existing tag again (a newer SDK, a lost asset), run the Release
+workflow from the Actions tab with the tag; it replaces that release's `.fap`
+and notes. It checks out the tag but runs main's workflows, so the tag must
+contain `tools/release/check.sh`. Tagging and pushing publishes - ask before
+doing either.
+
+Branch pushes run `ci.yml` as before; it skips tags, because the release run
+calls it itself.
 
 ## Known noise, already investigated
 

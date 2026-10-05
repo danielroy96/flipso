@@ -58,14 +58,17 @@ data.
 ### Requirements
 
 - A **Flipper Zero**
-- [**ufbt**](https://github.com/flipperdevices/flipperzero-ufbt)
+- [**ufbt**](https://github.com/flipperdevices/flipperzero-ufbt), to build it yourself
 - A UK ITSO smartcard
 
 Flipso works on both official Flipper Zero and Momentum firmwares.
 
 ### Build and install
 
-Build and deploy Flipso to your Flipper Zero by running `ufbt launch`.
+Download `flipso.fap` from the
+[latest release](https://github.com/danielroy96/flipso/releases/latest) and copy
+it to `apps/NFC/` on the Flipper's SD card, or build and deploy Flipso to your
+Flipper Zero yourself by running `ufbt launch`.
 
 ### Bus stop names
 
@@ -104,6 +107,12 @@ you around to tap them.
 
 Please leave Claude and coding agent attributions in commit messages so that 
 we can retain history of code that was written using an agent.
+
+### Releases
+
+Each version is a [GitHub release](https://github.com/danielroy96/flipso/releases)
+with its `.fap` attached, published by pushing a `vX.Y` tag - see
+[CLAUDE.md](CLAUDE.md#releases) for the steps.
 
 ## Licensing
 
