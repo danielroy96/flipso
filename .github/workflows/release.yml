@@ -1,0 +1,102 @@
+name: Release
+
+# Pushing a tag vX.Y publishes that version: tools/release/check.sh holds the
+# tag to application.fam's fap_version and changelog.md, CI runs in full over
+# the tagged commit, and the .fap it built goes up as a GitHub release with the
+# changelog entry as its notes. The run's summary carries the Apps Catalog
+# manifest for the same commit.
+#
+# Run it by hand from the Actions tab to build an existing tag again - a newer
+# SDK, a lost asset - which replaces that release's .fap and notes.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The existing tag to build and publish, e.g. v1.1
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+# Two runs for the same tag would race to create the one release.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: 🏷️ Release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - id: tag
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+      - name: tools/release/check.sh
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: tools/release/check.sh "$TAG"
+
+  ci:
+    name: CI
+    needs: check
+    uses: ./.github/workflows/ci.yml
+    with:
+      release: ${{ needs.check.outputs.tag }}
+
+  publish:
+    name: 🚀 GitHub release
+    needs: [check, ci]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.check.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.check.outputs.tag }}
+      # The .fap the CI run built and checked, not a second build of it.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: flipso-*
+          path: dist
+          merge-multiple: true
+      - name: Release notes
+        env:
+          SDK: ${{ needs.ci.outputs.sdk }}
+          API: ${{ needs.ci.outputs.api }}
+        run: |
+          {
+            tools/release/check.sh "$TAG"
+            echo
+            echo "## Installing"
+            echo
+            echo "Install Flipso from the Flipper Apps Catalog, or copy \`flipso.fap\`"
+            echo "to \`apps/NFC/\` on the Flipper's SD card."
+            echo
+            echo "This \`.fap\` is built against the official firmware's release channel"
+            echo "(SDK $SDK, API $API). Firmware with a different API may refuse it;"
+            echo "the Apps Catalog builds one to match the firmware it is installed on."
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+      - name: Publish
+        run: |
+          ls -l dist/flipso.fap
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --title "Flipso $TAG" --notes-file "$RUNNER_TEMP/notes.md"
+            gh release upload "$TAG" dist/flipso.fap --clobber
+          else
+            gh release create "$TAG" dist/flipso.fap --verify-tag \
+              --title "Flipso $TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+          echo "Published [Flipso $TAG]($(gh release view "$TAG" --json url --jq .url))." >> "$GITHUB_STEP_SUMMARY"
