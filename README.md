@@ -102,6 +102,9 @@ card for Claude. If you're building a large new feature Claude will benefit
 from synthesizing cards so he can test them on the device without needing
 you around to tap them.
 
+Please leave Claude and coding agent attributions in commit messages so that 
+we can retain history of code that was written using an agent.
+
 ## Licensing
 
 Flipso is free software released under the [GNU General Public License v3.0](LICENSE).
