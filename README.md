@@ -27,6 +27,10 @@ rail smartcard, or a local authority travel card, it's probably an ITSO card.
 Flipso reads ITSO cards over the Flipper's NFC reader, then decodes it and
 shows you everything that was on it.
 
+Not sure what an NLC, a carnet or passback is? The [glossary](docs/GLOSSARY.md)
+explains the railway, ticketing, ITSO and NFC terms used across Flipso, its
+screens and its source code.
+
 ## What it shows you
 
 ITSO cards contain a surprising amount of data in 4 KB of chip storage, all
@@ -131,3 +135,4 @@ site. Flipso is written against:
 | [TS 1000-10](https://www.itso.org.uk/hubfs/TS_1000-10_V2_1_5_2025_03.pdf) | Customer Media Definitions                          | Where the data sits on each kind of card (CMD2, CMD4, CMD7, CMD9, CMD10) |
 
 See [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for further information on Flipso's implementation.
+[`docs/GLOSSARY.md`](docs/GLOSSARY.md) explains the acronyms and terms it uses.
