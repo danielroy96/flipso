@@ -65,8 +65,9 @@ struct FlipsoReader {
  * -4 poller on a Type 2 tag would send RATS it can never answer and poll for
  * ever, so the two are kept apart here rather than tried in turn.
  *
- * A MIFARE Classic is Type A but not a medium Flipso reads (the obsolete CMD5),
- * so it is called unsupported rather than fed to the Type 2 transport.
+ * A MIFARE Classic is Type A but not a medium Flipso reads (the obsolete CMD1
+ * and CMD3, TS 1000-10 clauses 2 and 4), so it is called unsupported rather
+ * than fed to the Type 2 transport.
  */
 static void flipso_reader_scanner_callback(NfcScannerEvent event, void* context) {
     FlipsoReader* reader = context;
