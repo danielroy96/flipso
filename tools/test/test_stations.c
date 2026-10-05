@@ -229,6 +229,10 @@ int main(void) {
     check(
         "8385 is the operator's channel, not the agent",
         lookup("8385") && strcmp(lookup("8385"), "South Western Railway Webtis") == 0);
+    /* A ticket machine has a code of its own, apart from its station's. */
+    check(
+        "1885 is a ticket machine",
+        lookup("1885") && strcmp(lookup("1885"), "High Wycombe (TVM)") == 0);
     check("0000 is absent", lookup("0000") == NULL);
 
     /* Walk the index and look every code up, so the search is exercised over

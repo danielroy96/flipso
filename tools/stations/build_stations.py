@@ -80,19 +80,45 @@ RC_GROUP_PATTERNS = (
 # A rail ticket's ProductRetailer is the NLC of the office that sold it
 # (RSPS3002 section 3.6.3), which for a ticket bought online or by phone is the
 # operator's sales channel rather than a station: 7175 is GWR's web sales, 8385
-# SWR's web ticket issuing system. Ticket machines are left out: there are two
-# thousand of them, which would more than double the table.
+# SWR's web ticket issuing system. Conductors' handheld "On Board Ticket
+# Machines" are on-train sales, not ticket machines.
 RC_RETAILER = re.compile(
     r"\b(web|webtis|web ?sales|telesales|online|internet|mobile|apps?|digital|"
     r"travel cent(re|er)|booking office|ticket office|ticket line|on train sales|"
-    r"business travel|call centre|portal|kiosk|itso|smartcards?)\b",
+    r"on board ticket machines|business travel|call centre|portal|kiosk|itso|"
+    r"smartcards?)\b",
     re.I,
 )
 # A travel agent's code ends in its ABTA-style branch number ("Pole Travel
 # S658"). Agents' codes have been reissued to operators' own channels - 8385 was
 # that agent's before it was SWR's - so where a code has both, the channel wins.
 RC_AGENT = re.compile(r"\s[A-Z]{1,2}\d{2,3}[A-Z]?$")
-RC_MACHINE = re.compile(r"ticket machine|self.?service", re.I)
+# A station's ticket machine has a location code of its own - High Wycombe's
+# are 1885, not the station's 1883 - and two thousand of them, named "High
+# Wycombe Self Service Ticket Machine" and the like. Most of that is the
+# same words, which also run past the 40 characters a name is cut to, so the
+# description becomes "(TVM)", keeping a machine's number: "Brighton (TVM 2)".
+RC_MACHINE = re.compile(
+    r"\s+(?:Smart Kiosk\s+)?(?:Self[ -]Service(?:\s+Ticket\s+Machines?)?|"
+    r"Service\s+Ticket\s+Machines?)(?:\s+(\d+|One)\b)?",
+    re.I,
+)
+
+
+def tvm_name(name):
+    """A ticket machine's name, shortened, or None for a name that is not one."""
+    match = RC_MACHINE.search(name)
+    # A maintenance depot or a code waiting to be reused sells nothing.
+    if not match or re.search(r"maintenance|reused", name, re.I):
+        return None
+    number = {"One": "1"}.get(match.group(1), match.group(1))
+    suffix = f" (TVM {number})" if number else " (TVM)"
+    # What follows the description is the operator that ran it ("National
+    # Express", "(LM)"); the station before it is what says where it was.
+    place = clean(name[: match.start()])
+    if len(place) > NAME_MAX - len(suffix):
+        place = place[: NAME_MAX - len(suffix) + 1].rsplit(" ", 1)[0]
+    return place + suffix
 
 
 def fetch(url, retries=3, binary=False):
@@ -207,13 +233,16 @@ def scrape_railwaycodes():
             name, crs, nlc = cell[0], cell[1], cell[2]
             is_station = bool(re.fullmatch(r"[A-Z]{3}", crs or ""))
             if not is_station and not any(p.search(name) for p in RC_GROUP_PATTERNS):
-                # Ticket machines and accounting codes share this table but are
-                # never named on a card. A sales office is, as the retailer;
+                # Accounting codes share this table but are never named on a
+                # card. A sales office or a ticket machine is, as the retailer;
                 # only its location code, ending 00, is the four-character NLC
                 # the card carries - 314244 is not location 3142.
-                if RC_RETAILER.search(name) or RC_MACHINE.search(name):
+                seller = tvm_name(name)
+                if not seller and RC_RETAILER.search(name):
+                    seller = clean(name)
+                if seller:
                     for value in re.findall(r"\b(\d{4})00\b", nlc):
-                        retailers.setdefault(value, set()).add(clean(name))
+                        retailers.setdefault(value, set()).add(seller)
                 continue
             # NLCs are published as six digits; ITSO carries the leading four.
             for value in re.findall(r"\b(\d{6})\b", nlc):
@@ -233,14 +262,13 @@ def scrape_railwaycodes():
             groups.setdefault(code, clean(name + " Stations"))
 
     # Codes are reissued and the table carries no dates, so a code two sales
-    # offices share is left unnamed rather than given to the wrong one. Ticket
-    # machines are collected only so that a code one shares is seen as shared.
+    # offices share is left unnamed rather than given to the wrong one.
     merged = {}
     for code, names in retailers.items():
         names = {name for name in names if not RC_AGENT.search(name)} or names
-        if len(names) == 1 and not RC_MACHINE.search(next(iter(names))):
+        if len(names) == 1:
             merged[code] = names.pop()
-    print(f"  {len(merged)} retailers named, {len(retailers) - len(merged)} ticket machines or ambiguous")
+    print(f"  {len(merged)} retailers, {len(retailers) - len(merged)} ambiguous and left out")
     merged.update(groups)
     merged.update(stations)  # a real station always wins the code
     return merged
@@ -342,7 +370,7 @@ def main():
         f"wrote {args.output}: {len(table)} entries, {len(packed)} bytes"
         f" ({average:.1f} per entry)"
     )
-    for probe in ("5685", "0035", "1444", "1072", "7175", "8385"):
+    for probe in ("5685", "0035", "1444", "1072", "7175", "8385", "1885"):
         print(f"  {probe} -> {lookup(int(probe))}")
     return 0
 

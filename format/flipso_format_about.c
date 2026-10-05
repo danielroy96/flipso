@@ -19,7 +19,7 @@ void flipso_format_about(
 
     flipso_cat_page(out, FlipsoIconTrain, "Station names");
     if(stations) {
-        furi_string_cat_printf(out, "Installed: %lu stations\n", (unsigned long)stations);
+        furi_string_cat_printf(out, "Installed: %lu places\n", (unsigned long)stations);
     } else {
         furi_string_cat(out, "Installed: No\nReinstall Flipso to restore them.\n");
     }
