@@ -8,8 +8,9 @@ and unpacked to `/ext/apps_assets/flipso/` when the app is installed.
   estimates of station usage (table 1410), © Crown copyright. Public sector
   information licensed under the Open Government Licence v3.0,
   <https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/>.
-- Historic codes and fare groups from railwaycodes.org.uk, compiled and
-  maintained by Phil Deaves.
+- Historic codes, fare groups, and the codes of sales offices (web sales,
+  telesales, travel centres) and ticket machines, from railwaycodes.org.uk,
+  compiled and maintained by Phil Deaves.
 
 Use of the railwaycodes.org.uk data, including redistributing it in the
 published app, was agreed with the site in exchange for a donation to Swindon

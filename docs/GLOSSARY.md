@@ -98,6 +98,7 @@ appear on Flipso's screens.
 | **Top-up** | Adding money to pay as you go, or passes or rides to a ticket. |
 | **Transfer** | Changing to another service partway through a journey without paying again. *Transfers left* counts how many changes remain; *Changes allowed* sets the limit. |
 | **Transferable** | A ticket that may be used by someone other than the person who bought it. |
+| **TVM** | Ticket vending machine: a self-service ticket machine at a station. Each one has an NLC of its own, so a ticket bought from one names the machine as its seller - *Sold by: High Wycombe (TVM)*. A number tells a station's machines apart: *(TVM 2)*. |
 | **Valid days** | The days of the week a ticket may be used, such as *Weekdays only*. |
 | **Validity code** | An operator's code for the conditions a ticket is valid under. |
 | **Via / Not via** | A route restriction: the journey must (*Via*) or must not (*Not via*) pass through a given place. |
@@ -295,7 +296,7 @@ How a card says where something happened or where a ticket is valid
 | **AtcoCode** | A bus stop's full identifier in NaPTAN, up to twelve characters such as `1800ALTRNHM0` (LocDefType 211). Looked up whole in the stop table. |
 | **NaPTAN** | National Public Transport Access Nodes: the Department for Transport's register of every bus stop and other public transport access point in Great Britain. Flipso's optional `naptan.dat` is built from it. |
 | **NaptanCode** | A bus stop's short code, eight characters such as `cumfatda`, the kind printed on stops for text-message services. ITSO packs it into four bytes by mapping its letters onto a telephone keypad, so two stops can share a number (LocDefTypes 206, 212, 216). Without the stop table it shows as `Stop 28632832`. |
-| **NLC** | National Location Code: the four-character code the railway gives every station, and some non-station locations, for fares and accounting (LocDefType 203, or 208 with a UIC country code). Flipso names it from the station table, or shows `Station 1234`. Rail also uses an NLC for the station that sold a ticket. |
+| **NLC** | National Location Code: the four-character code the railway gives every station, and some non-station locations, for fares and accounting (LocDefType 203, or 208 with a UIC country code). Flipso names it from the station table, or shows `Station 1234`. Rail also uses an NLC for whoever sold a ticket - a station's ticket office, a ticket machine (*TVM*), or an operator's web or phone sales - shown as *Sold by*, or `Retailer 1234` for a code the table cannot name. |
 | **Null location** | LocDefType 255: no location recorded (*Not recorded*). |
 | **Stage** | See *fare stage*. LocDefTypes 202, 209 and 217 are bus fare stages, with the machine or service number they belong to. |
 | **Zonal bit map** | A set of zones as one bit per zone (LocDefTypes 204, *valid within zone*, and 205, *zone to zone*). Shown as `Zones 1,2,3`. |

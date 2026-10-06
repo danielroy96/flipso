@@ -18,7 +18,7 @@ void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
     check(
         "a check-in names the operator whose gate it was",
         page_starts(text, "Tap in", "When: 18/09/2026 17:52\n") &&
-            on_page(text, "Tap in", "Tapped in with: Unknown (24585)\n"));
+            on_page(text, "Tap in", "Tapped in with: Transport for London\n"));
     /* The stub table knows no GWR stations, so the check is the shape, not the
      * names: a dated tap out with a destination and no fare line. */
     check(
@@ -33,10 +33,10 @@ void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
     flipso_format_card(text, f, card, NULL, false, 0);
     check(
         "the directory's last writer is decoded from an extended ISAM",
-        technical(text, "Last updated by machine: 004E30F3\n  Operator: Unknown (24585)\n"));
+        technical(text, "Last updated by machine: 004E30F3\n  Operator: Transport for London\n"));
     check(
         "with the version of the key its seal is made with, even at 0",
-        technical(text, "  Operator: Unknown (24585)\nDirectory seal key version: 0\n"));
+        technical(text, "  Operator: Transport for London\nDirectory seal key version: 0\n"));
     check("160-byte sectors are the layout", shows(text, "Layout: 16 sectors of 160 bytes\n"));
 
     /* Its ID never expires and nor does the entitlement on it, in the other
@@ -384,7 +384,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
                 "Valid only with: Disabled Persons Railcard\n"
                 "  Railcard number: Ends 1372\nOperator: Southeastern\n") &&
                 page_starts(text, "Details", "Journeys left: 0\n") &&
-                on_page(text, "Purchase", "Sold by: Station 5230\n"));
+                on_page(text, "Purchase", "Sold by: Retailer 5230\n"));
         check(
             "it names the railcard product it goes with",
             shows(text, "Part of this ticket: Entitlement\n"));

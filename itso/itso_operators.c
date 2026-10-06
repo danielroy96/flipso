@@ -190,14 +190,14 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * itso_card_issuer_oid()). The brand is the one the Subway's own smartcard
      * carries. */
     {8323, "SPT (Strathclyde)", "SPT Subway"},
+    /* TfL's gates, as the machine behind a tap and the last writer of a
+     * directory, seen on GWR Touch cards tapped in at London Paddington and
+     * read 2026-10-05. RSPS3002 appendix D gives TfL's ISAM IDs as 004E...,
+     * and TS 1000-2 Annex B unpacks that to 0x6009, a number of the
+     * 24576-32767 range table B2 keeps for service operators and retailers - so
+     * it names a machine, never a card or a product. */
+    {24585, "Transport for London", NULL},
 };
-
-/*
- * Note on roles: TS 1000-2 Annex B gives an organisation different numbers for
- * different roles, so Transport for London also appears as 0x6009 (24585) as a
- * service operator. That range only ever occurs in ISAM IDs and POST addresses,
- * never in the shell or a directory entry, so it is not listed here.
- */
 
 static const ItsoOperatorEntry* itso_operator_entry(uint16_t oid) {
     size_t low = 0;

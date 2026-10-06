@@ -89,7 +89,9 @@ not silently discard the other.
 
 Rail locations are stored on the card as a four-character National Location
 Code (LocDefType 203, or 208 with a UIC country code in front of it). The
-packaged table maps those to station names and fare group names — see
+packaged table maps those to station names and fare group names, and the
+codes of the sales offices and ticket machines a ticket's retailer can name to
+theirs — see
 `tools/stations/FORMAT.md` and `tools/stations/SOURCES.md`.
 
 ## Bus stop names
@@ -865,7 +867,13 @@ uses it - TYP 24 being, in practice, rail's:
   1372**, and the kind under Technical.
 - **ProductRetailer** with bit 15 set is the retailing station's NLC, not an
   operator: five bits of first character ('0'-'9', 'A'-'V') and ten of the
-  last three digits, shown as **Sold by:** and the station. TYP 22, 23 and 24
+  last three digits, shown as **Sold by:** and the station. RSPS3002 fills it
+  from the "NLC (Shift)" of the sale, so a ticket bought online or by phone
+  names the operator's sales office instead - 7175 is Great Western Railway
+  Websales, 8385 South Western Railway Webtis - and the station table carries
+  those offices' codes too, and each ticket machine's, as **High Wycombe
+  (TVM)** (see `tools/stations/build_stations.py`). A code the table cannot name is shown as
+  **Retailer 8385**, not as a station. TYP 22, 23 and 24
   all carry it that way (sections 3.6.3, 3.7.3 and 3.8.3), but bit 15 alone
   does not rule out an OID: TS 1000-2 table B2 gives 57344-65535 to service
   operators and retailers, and TYP 22 and 23 are bus tickets as often as rail

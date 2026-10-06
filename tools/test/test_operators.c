@@ -98,9 +98,9 @@ int main(void) {
      * a new entry needs a line, and the search finds it only while the table
      * stays sorted.
      */
-    static const uint16_t known[] = {78,  96,  109, 116, 125,  130,  143,  152, 162,
-                                     163, 165, 196, 226, 246,  247,  262,  285, 287,
-                                     288, 289, 303, 313, 1136, 8000, 8288, 8323};
+    static const uint16_t known[] = {78,  96,  109, 116, 125,  130,  143,  152,  162,
+                                     163, 165, 196, 226, 246,  247,  262,  285,  287,
+                                     288, 289, 303, 313, 1136, 8000, 8288, 8323, 24585};
     unsigned unreachable = 0;
     for(size_t i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
         if(!itso_operator_name(known[i])) unreachable++;
@@ -108,6 +108,9 @@ int main(void) {
     check("every built-in entry is reachable (the table is sorted)", unreachable == 0);
 
     same("a known operator is named", itso_operator_name(78), "Transport for London");
+    /* The same organisation in its service operator role: ISAM 004E30F3. */
+    same(
+        "a service operator's number is named", itso_operator_name(24585), "Transport for London");
     same(
         "a council that issues concessionary passes is named",
         itso_operator_name(165),
