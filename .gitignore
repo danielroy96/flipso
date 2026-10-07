@@ -24,3 +24,6 @@ dump.txt
 tools/flipper/.venv/
 tools/catalog/.venv/
 __pycache__/
+
+# macOS Finder metadata.
+.DS_Store

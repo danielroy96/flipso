@@ -3,9 +3,64 @@
  * @brief Idle until the user asks to scan, then read a card.
  *
  * The reader is not started on entry: the NFC field draws power and the LED
- * blinks, so it only runs while the user is actually presenting a card.
+ * is lit, so it only runs while the user is actually presenting a card.
  */
 #include "../flipso.h"
+
+/* A run up two octaves with the motor under it, so a good read is felt as well
+ * as heard. The green outlasts the sound by a second, so the result is still
+ * showing when the user looks down from the reader. */
+static const NotificationSequence flipso_sequence_scan_success = {
+    &message_display_backlight_on,
+    &message_green_255,
+    &message_note_c5,
+    &message_vibro_on,
+    &message_delay_50,
+    &message_note_g5,
+    &message_delay_50,
+    &message_note_c6,
+    &message_delay_50,
+    &message_note_g6,
+    &message_delay_50,
+    &message_note_c7,
+    &message_delay_50,
+    &message_sound_off,
+    &message_vibro_off,
+    &message_delay_1000,
+    &message_green_0,
+    NULL,
+};
+
+/* Three long buzzes on one low note, in red: nothing like the rising run of a
+ * good read, so the two cannot be confused without looking. */
+static const NotificationSequence flipso_sequence_scan_fail = {
+    &message_display_backlight_on,
+    &message_red_255,
+    &message_vibro_on,
+    &message_note_c5,
+    &message_delay_250,
+    &message_red_0,
+    &message_vibro_off,
+    &message_sound_off,
+    &message_delay_50,
+    &message_red_255,
+    &message_vibro_on,
+    &message_note_c5,
+    &message_delay_250,
+    &message_red_0,
+    &message_vibro_off,
+    &message_sound_off,
+    &message_delay_50,
+    &message_red_255,
+    &message_vibro_on,
+    &message_note_c5,
+    &message_delay_250,
+    &message_red_0,
+    &message_vibro_off,
+    &message_sound_off,
+    &message_delay_50,
+    NULL,
+};
 
 /** Scene state: whether the reader is currently running. */
 typedef enum {
@@ -45,6 +100,10 @@ static void flipso_scene_scan_start_reader(Flipso* app) {
 
 static void flipso_scene_scan_stop(Flipso* app) {
     flipso_reader_stop(app->reader);
+    /* The firmware's own, not one of ours: this is queued on every exit, and the
+     * notification thread reads a sequence after the call returns - one of ours
+     * would be read out of the .fap after the loader has freed it. A blink stop
+     * also clears red, green and blue, whatever set them. */
     notification_message(app->notifications, &sequence_blink_stop);
     notification_message(app->notifications, &sequence_display_backlight_enforce_auto);
     flipso_scan_view_set_scanning(app->scan_view, false);
@@ -112,10 +171,10 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
             app->scene_manager, FlipsoSceneScan, FlipsoScanStateScanning);
         flipso_scan_view_set_scanning(app->scan_view, true);
 
-        /* Reading takes a second or two of holding still; keep the screen lit and
-         * the LED pulsing so it is obvious the app is waiting on the user. */
+        /* Reading takes a second or two of holding still; keep the screen and
+         * the LED lit so it is obvious the app is waiting on the user. */
         notification_message(app->notifications, &sequence_display_backlight_enforce_on);
-        notification_message(app->notifications, &sequence_blink_start_cyan);
+        notification_message(app->notifications, &sequence_solid_yellow);
 
         flipso_scene_scan_start_reader(app);
         return true;
@@ -143,13 +202,17 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
              * at the screen, and a chirp saying "fine" over a dead card is worse
              * than no sound. */
             const bool dead = app->card.shell_blocked || itso_card_retired(&app->card);
-            notification_message(app->notifications, dead ? &sequence_error : &sequence_success);
+            if(dead) {
+                notification_message(app->notifications, &flipso_sequence_scan_fail);
+            } else {
+                notification_message(app->notifications, &flipso_sequence_scan_success);
+            }
             /* Stamped here rather than on the worker thread: it is the time the
              * card was read, and the RTC is the UI thread's to ask. */
             flipso_capture_set_time(app->capture, flipso_now());
             scene_manager_next_scene(app->scene_manager, FlipsoSceneMenu);
         } else {
-            notification_message(app->notifications, &sequence_error);
+            notification_message(app->notifications, &flipso_sequence_scan_fail);
             scene_manager_next_scene(app->scene_manager, FlipsoSceneError);
         }
         return true;

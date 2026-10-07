@@ -212,6 +212,12 @@ static void flipso_free(Flipso* app) {
     /* Exiting the app does not unwind the scene stack by itself, so run the
      * current scene's on_exit to stop polling and release the LED and backlight. */
     scene_manager_stop(app->scene_manager);
+    /* A sequence is queued by pointer and read one message at a time, so ours
+     * live in the .fap and must be played out before the loader frees it: a
+     * scan's success holds the notification thread for over a second, and an
+     * exit inside that would leave it reading freed memory. The queue is first
+     * in, first out, so waiting on one more waits on everything before it. */
+    notification_message_block(app->notifications, &sequence_blink_stop);
 
     flipso_reader_free(app->reader);
     flipso_capture_free(app->capture);
