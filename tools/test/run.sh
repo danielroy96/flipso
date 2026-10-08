@@ -82,6 +82,21 @@ build test_stations -I"$ROOT" -Istub test_stations.c $(src stations)
 ./test_stations
 
 echo
+echo "Ticket type table"
+# The packaged table has to be what the builder makes of the committed XML:
+# assets/ is a build artefact, never edited by hand.
+python3 "$ROOT/tools/ticket_types/build_ticket_types.py" -o ticket_types.dat >/dev/null
+if cmp -s ticket_types.dat "$ROOT/assets/ticket_types.dat"; then
+  echo "  [PASS] the packaged ticket type table is current"
+else
+  echo "  [FAIL] the packaged ticket type table is stale: run tools/ticket_types/build_ticket_types.py"
+  exit 1
+fi
+rm -f ticket_types.dat
+build test_ticket_types -I"$ROOT" -Istub test_ticket_types.c $(src ticket_types)
+./test_ticket_types
+
+echo
 echo "Stop table"
 build test_naptan -I"$ROOT" -Istub test_naptan.c $(src naptan)
 ./test_naptan

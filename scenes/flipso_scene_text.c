@@ -73,6 +73,7 @@ void flipso_scene_text_on_enter(void* context) {
             flipso_version(),
             flipso_stations_count(app->stations),
             flipso_naptan_count(app->naptan),
+            flipso_ticket_types_count(app->ticket_types),
             flipso_operators_user_count(app->operators));
         break;
     }

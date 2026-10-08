@@ -28,5 +28,6 @@ so this data set is shipped alongside the app rather than bundled into it.
 ## Data and licences
 
 - Railway NLC (station codes/names) data courtesy of [railwaycodes.org.uk](https://www.railwaycodes.org.uk)
+- Railway ticket types published by the [Rail Delivery Group](https://raildata.org.uk) under a free redistribution licence
 - Bus stops NaPTANs published by [Department for Transport](https://beta-naptan.dft.gov.uk) under the Open Government Licence
 - Card specification ITSO TS 1000 published by [ITSO Ltd](https://www.itso.org.uk) under the Open Government Licence

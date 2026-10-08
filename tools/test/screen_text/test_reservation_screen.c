@@ -130,7 +130,12 @@ void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
         "no type code left on the screen",
         !shows(text, "Type code: 0") && !shows(text, "Type code: 1\n"));
     check("the ticket number, under Technical", technical(text, "Ticket number: 123456\n"));
-    check("the fare type", technical(text, "Fare type: SOR\nRestriction code: OP\nID type: 1\n"));
+    check(
+        "the ticket type's code, under Technical",
+        technical(text, "Ticket type code: SOR\nRestriction code: OP\nID type: 1\n"));
+    check(
+        "and its name on the first page, from the RDG table",
+        on_page(text, "Reserved journey", "Ticket type: Anytime Return\n"));
     check(
         "the discount's code, rail's whole percent and its type under Technical",
         technical(

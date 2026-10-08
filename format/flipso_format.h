@@ -34,6 +34,7 @@
 #include "../lookup/flipso_naptan.h"
 #include "../lookup/flipso_operators.h"
 #include "../lookup/flipso_stations.h"
+#include "../lookup/flipso_ticket_types.h"
 #include "../itso/itso.h"
 
 #include <furi.h>
@@ -90,6 +91,7 @@ typedef struct {
     const FlipsoOperators* operators;
     FlipsoStations* stations;
     FlipsoNaptan* naptan;
+    FlipsoTicketTypes* ticket_types;
     /** The raw blocks, for the parts decoded on demand (fare capping). */
     const FlipsoCapture* capture;
     /** What the chip said about itself on a live read; NULL or invalid if nothing. */
@@ -154,6 +156,7 @@ void flipso_format_product(
  * @param version   the build's version, or NULL when it has none.
  * @param stations  stations the station table names; 0 when it is missing.
  * @param stops     stops the stop table names; 0 when it is missing.
+ * @param tickets   ticket types the ticket type table names; 0 when it is missing.
  * @param operators names read from the user's operators file.
  */
 void flipso_format_about(
@@ -161,6 +164,7 @@ void flipso_format_about(
     const char* version,
     uint32_t stations,
     uint32_t stops,
+    uint32_t tickets,
     uint16_t operators);
 
 /* ------------------------------------------------------------------ */

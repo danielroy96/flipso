@@ -33,6 +33,7 @@ PARTS = {
     "operators": ["lookup/flipso_operators.c"],
     "stations": ["lookup/flipso_stations.c"],
     "naptan": ["lookup/flipso_naptan.c"],
+    "ticket_types": ["lookup/flipso_ticket_types.c"],
     "views": ["views/flipso_glyphs.c"],
     "menu_view": ["views/flipso_menu_view.c"],
     "text_view": ["views/flipso_text_view.c"],

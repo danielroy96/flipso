@@ -96,6 +96,7 @@ FlipsoFormat flipso_format_context(const Flipso* app) {
         .operators = app->operators,
         .stations = app->stations,
         .naptan = app->naptan,
+        .ticket_types = app->ticket_types,
         .capture = app->capture,
         .media = &app->media,
         .now = flipso_now(),
@@ -202,6 +203,7 @@ static Flipso* flipso_alloc(void) {
     app->operators = flipso_operators_alloc();
     app->stations = flipso_stations_alloc();
     app->naptan = flipso_naptan_alloc();
+    app->ticket_types = flipso_ticket_types_alloc();
 
     return app;
 }
@@ -228,6 +230,7 @@ static void flipso_free(Flipso* app) {
     flipso_operators_free(app->operators);
     flipso_stations_free(app->stations);
     flipso_naptan_free(app->naptan);
+    flipso_ticket_types_free(app->ticket_types);
 
     view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewScan);
     view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewMenu);

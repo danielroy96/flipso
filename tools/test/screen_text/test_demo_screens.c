@@ -389,6 +389,9 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
                 technical(text, "Remote changes applied: 3\n"));
         } else if(p->typ == ItsoTypReservationTicket) {
             check(
+                "a reserved journey is named by its ticket type, after where it goes",
+                on_page(text, "Reserved journey", "\nTicket type: Anytime Return\nStatus: "));
+            check(
                 "an off-peak band from midnight is a time not to travel before",
                 on_page(
                     text,

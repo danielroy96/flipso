@@ -11,6 +11,7 @@
 #include "lookup/flipso_operators.h"
 #include "lookup/flipso_stations.h"
 #include "lookup/flipso_naptan.h"
+#include "lookup/flipso_ticket_types.h"
 #include "format/flipso_format.h"
 #include "itso/itso.h"
 #include "views/flipso_menu_view.h"
@@ -134,6 +135,9 @@ typedef struct {
 
     /** Bus stop names, likewise, when the user has built the table. */
     FlipsoNaptan* naptan;
+
+    /** Rail ticket type names, read on demand from the SD card. */
+    FlipsoTicketTypes* ticket_types;
 
     ItsoCard card;
 

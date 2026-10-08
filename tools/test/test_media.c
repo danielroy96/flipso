@@ -45,6 +45,14 @@ const char* flipso_naptan_atco(FlipsoNaptan* instance, const char* atco) {
     return NULL;
 }
 
+const char* flipso_ticket_types_name(
+    FlipsoTicketTypes* instance,
+    const uint8_t code[FLIPSO_TICKET_TYPE_CODE_LEN]) {
+    (void)instance;
+    (void)code;
+    return NULL;
+}
+
 static void shows(const FuriString* text, const char* needle) {
     check(needle, strstr(furi_string_get_cstr(text), needle) != NULL);
 }

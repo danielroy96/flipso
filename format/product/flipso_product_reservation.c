@@ -108,6 +108,13 @@ static uint32_t flipso_reservation_id(const ItsoReservation* res) {
  * the table does not know - is not a railcard to number, so the line stands on
  * its own.
  */
+void flipso_cat_ticket_type(FuriString* out, const FlipsoFormat* f, const ItsoReservation* res) {
+    /* FaresTypeOfTicket is the RSP fares data's ticket type (TS 1000-5 table
+     * 136, RSPS3002), which is the name a passenger knows the ticket by. */
+    const char* name = flipso_ticket_types_name(f->ticket_types, res->ftot);
+    if(name) furi_string_cat_printf(out, "Ticket type: %s\n", name);
+}
+
 void flipso_cat_reservation_id(
     FuriString* out,
     const ItsoProduct* product,
@@ -423,7 +430,7 @@ void flipso_cat_reservation_codes(
 
     if(!res->valid) return;
     flipso_cat_ud_line(out, "", "Ticket number", res->ticket_number, sizeof(res->ticket_number));
-    flipso_cat_ud_line(out, "", "Fare type", res->ftot, sizeof(res->ftot));
+    flipso_cat_ud_line(out, "", "Ticket type code", res->ftot, sizeof(res->ftot));
     flipso_cat_ud_line(
         out, "", "Restriction code", res->restriction_code, sizeof(res->restriction_code));
     const uint32_t id = flipso_reservation_id(res);

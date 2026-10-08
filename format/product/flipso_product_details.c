@@ -156,6 +156,11 @@ void flipso_cat_product_details(
         }
     }
 
+    /* --- What kind of ticket it is, which on rail is what the holder calls
+     * it: "Off-Peak Return" says as much about when it is good as the dates
+     * below do. --- */
+    if(res && res->valid) flipso_cat_ticket_type(main, f, res);
+
     /* --- Whether it is still good, straight after where: it is what a holder
      * reads the first page for, and below the dates it sat out of sight. --- */
     /* The status comes from where the card keeps the product - in use, blocked,

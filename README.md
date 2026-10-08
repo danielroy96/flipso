@@ -125,6 +125,12 @@ Railway NLC codes kindly provided by
 been made to [Swindon Food Collective](https://www.swindonfoodcollective.org)
 in exchange for the use of this dataset.
 
+### Rail ticket types
+
+Rail ticket types from the Rail Delivery Group's ticket types reference
+data, published on the [Rail Data Marketplace](https://raildata.org.uk),
+under licence for free redistribution.
+
 ### Bus stop NaPTANs
 
 Bus stop NaPTANs published by the [Department for Transport](https://beta-naptan.dft.gov.uk) under

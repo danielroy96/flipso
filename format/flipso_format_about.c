@@ -9,6 +9,7 @@ void flipso_format_about(
     const char* version,
     uint32_t stations,
     uint32_t stops,
+    uint32_t tickets,
     uint16_t operators) {
     flipso_cat_page(out, FlipsoIconInfo, "Flipso");
     if(version) furi_string_cat_printf(out, "Version: %s\n", version);
@@ -20,6 +21,13 @@ void flipso_format_about(
     flipso_cat_page(out, FlipsoIconTrain, "Station names");
     if(stations) {
         furi_string_cat_printf(out, "Installed: %lu railway locations\n", (unsigned long)stations);
+    } else {
+        furi_string_cat(out, "Installed: No\nReinstall Flipso to restore them.\n");
+    }
+
+    flipso_cat_page(out, FlipsoIconTicket, "Ticket types");
+    if(tickets) {
+        furi_string_cat_printf(out, "Installed: %lu rail ticket types\n", (unsigned long)tickets);
     } else {
         furi_string_cat(out, "Installed: No\nReinstall Flipso to restore them.\n");
     }

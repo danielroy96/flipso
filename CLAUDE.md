@@ -102,7 +102,8 @@ cards/                flipso_capture*.c: the raw blocks a read produced (the sto
 lookup/               flipso_operators.c operator id -> name, built-in table plus the
                       user's file; flipso_stations.c NLC -> station name, binary search
                       over the SD card table; flipso_naptan.c NaptanCode/AtcoCode ->
-                      bus stop name, same design
+                      bus stop name, same design; flipso_ticket_types.c
+                      rail FTOT -> ticket type name, same design but opened per lookup
 scenes/               one file per scene; every paged text screen is the one
                       text scene (flipso_open_text()); list in flipso_scene_config.h
 views/                custom views (the icon list, the text panel, the scan screen),
@@ -124,6 +125,7 @@ tools/demo/           the builder for the synthetic demo cards the About menu op
 assets/demo/          those demo cards, generated - rerun the builder, never edit;
                       run.sh fails when they are stale
 tools/stations/       station table builder and its data provenance
+tools/ticket_types/   ticket type table builder, RDG's source XML and its provenance
 data/                 reference data shipped but not packaged; see its README
 tools/naptan/         stop table builder; data/naptan.dat is its output
 tools/icons/          pixel art the images/ icons are generated from
