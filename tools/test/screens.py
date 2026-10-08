@@ -20,6 +20,7 @@ be checked as it looked on the day it was valid.
 """
 
 import argparse
+import calendar
 import datetime
 import os
 import subprocess
@@ -60,8 +61,13 @@ def build() -> str:
 
 
 def midnight(day: datetime.date) -> int:
-    """Local midnight, as the device's clock would have it."""
-    return int(datetime.datetime.combine(day, datetime.time()).timestamp())
+    """Midnight starting @p day, as the device's clock would have it.
+
+    The Flipper keeps wall time and turns it into a timestamp as though it were
+    UTC (datetime_datetime_to_timestamp()), as ITSO dates are; the real instant
+    of local midnight is an hour earlier in summer, which is the day before.
+    """
+    return calendar.timegm(day.timetuple())
 
 
 def render(binary: str, card: str, now: int, capture: bool = False):

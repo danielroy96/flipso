@@ -140,6 +140,22 @@ void flipso_cat_expiry(
     flipso_cat_date_line(out, indent, itso_date_expired(date, now) ? past_label : label, date);
 }
 
+/**
+ * How long is left before an expiry, as a detail under its date: "Days left:
+ * 185", or "Today" on the last day. Nothing for a date that has passed, whose
+ * label already says so, or one that never comes.
+ */
+void flipso_cat_days_left(FuriString* out, const char* indent, ItsoDate date, ItsoUnixTime now) {
+    if(itso_date_open(date)) return;
+    const int32_t days = itso_date_days_left(date, now);
+    if(days < 0) return;
+    if(days == 0) {
+        furi_string_cat_printf(out, "%sDays left: Today\n", indent);
+    } else {
+        furi_string_cat_printf(out, "%sDays left: %ld\n", indent, (long)days);
+    }
+}
+
 /** "VAT: 20.00%", from a rate in 0.01% steps. Nothing for a rate of zero. */
 void flipso_cat_vat(FuriString* out, const char* indent, uint16_t vat) {
     if(vat) furi_string_cat_printf(out, "%sVAT: %u.%02u%%\n", indent, vat / 100, vat % 100);

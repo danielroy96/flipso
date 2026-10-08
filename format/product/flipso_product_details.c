@@ -183,14 +183,13 @@ void flipso_cat_product_details(
         flipso_cat_datetime_line(start, "", "Valid from", ticket->valid_from_dts);
     }
     /* A reserved journey's expiry is the end of its return portion, which the
-     * first page has already said. */
-    flipso_cat_expiry(
-        kind == FlipsoKindReserved ? details : main,
-        "",
-        "Expires",
-        "Expired",
-        product->expiry,
-        now);
+     * first page has already said, so it is a detail and not counted down. */
+    if(kind == FlipsoKindReserved) {
+        flipso_cat_expiry(details, "", "Expires", "Expired", product->expiry, now);
+    } else {
+        flipso_cat_expiry(main, "", "Expires", "Expired", product->expiry, now);
+        flipso_cat_days_left(main, "  ", product->expiry, now);
+    }
     if(purse->has_end_date && !flipso_same_date(purse->end_date, product->expiry)) {
         flipso_cat_expiry(main, "", "Valid to", "Ended", purse->end_date, now);
     }
@@ -208,6 +207,7 @@ void flipso_cat_product_details(
     if(ticket->has_current_expiry) {
         flipso_cat_expiry(
             main, "", "Current pass until", "Current pass ended", ticket->current_expiry, now);
+        flipso_cat_days_left(main, "  ", ticket->current_expiry, now);
     }
     if(ticket->has_stored_expiry && !flipso_same_date(ticket->stored_expiry, product->expiry)) {
         const bool rides = product->typ == ItsoTypJourneyTicket;

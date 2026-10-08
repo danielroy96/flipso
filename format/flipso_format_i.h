@@ -73,6 +73,9 @@ void flipso_cat_expiry(
     ItsoDate date,
     ItsoUnixTime now);
 
+/** "Days left: 185", or "Today", under an expiry; nothing once it has passed or for no expiry. */
+void flipso_cat_days_left(FuriString* out, const char* indent, ItsoDate date, ItsoUnixTime now);
+
 /** "VAT: 20.00%", from a rate in 0.01% steps. Nothing for a rate of zero. */
 void flipso_cat_vat(FuriString* out, const char* indent, uint16_t vat);
 

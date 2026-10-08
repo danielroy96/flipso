@@ -194,6 +194,7 @@ void flipso_format_card(
     }
     if(!card->shell_compact) {
         flipso_cat_expiry(out, "", "Expires", "Expired", card->expiry, f->now);
+        flipso_cat_days_left(out, "  ", card->expiry, f->now);
     }
 
     /* The shell owner is the operator that issued the card and so the one that

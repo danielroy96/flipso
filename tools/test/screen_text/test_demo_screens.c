@@ -216,7 +216,9 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     check(
         "the ID's first page is who and what the holder is",
         page_starts(
-            text, "ITSO ID", "Name: JAMIE OKONKWO-LEE\nExpires: 31/08/2031\nStatus: Active\n") &&
+            text,
+            "ITSO ID",
+            "Name: JAMIE OKONKWO-LEE\nExpires: 31/08/2031\n  Days left: 2171\nStatus: Active\n") &&
             on_page(text, "ITSO ID", "Operator: SEFT Central Products\n"));
     check("the holder's page", page_starts(text, "Holder", "Born: 14/05/1978\nGender: Male\n"));
     furi_string_reset(text);
@@ -227,7 +229,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         page_starts(
             text,
             "Card",
-            "633597 0289 0100 0016\nStatus: Active\nExpires: 31/08/2031\n"
+            "633597 0289 0100 0016\nStatus: Active\nExpires: 31/08/2031\n  Days left: 2171\n"
             "Operator: Southeastern\n"));
     furi_string_reset(text);
     flipso_format_summary(text, f, card);
@@ -242,8 +244,8 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             "24.15\nITSO ID: Commuter\n") &&
             on_page(text, "Summary", "Last tap: London Bridge\n"));
     check(
-        "the tickets that can be used today are a page",
-        page_starts(text, "Tickets", "Period ticket: Until 31/03/2027\n"));
+        "the tickets that can be used today are a page, a season by the pass in use",
+        page_starts(text, "Tickets", "Period ticket: Until 20/10/2026\n  Passes left: 5\n"));
     check(
         "and the ones that cannot, another",
         on_page(text, "Not valid", "Loyalty: Blocked\n") &&

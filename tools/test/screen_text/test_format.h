@@ -16,7 +16,7 @@
 #include <string.h>
 
 /* A fixed "now", so what has expired does not depend on the day the test
- * runs: 2026-09-20. */
+ * runs: 2025-09-20. */
 #define FLIPSO_TEST_NOW 1758326400u
 
 /* 2060-01-01: past the expiry of every card and product the tests build. */
@@ -82,6 +82,10 @@ void value_history_screens(
     const FlipsoFormat* f,
     const ItsoCard* card,
     FuriString* text); /* test_value_history.c */
+void days_left_screens(
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    FuriString* text); /* test_days_left.c */
 void about_screens(FuriString* text); /* test_about_media.c */
 void media_screens(FuriString* text);
 void demo_cards(const char* directory, FlipsoFormat f); /* test_demo_cards.c */
