@@ -17,7 +17,7 @@ static bool flipso_summary_states(const ItsoProduct* product, ItsoUnixTime now) 
     return !itso_date_open(product->expiry) && itso_date_expired(product->expiry, now);
 }
 
-/** One product as a summary line: "Period ticket: Until 31/03/2027". */
+/** One product as a summary line: "Period ticket: Until 20/10/2026". */
 static void flipso_summary_product(
     FuriString* out,
     const ItsoCard* card,
@@ -47,15 +47,28 @@ static void flipso_summary_product(
         furi_string_cat_printf(out, "%s: %s\n", title, what);
     } else {
         furi_string_cat_printf(out, "%s: ", title);
+        /* A period ticket's own expiry is when its unused passes lapse; day
+         * to day it is good until the pass in use ends. Once that has ended
+         * the next pass starts on the next tap, and the product's expiry is
+         * all there is to go by. */
+        const bool pass = ticket->has_current_expiry && !itso_date_open(ticket->current_expiry) &&
+                          !itso_date_expired(ticket->current_expiry, now);
+        const bool lapsed = !itso_date_open(product->expiry) &&
+                            itso_date_expired(product->expiry, now);
         /* A date it is good until reads as a ticket still good, and an
          * expired one is the more telling of the two. */
-        if(flipso_product_used_up(product, now) &&
-           (itso_date_open(product->expiry) || !itso_date_expired(product->expiry, now))) {
+        if(flipso_product_used_up(product, now) && !lapsed) {
             furi_string_cat(out, "Used up");
+        } else if(lapsed) {
+            furi_string_cat(out, "Expired ");
+            flipso_cat_date(out, product->expiry);
+        } else if(pass) {
+            furi_string_cat(out, "Until ");
+            flipso_cat_date(out, ticket->current_expiry);
         } else if(itso_date_open(product->expiry)) {
             furi_string_cat(out, "No expiry");
         } else {
-            furi_string_cat(out, itso_date_expired(product->expiry, now) ? "Expired " : "Until ");
+            furi_string_cat(out, "Until ");
             flipso_cat_date(out, product->expiry);
         }
         furi_string_push_back(out, '\n');

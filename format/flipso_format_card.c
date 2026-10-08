@@ -194,6 +194,10 @@ void flipso_format_card(
     }
     if(!card->shell_compact) {
         flipso_cat_expiry(out, "", "Expires", "Expired", card->expiry, f->now);
+        /* A blocked or retired card has no time left to use, whatever its date. */
+        if(!card->shell_blocked && !itso_card_retired(card)) {
+            flipso_cat_time_left(out, "  ", card->expiry, f->now);
+        }
     }
 
     /* The shell owner is the operator that issued the card and so the one that

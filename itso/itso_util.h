@@ -52,6 +52,13 @@ ItsoUnixTime itso_dts_to_unix(ItsoDts dts);
 bool itso_date_expired(ItsoDate date, ItsoUnixTime now);
 
 /**
+ * Whole calendar days from @p now to the DATE: 0 on the day itself, 1 the day
+ * before, negative once it has passed - so it is below zero exactly when
+ * itso_date_expired() is true.
+ */
+int32_t itso_date_days_left(ItsoDate date, ItsoUnixTime now);
+
+/**
  * True for an expiry DATE that means "does not expire": zero, the EN1545 maximum
  * date schemes use for it, and 0x3FFF, the last date the 14 bits can hold, which
  * is what TS 1000-10 table 42 gives a compact shell ("does not expire for the

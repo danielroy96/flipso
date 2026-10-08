@@ -134,6 +134,9 @@ reply each time.
 - **The 1.8 KB a responsibility to a file costs** - calls between files are
   not inlined, and a string used in several files is stored in each - is
   accepted; CLAUDE.md records it (2026-10-04).
+- **Time left on an expiry is in its largest unit, rounded down** - "Time
+  left: 1 year" for 377 days, "Last day" on the date itself - and only on a
+  product or card that can still be used (2026-10-08).
 - **Known log noise** (`ViewPort lockup`, `Incorrect BacklightEnforce use`)
   is not a finding - CLAUDE.md, "Known noise".
 

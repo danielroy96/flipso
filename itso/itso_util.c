@@ -89,6 +89,12 @@ bool itso_date_expired(ItsoDate date, ItsoUnixTime now) {
     return now >= itso_date_to_unix(date) + 86400UL;
 }
 
+int32_t itso_date_days_left(ItsoDate date, ItsoUnixTime now) {
+    /* Day numbers, not seconds: a DATE starts at its midnight and the clock is
+     * wall time, so a ticket ending tomorrow is a day away whatever the hour. */
+    return (int32_t)(itso_date_to_unix(date) / 86400UL) - (int32_t)(now / 86400UL);
+}
+
 bool itso_date_open(ItsoDate date) {
     return date == 0 || date == 0x3FFF;
 }

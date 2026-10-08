@@ -34,6 +34,7 @@ int main(int argc, char** argv) {
     paper_ticket_screens(&f, text);
     product_lines(&f, &card, text);
     value_history_screens(&f, &card, text);
+    time_left_screens(&f, &card, text);
     about_screens(text);
     media_screens(text);
     furi_string_free(text);

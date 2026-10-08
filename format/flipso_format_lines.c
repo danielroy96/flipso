@@ -140,6 +140,38 @@ void flipso_cat_expiry(
     flipso_cat_date_line(out, indent, itso_date_expired(date, now) ? past_label : label, date);
 }
 
+/**
+ * How long is left before an expiry, as a detail under its date: "Time left:
+ * 6 months", in the largest unit there is at least one of - though not weeks
+ * until there are two, nor months until there are two, where the smaller unit
+ * says more. Rounded down, so a ticket is never said to have time it does not:
+ * 377 days is "1 year". "Last day" on the expiry date itself. Nothing for a
+ * date that has passed, whose label already says so, or one that never comes.
+ */
+void flipso_cat_time_left(FuriString* out, const char* indent, ItsoDate date, ItsoUnixTime now) {
+    if(itso_date_open(date)) return;
+    const int32_t days = itso_date_days_left(date, now);
+    if(days < 0) return;
+    furi_string_cat_printf(out, "%sTime left: ", indent);
+    if(days == 0) {
+        furi_string_cat(out, "Last day\n");
+        return;
+    }
+    int32_t count = days;
+    const char* unit = "day";
+    if(days >= 365) {
+        count = days / 365;
+        unit = "year";
+    } else if(days >= 61) {
+        count = days * 12 / 365;
+        unit = "month";
+    } else if(days >= 14) {
+        count = days / 7;
+        unit = "week";
+    }
+    furi_string_cat_printf(out, "%ld %s%s\n", (long)count, unit, count == 1 ? "" : "s");
+}
+
 /** "VAT: 20.00%", from a rate in 0.01% steps. Nothing for a rate of zero. */
 void flipso_cat_vat(FuriString* out, const char* indent, uint16_t vat) {
     if(vat) furi_string_cat_printf(out, "%sVAT: %u.%02u%%\n", indent, vat / 100, vat % 100);
