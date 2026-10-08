@@ -179,9 +179,9 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
         flipso_format_summary(text, f, &t2);
         check(
             "a day ticket's summary has its state, last use and price",
-            shows(
+            page_starts(
                 text,
-                "Ticket: Active\n"
+                "Summary",
                 "Paper period ticket: Until 27/09/2026\n"
                 "Last used: 27/09/2026 17:47\n"
                 "Price paid: \xC2\xA3"
@@ -193,9 +193,9 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
         flipso_format_summary(text, f, &t2);
         check(
             "a return's summary has its rides left and where it was last used",
-            shows(
+            page_starts(
                 text,
-                "Ticket: Active\n"
+                "Summary",
                 "Multi-use ticket: Until 26/09/2026\n"
                 "  Rides left: 1\n"
                 "Last used: Hillhead\n"

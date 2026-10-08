@@ -218,7 +218,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         page_starts(
             text,
             "ITSO ID",
-            "Name: JAMIE OKONKWO-LEE\nExpires: 31/08/2031\n  Time left: 5 years\nStatus: Active\n") &&
+            "Name: JAMIE OKONKWO-LEE\nStatus: Active\nExpires: 31/08/2031\n  Time left: 5 years\n") &&
             on_page(text, "ITSO ID", "Operator: SEFT Central Products\n"));
     check("the holder's page", page_starts(text, "Holder", "Born: 14/05/1978\nGender: Male\n"));
     furi_string_reset(text);
@@ -233,23 +233,27 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             "Operator: Southeastern\n"));
     furi_string_reset(text);
     flipso_format_summary(text, f, card);
-    check("the summary's pages", titles_are(text, "Summary|Tickets|Not valid"));
+    check("the summary's pages", titles_are(text, "Summary|Not valid"));
     check(
-        "the card and the holder lead it, with their money and their pass",
-        page_starts(
+        "the tickets that can be used today lead it, a season by the pass in use",
+        page_starts(text, "Summary", "Period ticket: Until 20/10/2026\n  Passes left: 5\n"));
+    check(
+        "then the money, the holder and who they are to the scheme",
+        on_page(
             text,
             "Summary",
-            "Card: Active\nCard expires: 31/08/2031\nHolder: JAMIE OKONKWO-LEE\n"
-            "Pay as you go: \xC2\xA3"
-            "24.15\nITSO ID: Commuter\n") &&
-            on_page(text, "Summary", "Last tap: London Bridge\n"));
+            "\nPay as you go: \xC2\xA3"
+            "24.15\nHolder: JAMIE OKONKWO-LEE\nConcession: Commuter\n"));
     check(
-        "the tickets that can be used today are a page, a season by the pass in use",
-        page_starts(text, "Tickets", "Period ticket: Until 20/10/2026\n  Passes left: 5\n"));
+        "then the card, and the last tap",
+        on_page(
+            text,
+            "Summary",
+            "\nCard: Active\nCard expires: 31/08/2031\nLast tap: London Bridge\n"));
     check(
-        "and the ones that cannot, another",
+        "and the ones that cannot be used, a page of their own",
         on_page(text, "Not valid", "Loyalty: Blocked\n") &&
-            !on_page(text, "Tickets", "Loyalty: Blocked\n"));
+            !on_page(text, "Summary", "Loyalty: Blocked\n"));
     furi_string_reset(text);
     flipso_format_taps(text, f, card);
     check(
@@ -258,7 +262,9 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             text, "Last tap|Tap in 21/09|Tap out 21/09|Tap out 19/09|Tap out 18/09|Technical"));
 
     flipso_format_summary(text, f, card);
-    check("an ITSO ID is summed up by its concession", shows(text, "ITSO ID: Commuter\n"));
+    check(
+        "an ITSO ID is summed up by its concession, not as the ID",
+        shows(text, "Concession: Commuter\n") && !shows(text, "ITSO ID: "));
 
     furi_string_reset(text);
     flipso_format_taps(text, f, card);

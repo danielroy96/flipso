@@ -43,7 +43,9 @@ void flipso_format_about(
         furi_string_cat(
             out,
             "Your operators file: None\n"
-            "Add names to apps_data/flipso/operators.txt on the SD card.\n");
+            /* The file and its folder said apart: the whole path is one word
+             * wider than the screen, which the panel breaks mid-name. */
+            "Add names to operators.txt in apps_data/flipso on the SD card.\n");
     }
 
     flipso_cat_page(out, FlipsoIconSave, "Saved cards");
