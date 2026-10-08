@@ -13,7 +13,7 @@ tickets, passes, entitlements, journeys and pay-as-you-go balance stored on it.
 <p>
   <img src="docs/screenshots/home.png" width="250" alt="Home screen: Hold a card or ticket against the back">
   <img src="docs/screenshots/menu.png" width="250" alt="Card screen: Summary, Card, Pay as you go">
-  <img src="docs/screenshots/journeys.png" width="250" alt="Last tap: inside ticket gates, product and time">
+  <img src="docs/screenshots/journeys.png" width="250" alt="Last tap: when, the product it used, and whether the journey was recorded">
 </p>
 
 </div>
