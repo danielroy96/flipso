@@ -5,6 +5,20 @@
 #include "flipso_format_i.h"
 
 /**
+ * The last day a product is good for: its expiry, or a charge-to-account's
+ * EndDate where that comes first - the day the account stops paying, which
+ * TS 1000-5 tables 13 and 17 let fall before the product leaves the card.
+ */
+static ItsoDate flipso_summary_until(const ItsoProduct* product) {
+    const ItsoPurseTerms* purse = itso_product_purse(product);
+    if(purse->has_end_date && !itso_date_open(purse->end_date) &&
+       (itso_date_open(product->expiry) || purse->end_date < product->expiry)) {
+        return purse->end_date;
+    }
+    return product->expiry;
+}
+
+/**
  * True when a product's summary line leads with its state - blocked, used
  * up, or expired with the date - as flipso_summary_product() writes it.
  */
@@ -14,7 +28,8 @@ static bool flipso_summary_states(const ItsoProduct* product, ItsoUnixTime now) 
     if(product->status == ItsoProductStatusBlocked) return true;
     if(purse->balance.valid || id->has_entitlement) return false;
     if(flipso_product_used_up(product, now)) return true;
-    return !itso_date_open(product->expiry) && itso_date_expired(product->expiry, now);
+    const ItsoDate until = flipso_summary_until(product);
+    return !itso_date_open(until) && itso_date_expired(until, now);
 }
 
 /** One product as a summary line: "Period ticket: Until 20/10/2026". */
@@ -61,23 +76,23 @@ static void flipso_summary_product(
          * all there is to go by. */
         const bool pass = ticket->has_current_expiry && !itso_date_open(ticket->current_expiry) &&
                           !itso_date_expired(ticket->current_expiry, now);
-        const bool lapsed = !itso_date_open(product->expiry) &&
-                            itso_date_expired(product->expiry, now);
+        const ItsoDate until = flipso_summary_until(product);
+        const bool lapsed = !itso_date_open(until) && itso_date_expired(until, now);
         /* A date it is good until reads as a ticket still good, and an
          * expired one is the more telling of the two. */
         if(flipso_product_used_up(product, now) && !lapsed) {
             furi_string_cat(out, "Used up");
         } else if(lapsed) {
-            furi_string_cat(out, "Expired ");
-            flipso_cat_date(out, product->expiry);
+            furi_string_cat(out, until == product->expiry ? "Expired " : "Ended ");
+            flipso_cat_date(out, until);
         } else if(pass) {
             furi_string_cat(out, "Until ");
             flipso_cat_date(out, ticket->current_expiry);
-        } else if(itso_date_open(product->expiry)) {
+        } else if(itso_date_open(until)) {
             furi_string_cat(out, "No expiry");
         } else {
             furi_string_cat(out, "Until ");
-            flipso_cat_date(out, product->expiry);
+            flipso_cat_date(out, until);
         }
         furi_string_push_back(out, '\n');
     }
@@ -175,7 +190,9 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
      * product instead - and a holder checks a ticket against what they paid. */
     if(card->shell_compact && card->product_count) {
         const ItsoProduct* ticket = &card->products[0];
-        flipso_cat_last_use(out, f, card, ticket, "Last used");
+        /* "Last used at": the one revision that keeps a place rather than a
+         * time, so the label says which it is. */
+        flipso_cat_last_use(out, f, card, ticket, "Last used at");
         flipso_cat_money(out, "", "Price paid", &itso_product_ticket(ticket)->amount_paid);
     }
 

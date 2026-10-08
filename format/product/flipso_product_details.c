@@ -134,14 +134,15 @@ void flipso_cat_product_details(
      * flipso_cat_last_use() labels it with the other facts of its use. */
     /* A ticket's zone map (LocDefType 204, "valid within zone", TS 1000-1
      * table 6) is an area too, when it stands alone: "From: Zones 1,2,3" reads
-     * as the start of a journey that has no end. */
+     * as the start of a journey that has no end. It is called an area, as a
+     * paper ticket's is and as a ticket with no locations says it is. */
     if(!identity) {
         const bool zones = product->from.valid && !product->to.valid &&
                            product->from.def_type == 204;
         if(product->space_saving) {
             flipso_cat_space_area(main, f, card);
         } else {
-            flipso_cat_location(main, f, "", zones ? "Valid in" : "From", &product->from);
+            flipso_cat_location(main, f, "", zones ? "Area" : "From", &product->from);
             flipso_cat_location(main, f, "", "To", &product->to);
         }
         /* A period ticket may leave both locations out, and then it is good
@@ -219,8 +220,12 @@ void flipso_cat_product_details(
         flipso_cat_expiry(main, "", "Expires", "Expired", product->expiry, now);
         if(live) flipso_cat_time_left(main, "  ", product->expiry, now);
     }
+    /* A charge-to-account's EndDate is when the account stops paying for
+     * travel, which may come before the product's own expiry (TS 1000-5
+     * tables 13 and 17): two bare dates, "Expires" and "Valid to", left the
+     * holder to guess which one counts. */
     if(purse->has_end_date && !flipso_same_date(purse->end_date, product->expiry)) {
-        flipso_cat_expiry(main, "", "Valid to", "Ended", purse->end_date, now);
+        flipso_cat_expiry(main, "", "Account ends", "Account ended", purse->end_date, now);
     }
     if(id->has_sub_expiry && !flipso_same_date(id->sub_expiry, product->expiry)) {
         flipso_cat_expiry(

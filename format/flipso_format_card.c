@@ -243,9 +243,9 @@ void flipso_format_card(
         /* The first byte of a 7-byte UID is the maker's ISO/IEC 7816-6 code. */
         const char* maker = flipso_chip_maker(card->chip_uid[0]);
         if(maker) {
-            furi_string_cat_printf(out, "Maker: %s\n", maker);
+            furi_string_cat_printf(out, "Manufacturer: %s\n", maker);
         } else {
-            furi_string_cat_printf(out, "Maker: Unknown (%02X)\n", card->chip_uid[0]);
+            furi_string_cat_printf(out, "Manufacturer: Unknown (%02X)\n", card->chip_uid[0]);
         }
         furi_string_cat_printf(out, "Memory: %u bytes\n", card->chip_memory_len);
 

@@ -270,6 +270,9 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             "Summary",
             "\nCard: Active\nCard expires: 31/08/2031\nLast tap: London Bridge\n"));
     check(
+        "an account is good until it stops paying, not until it leaves the card",
+        on_page(text, "Summary", "Charge to account: Until 05/04/2027\n"));
+    check(
         "and the ones that cannot be used, a page of their own",
         on_page(text, "Not valid", "Loyalty: Blocked\n") &&
             !on_page(text, "Summary", "Loyalty: Blocked\n"));
@@ -391,6 +394,11 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
                     text,
                     "Optional fields: Passenger, Discounts, routes and restrictions, "
                     "Reservations\n"));
+        } else if(p->typ == ItsoTypChargeToAccount2) {
+            check(
+                "an account's end date says what ends",
+                on_page(text, "Charge to account", "Account ends: 05/04/2027\n") &&
+                    !shows(text, "Valid to: "));
         } else if(p->typ == ItsoTypLoyalty2) {
             check(
                 "an owner in the extended numbering range says so, not its low bits",

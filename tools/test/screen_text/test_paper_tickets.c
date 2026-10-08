@@ -148,7 +148,7 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
             technical(text, "Operator number: 8323\n") && !shows(text, "(compact)"));
         check("and is not the screen's headline", !shows(text, "Card number\n"));
         check("a paper ticket shows its UID", shows(text, "UID: 04A2B3C4D5E6F7\n"));
-        check("and its chip maker", shows(text, "Maker: NXP\n"));
+        check("and its chip maker", shows(text, "Manufacturer: NXP\n"));
         check("and its memory", shows(text, "Memory: 64 bytes\n"));
         check(
             "and which pages are locked, as ITSO requires",
@@ -198,7 +198,7 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
                 "Summary",
                 "Multi-use ticket: Until 26/09/2026\n"
                 "  Rides left: 1\n"
-                "Last used: Hillhead\n"
+                "Last used at: Hillhead\n"
                 "Price paid: \xC2\xA3"
                 "3.30\n"));
         check("a place with no time claims no time", !shows(text, "When: "));
@@ -224,7 +224,7 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
         check("a single never used says so", shows(text, "Last used: Never\n"));
         furi_string_reset(text);
         flipso_format_card(text, f, &t2, NULL, false, 0);
-        check("an Infineon chip is named", shows(text, "Maker: Infineon\n"));
+        check("an Infineon chip is named", shows(text, "Manufacturer: Infineon\n"));
         check(
             "a ticket locked short of ITSO's rule says what is still writable",
             shows(text, "Locked pages: 6-9\n  As ITSO requires: No\n  Still writable: 10-13\n"));
