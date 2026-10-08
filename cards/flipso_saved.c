@@ -18,7 +18,17 @@ void flipso_saved_mkdir(void) {
     furi_record_close(RECORD_STORAGE);
 }
 
-bool flipso_saved_any(void) {
+/**
+ * Whether there is a saved card, and the name of the one the saved list puts
+ * first into @p name_out, unless that is NULL.
+ *
+ * First as Momentum's file browser sorts them: by the name it shows - the
+ * extension hidden - ignoring case. The official firmware's browser lists
+ * them in the folder's own order instead, and there this is a card part way
+ * down; what matters on both is that the list opens on a card rather than on
+ * the ".." row above them.
+ */
+static bool flipso_saved_first(FuriString* name_out) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* dir = storage_file_alloc(storage);
     bool found = false;
@@ -28,10 +38,24 @@ bool flipso_saved_any(void) {
         /* Comfortably past anything the save screen will write: a name too long
          * for the buffer ends the walk, which would hide the cards after it. */
         char name[128];
-        while(!found && storage_dir_read(dir, &info, name, sizeof(name))) {
+        char best[128] = "";
+        while(storage_dir_read(dir, &info, name, sizeof(name))) {
             if(info.flags & FSF_DIRECTORY) continue;
-            const char* ext = strrchr(name, '.');
-            found = ext && strcmp(ext, FLIPSO_SAVED_EXTENSION) == 0;
+            char* ext = strrchr(name, '.');
+            if(!ext || strcmp(ext, FLIPSO_SAVED_EXTENSION) != 0) continue;
+            /* Whether there is one needs no more than the first. */
+            if(!name_out) {
+                found = true;
+                break;
+            }
+            *ext = '\0';
+            if(!found || strcasecmp(name, best) < 0) {
+                snprintf(best, sizeof(best), "%s", name);
+            }
+            found = true;
+        }
+        if(found && name_out) {
+            furi_string_printf(name_out, "%s%s", best, FLIPSO_SAVED_EXTENSION);
         }
     }
 
@@ -39,6 +63,10 @@ bool flipso_saved_any(void) {
     storage_file_free(dir);
     furi_record_close(RECORD_STORAGE);
     return found;
+}
+
+bool flipso_saved_any(void) {
+    return flipso_saved_first(NULL);
 }
 
 void flipso_saved_path(FuriString* path, const char* name) {
@@ -294,10 +322,9 @@ bool flipso_saved_pick(FuriString* path, const FuriString* select) {
      * card is saved - otherwise the first press lands the user in /ext. */
     flipso_saved_mkdir();
 
-    /* The folder by its real path, not the /data alias: the browser lists the
-     * real one, so a base path given as the alias never matches where it is,
-     * and the list opened with a ".." row - on the cursor - that walked out of
-     * the folder. */
+    /* The folder by its real path, not the /data alias: the browser lets Back
+     * leave the list only from its base folder, which it compares as a string
+     * against the real path it lists. */
     FuriString* folder = furi_string_alloc_set(FLIPSO_SAVED_FOLDER);
     Storage* storage = furi_record_open(RECORD_STORAGE);
     storage_common_resolve_path_and_ensure_app_directory(storage, folder);
@@ -313,15 +340,23 @@ bool flipso_saved_pick(FuriString* path, const FuriString* select) {
     options.hide_ext = true;
 
     /* The browser opens on the file its start path names, so coming back from
-     * a card lands on that card rather than on the top of the list. That path
-     * is resolved too, or it would put the browser back under the alias. */
+     * a card lands on that card rather than on the top of the list. Otherwise
+     * it opens on the first card: below the storage root the browser always
+     * heads the list with a ".." row, whatever its base path, and opened on
+     * the folder it put the cursor there - so OK, the first key anyone
+     * presses, walked out of the cards folder. The path is resolved too, or it
+     * would put the browser back under the alias. */
     FuriString* start = furi_string_alloc_set(folder);
+    FuriString* first = furi_string_alloc();
     if(select && !furi_string_empty(select)) {
         furi_string_set_str(start, furi_string_get_cstr(select));
-        storage = furi_record_open(RECORD_STORAGE);
-        storage_common_resolve_path_and_ensure_app_directory(storage, start);
-        furi_record_close(RECORD_STORAGE);
+    } else if(flipso_saved_first(first)) {
+        furi_string_printf(start, "%s/%s", FLIPSO_SAVED_FOLDER, furi_string_get_cstr(first));
     }
+    furi_string_free(first);
+    storage = furi_record_open(RECORD_STORAGE);
+    storage_common_resolve_path_and_ensure_app_directory(storage, start);
+    furi_record_close(RECORD_STORAGE);
     bool picked = dialog_file_browser_show(dialogs, path, start, &options);
     furi_string_free(start);
     furi_string_free(folder);
