@@ -72,7 +72,9 @@ void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
     check("the alternative origin", shows(text, "Or from: Station 0035\n"));
     check("a null alternative is left out", !shows(text, "Or to: "));
     check("the days", shows(text, "Valid days: Mon-Fri\n  Public holidays: No\n"));
-    check("the restricted days", shows(text, "Restrictions apply: Sat Sun\n"));
+    check(
+        "the days a restriction holds on are a detail of its times",
+        shows(text, "\n  Days: Sat Sun\n") && !shows(text, "Restrictions apply: "));
     check("one operator only", shows(text, "Only on operator: GR\n"));
     check("the railcard IPE it was sold with", shows(text, "Part of this ticket: ITSO ID\n"));
     check("a via", shows(text, "Via: Station 1555\n"));
@@ -85,7 +87,10 @@ void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
     check("break of journey, transfer type 2", shows(text, "Break of journey: Allowed\n"));
     check(
         "valid times, and the journeys they apply to",
-        shows(text, "Valid times: Outside 07:00-09:30\n  Applies to: Outward departures\n"));
+        shows(
+            text,
+            "Valid times: Not 07:00 to 09:30\n  Days: Sat Sun\n"
+            "  Applies to: Outward departures\n"));
     check(
         "a train it may not be used on",
         shows(text, "Not valid on train: GR1234\n  From: Station 1444\n  Departs: 18:30\n"));

@@ -389,6 +389,13 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
                 technical(text, "Remote changes applied: 3\n"));
         } else if(p->typ == ItsoTypReservationTicket) {
             check(
+                "an off-peak band from midnight is a time not to travel before",
+                on_page(
+                    text,
+                    "Restrictions",
+                    "Valid times: Not before 09:30\n  Days: Mon-Fri\n"
+                    "  Applies to: Outward departures\n"));
+            check(
                 "a reservation's bitmap, from table 137",
                 technical(
                     text,
