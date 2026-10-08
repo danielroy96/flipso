@@ -4,6 +4,9 @@
  */
 #include "test_format.h"
 
+#include <locale/locale.h>
+#include <stdlib.h>
+
 /*
  * The encodings Demo 07 carries from a real GWR Touch card, pinned by the lines
  * only they produce: a gate check-in and check-out in the revision 4 shapes a
@@ -272,6 +275,18 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     check(
         "an account is good until it stops paying, not until it leaves the card",
         on_page(text, "Summary", "Charge to account: Until 05/04/2027\n"));
+    {
+        /* After the account has stopped paying, and before the product leaves
+         * the card: it has ended, not expired. */
+        FlipsoFormat later = *f;
+        later.now = 1811808000u; /* 2027-06-01 */
+        FuriString* other = furi_string_alloc();
+        flipso_format_summary(other, &later, card);
+        check(
+            "an account that has stopped paying has ended, and cannot be used",
+            on_page(other, "Not valid", "Charge to account: Ended 05/04/2027\n"));
+        furi_string_free(other);
+    }
     check(
         "and the ones that cannot be used, a page of their own",
         on_page(text, "Not valid", "Loyalty: Blocked\n") &&
@@ -282,6 +297,34 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         "the journeys: the last tap, a page a journey titled by its day, then the readers",
         titles_are(
             text, "Last tap|Tap in 21/09|Tap out 21/09|Tap out 19/09|Tap out 18/09|Technical"));
+    {
+        /* A record whose name would leave no room for its day is shortened in
+         * its title, and the day follows the locale's order. The taps are
+         * copied, so the card the later checks read is left as it was. */
+        ItsoCard renamed = *card;
+        ItsoTap* taps = malloc(sizeof(ItsoTap) * card->tap_count);
+        memcpy(taps, card->taps, sizeof(ItsoTap) * card->tap_count);
+        taps[0].transaction_type = 14; /* Multi-leg journey */
+        renamed.taps = taps;
+        FuriString* other = furi_string_alloc();
+        flipso_format_taps(other, f, &renamed);
+        check(
+            "a multi-leg journey's title keeps its day",
+            find_page(other, "Multi-leg 21/09") != NULL);
+        stub_locale_date_format = LocaleDateFormatMDY;
+        furi_string_reset(other);
+        flipso_format_taps(other, f, card);
+        check(
+            "a month-first locale titles it month first",
+            find_page(other, "Tap in 09/21") != NULL);
+        stub_locale_date_format = LocaleDateFormatYMD;
+        furi_string_reset(other);
+        flipso_format_taps(other, f, card);
+        check("and so does a year-first one", find_page(other, "Tap in 09/21") != NULL);
+        stub_locale_date_format = LocaleDateFormatDMY;
+        furi_string_free(other);
+        free(taps);
+    }
 
     flipso_format_summary(text, f, card);
     check(
@@ -415,6 +458,28 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
                 technical(text, "Operator number: 13870\n  Range: Extended\n"));
         } else if(p->typ == ItsoTypLoyalty1) {
             check("loyalty shows its owner's data", shows(text, "Operator's own data: 321\n"));
+            check(
+                "a points change and the points held are told apart",
+                on_page(text, "History", "  Points: -850\n  Balance: 4250 points\n"));
+        } else if(p->typ == ItsoTypStoredTravelRights) {
+            /* A bit its table leaves RFU, which no card should set. */
+            ItsoProduct odd = *p;
+            odd.bitmap |= 0x20;
+            furi_string_reset(text);
+            flipso_format_product(text, f, card, &odd);
+            check(
+                "a bitmap bit the spec leaves reserved is named by its number",
+                technical(text, "Optional fields: Reserved bit 5\n"));
+        } else if(p->typ == ItsoTypEntitlement) {
+            /* EntitlementExpiryDate a month before the product's own. */
+            ItsoProduct sooner = *p;
+            sooner.terms.id.has_sub_expiry = true;
+            sooner.terms.id.sub_expiry = (ItsoDate)(p->expiry - 30);
+            furi_string_reset(text);
+            flipso_format_product(text, f, card, &sooner);
+            check(
+                "an entitlement that ends before its product says its benefit does",
+                on_page(text, "Entitlement terms", "Benefit until: 01/03/2027\n"));
         } else if(p->typ == ItsoTypJourneyTicket) {
             check(
                 "an owner on another network is a detail of its number",

@@ -245,13 +245,30 @@ int main(void) {
     check("an over-long header with an icon starts on screen", header_left() >= 0);
     check("the icon survives an over-long header", mark_left('w') >= 0);
 
-    /* Reset drops the icon: the next card is not blocked just because the last
-     * one was. */
+    /* A suffix says what is wrong with the card, so it is kept whole and the
+     * branding before it is what gives way. */
+    flipso_menu_view_set_header(menu, "The Key");
+    flipso_menu_view_set_header_suffix(menu, " (Blocked)");
+    render(menu);
+    show("short header with a suffix");
+    check("a suffix follows a header that fits", on_screen("The Key (Blocked)"));
+    flipso_menu_view_set_header(menu, "South West Trains Smart, and then some more");
+    render(menu);
+    show("over-long header with a suffix");
+    check(
+        "an over-long header is cut before its suffix, which is drawn whole",
+        on_screen("...") && on_screen("... (Blocked)") && on_screen("South"));
+    check("and the two still start on screen", header_left() >= 0);
+    check("and end on it", header_right() >= 0 && header_right() + STUB_GLYPH_PRIMARY_W <= STUB_W);
+
+    /* Reset drops the icon and the suffix: the next card is not blocked just
+     * because the last one was. */
     flipso_menu_view_reset(menu);
     flipso_menu_view_set_header(menu, "Freedom Pass");
     flipso_menu_view_add_item(menu, "Card", &icon_a, 10);
     render(menu);
     check("reset clears the header icon", mark_left('w') < 0);
+    check("reset clears the header suffix", !on_screen("(Blocked)"));
 
     /* --- A full list, which has to scroll. --- */
     flipso_menu_view_reset(menu);

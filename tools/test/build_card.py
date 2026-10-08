@@ -596,7 +596,13 @@ reservation_group = (pad(bytes(reservation.buf) + instance_and_seal(), 192) +
 ATCO_A, ATCO_B = loc1(211, b"450016879"), loc1(211, b"450030236")
 reservation_atco = typ24_dataset(
     ATCO_A, ATCO_B, ATCO_B, journeys=1, out_days=0, out_from=RES_FROM, mop=1, paid=420,
-    interchanges=[(ATCO_B, ATCO_A, 0)], routes=[(ATCO_A, 0)], reservations=True)
+    interchanges=[(ATCO_B, ATCO_A, 0)], routes=[(ATCO_A, 0)], reservations=True,
+    # The other shapes a time band takes: good only within one, and an
+    # exclusion from midnight and one to the end of the day, which a
+    # timetable says as "not before" and "not after".
+    bands=[(b"\0\0", loc1(255, b"\0\0\0\0"), 1, 10 * 60, 16 * 60, False, True),
+           (b"\0\0", loc1(255, b"\0\0\0\0"), 2, 0, 9 * 60 + 29, False, False),
+           (b"\0\0", loc1(255, b"\0\0\0\0"), 2, 16 * 60, 23 * 60 + 59, True, False)])
 reservation_atco_group = (
     pad(bytes(reservation_atco.buf) + instance_and_seal(), 192) +
     value_group([value_record(1, 1, RES_FROM, reservation_tail(1, reservations=1))],

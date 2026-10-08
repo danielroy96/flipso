@@ -174,6 +174,47 @@ void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
     check("without the capture, the portions still show", shows(text, "Outward: 01/10/2026"));
     check("and the legs cannot be read", shows(text, "Reservations: Could not be read\n"));
 
+    {
+        /* The bus ticket's three time bands: good only within one, and an
+         * exclusion from midnight and one to the end of the day. */
+        static ItsoProduct bus;
+        FlipsoCapture* buses = flipso_capture_alloc();
+        flipso_capture_add(
+            buses, FlipsoBlockProduct, 9, reservation_atco_group, sizeof(reservation_atco_group));
+        FlipsoFormat on_bus = *f;
+        on_bus.capture = buses;
+        product_screen(
+            text,
+            &on_bus,
+            card,
+            &bus,
+            ItsoTypReservationTicket,
+            true,
+            reservation_atco_group,
+            sizeof(reservation_atco_group));
+        check(
+            "a band the ticket is good within is its hours",
+            on_page(
+                text,
+                "Restrictions",
+                "Valid times: 10:00 to 16:00\n  Applies to: Outward departures\n"));
+        check(
+            "an exclusion from midnight is a time not to travel before",
+            on_page(
+                text,
+                "Restrictions",
+                "Valid times: Not before 09:30\n  Applies to: Return departures\n"));
+        check(
+            "and one to the end of the day a time not to travel after",
+            on_page(
+                text,
+                "Restrictions",
+                "Valid times: Not after 15:59\n  Applies to: Return arrivals\n"));
+        check("with no days to say, it says none", !on_page(text, "Restrictions", "  Days: "));
+        flipso_capture_free(buses);
+        itso_product_free(&bus);
+    }
+
     /* The summary carries the test flag under the product's line. */
     ItsoCard one = *card;
     one.products = &p;

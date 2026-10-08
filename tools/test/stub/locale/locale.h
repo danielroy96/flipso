@@ -13,8 +13,12 @@ typedef enum {
     LocaleDateFormatYMD
 } LocaleDateFormat;
 
+/* The date order, which a test may change to check a month-first or year-first
+ * locale. Weak, so that every host build that includes this has one copy. */
+__attribute__((weak)) LocaleDateFormat stub_locale_date_format = LocaleDateFormatDMY;
+
 static inline LocaleDateFormat locale_get_date_format(void) {
-    return LocaleDateFormatDMY;
+    return stub_locale_date_format;
 }
 static inline LocaleTimeFormat locale_get_time_format(void) {
     return LocaleTimeFormat24h;
