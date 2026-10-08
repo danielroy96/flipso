@@ -70,8 +70,9 @@ static bool itso_parse_tap(ItsoTap* tap, const uint8_t* data, size_t len) {
         const uint8_t* group = data + pos;
         switch(bit) {
         case 0:
-            /* MOP nibble, then currency nibble, then a 2-byte amount. */
-            itso_decode_money(itso_int16(group + 1), group[0] & 0x0F, &tap->amount);
+            /* MOP nibble, then currency nibble, then a 2-byte AmountPaid - a
+             * VALI, so unsigned (TS 1000-5 table 59). */
+            itso_decode_money(itso_uint16(group + 1), group[0] & 0x0F, &tap->amount);
             tap->mop = (uint8_t)((group[0] >> 4) & 0x0F);
             tap->has_mop = true;
             /* NoFareCharged is bit 27 of the group - three RFU bits into byte 3,

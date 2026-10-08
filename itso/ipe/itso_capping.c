@@ -47,14 +47,17 @@ bool itso_parse_capping(
             acc->last_txn = v[base] & 0x0F;
             amounts = base + 1;
         } else {
+            /* LastFarePaid is a two-byte HEX, half a byte in: unsigned. */
             itso_decode_money(
-                (int16_t)itso_bits(v, (uint32_t)base * 8 + 4, 16), valc, &acc->last_fare);
+                (int32_t)itso_bits(v, (uint32_t)base * 8 + 4, 16), valc, &acc->last_fare);
             acc->last_txn = v[base + 2] & 0x0F;
             amounts = base + 3;
         }
-        itso_decode_money(itso_int16(v + amounts), valc, &acc->uncapped);
-        itso_decode_money(itso_int16(v + amounts + 2), valc, &acc->day);
-        itso_decode_money(itso_int16(v + amounts + 4), valc, &acc->multiday);
+        /* The three accumulators are VALI, unsigned: a long-period cap's
+         * totals can pass GBP 327.67. */
+        itso_decode_money(itso_uint16(v + amounts), valc, &acc->uncapped);
+        itso_decode_money(itso_uint16(v + amounts + 2), valc, &acc->day);
+        itso_decode_money(itso_uint16(v + amounts + 4), valc, &acc->multiday);
         acc->day_count = (uint16_t)((v[amounts + 6] << 8) | v[amounts + 7]);
     }
 

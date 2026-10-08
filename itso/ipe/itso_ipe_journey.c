@@ -22,7 +22,10 @@ static void itso_parse_journey_terms(
     const size_t fixed = format_rev >= 3 ? 33 : format_rev == 2 ? 29 : 27;
     if(format_rev == 0 || len < fixed) return;
 
-    if(data[5] & 0x02) t->ticket_used = true; /* TYP23Flags UsedChecked. */
+    /* TYP23Flags UsedChecked, in revisions 1 and 2 (tables 34 and 34a).
+     * Revision 3 makes bits 0-4 RFU (table 34b) and keeps the flag in its
+     * value record alone. */
+    if(format_rev < 3 && (data[5] & 0x02)) t->ticket_used = true;
     product->print_defined = ITSO_PRINT_TICKET | ITSO_PRINT_RECEIPT;
     if(data[5] & 0x20) product->print_flags |= ITSO_PRINT_TICKET;
     if(data[5] & 0x40) product->print_flags |= ITSO_PRINT_RECEIPT;

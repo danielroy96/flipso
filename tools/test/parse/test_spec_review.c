@@ -135,6 +135,9 @@ void spec_review_fields(void) {
             strcmp(loc_text(&p.to), "Station 1444") == 0);
     check("TYP23Flags print receipt", p.print_flags == ITSO_PRINT_RECEIPT);
     check("AutoRenewQuantity", t->renew_quantity == 2);
+    /* Table 34b leaves TYP23Flags bits 0-4 RFU: revision 3 keeps UsedChecked
+     * in its value record only, so a set bit 1 here says nothing. */
+    check("revision 3's RFU flag bit 1 does not mark it used", !t->ticket_used);
 
     /* TYP 25: the voucher's dataset, and uses rather than rides. */
     parse_group(&p, ItsoTypVoucher, true, voucher_group, sizeof(voucher_group));
@@ -272,4 +275,35 @@ void spec_review_fields(void) {
     }
     check("the new elements survive every truncation", 1);
     itso_product_free(&p);
+
+    /* Capping accumulators are VALI and LastFarePaid a two-byte HEX (tables
+     * AD1 and AD2): unsigned, so a long-period cap's totals past GBP 327.67
+     * stay positive. */
+    {
+        uint8_t* buf = malloc(sizeof(capping_large_group));
+        memcpy(buf, capping_large_group, sizeof(capping_large_group));
+        ItsoCapping cap;
+        check(
+            "a large capping extension decodes",
+            itso_parse_capping(buf, sizeof(capping_large_group), 64, 0, &cap));
+        check(
+            "capping totals past GBP 327.67 are not negative",
+            cap.acc[0].uncapped.value == 41000 && cap.acc[0].multiday.value == 36000);
+        check("and nor is the last fare", cap.acc[0].last_fare.value == 40000);
+        free(buf);
+    }
+
+    /* A journey record's AmountPaid is a VALI (TS 1000-5 table 59). */
+    {
+        static ItsoCard c;
+        itso_card_reset(&c);
+        uint8_t* rec = malloc(sizeof(tap_large));
+        memcpy(rec, tap_large, sizeof(tap_large));
+        itso_parse_log(&c, rec, sizeof(tap_large));
+        check(
+            "a tap's fare past GBP 327.67 is not negative",
+            c.tap_count == 1 && c.taps[0].amount.valid && c.taps[0].amount.value == 40000);
+        free(rec);
+        itso_card_reset(&c);
+    }
 }

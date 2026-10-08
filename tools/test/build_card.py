@@ -323,7 +323,7 @@ CAP_SETS = [
     (0, 0, 0, 0, 0, 0, 0),
 ]
 CAP_WHEN = dts(2026, 9, 14, 8, 41)
-def capping_group(ref):
+def capping_group(ref, sets=CAP_SETS):
     if ref == 1:
         locations = loc1(203, nlc("1072"))
     else:
@@ -333,10 +333,19 @@ def capping_group(ref):
             value_group([
                 value_record(4, 1, dts(2026, 9, 1, 12, 0), purse_tail(1560, 0)),
                 value_record(7, 2, CAP_WHEN, purse_tail(1375, 0)),
-            ], format_rev=1, extension=capping_vgx(ref, 7, CAP_SETS, locations)) +
+            ], format_rev=1, extension=capping_vgx(ref, 7, sets, locations)) +
             instance_and_seal())
 capping1_group = capping_group(1)
 capping2_group = capping_group(2)
+# The accumulators are VALI and LastFarePaid a two-byte HEX (tables AD1 and
+# AD2): unsigned, so a 28-day cap's running totals past GBP 327.67 are still
+# positive. Read as signed, the top bit made them negative.
+capping_large_group = capping_group(2, [
+    (3, 11, 40000, 41000, 0, 36000, 20),  # 28-day cap: GBP 410.00 uncapped
+    (0, 0, 0, 0, 0, 0, 0),
+    (0, 0, 0, 0, 0, 0, 0),
+    (0, 0, 0, 0, 0, 0, 0),
+])
 
 # The purse above with a ValueCurrencyCode that scales by ten (TS 1000-5 annex
 # A.21.2). The dataset's threshold, top-up, ceiling and overdraft are priced in
@@ -443,7 +452,9 @@ ipe23r3.put(0, 6, 15)       # IPELength = 15 blocks = 60 bytes
 ipe23r3.put(6, 6, 0b001010) # IPEBitMap: mode group, route and locations
 ipe23r3.put(12, 4, 3)       # IPEFormatRevision = 3
 ipe23r3.buf[2] = 255
-ipe23r3.buf[5] = 0b01000000 # TYP23Flags: print receipt
+# TYP23Flags: print receipt - and bit 1, UsedChecked in revisions 1 and 2 but
+# RFU in this one (table 34b), which must not mark the ticket used.
+ipe23r3.buf[5] = 0b01000010
 ipe23r3.put(50, 6, 5)       # PassbackTime
 ipe23r3.put(58, 14, date_stamp(2026, 9, 20))   # IssueDate
 ipe23r3.put(72, 24, dts(2026, 9, 21, 6, 0))    # ValidityStartDTS
@@ -627,6 +638,10 @@ log[96:144] = tt_record_rev4(
 # positions in the newest-first ordering alone.
 log[144:192] = tt_record(12, dts(2026, 9, 10, 7, 55), 210, STOP_A, STOP_B, 1)
 assert len(log) == 192, f"log grew to {len(log)} bytes"
+
+# A tap whose AmountPaid is past GBP 327.67: a VALI, so unsigned (TS 1000-5
+# table 59), and GBP 400.00 rather than a negative fare.
+tap_large = tt_record(12, dts(2026, 9, 15, 19, 2), 40000, NLC_1072, NLC_5685, 1)
 
 
 # ================================================================== CMD2 card
@@ -986,6 +1001,8 @@ with open("card_data.h", "w") as f:
     f.write(carr("period_rev3_group", period_rev3_group))
     f.write(carr("capping1_group", capping1_group))
     f.write(carr("capping2_group", capping2_group))
+    f.write(carr("capping_large_group", capping_large_group))
+    f.write(carr("tap_large", tap_large))
     f.write(carr("purse_scaled_group", purse_scaled_group))
     f.write(carr("charge1_group", charge1_group))
     f.write(carr("charge2_group", charge2_group))
