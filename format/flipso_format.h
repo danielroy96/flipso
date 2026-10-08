@@ -179,6 +179,12 @@ void flipso_cat_date(FuriString* out, ItsoDate date);
  */
 void flipso_cat_short_date(FuriString* out, ItsoDate date);
 
+/**
+ * Append a Unix time's day and month, "20/09", in the user's date order and
+ * with no year: short enough to sit in a page title beside what happened.
+ */
+void flipso_cat_day_month(FuriString* out, ItsoUnixTime timestamp);
+
 /** Append "dd/mm/yyyy hh:mm" for a Unix time, in the user's formats. */
 void flipso_cat_time(FuriString* out, ItsoUnixTime timestamp);
 

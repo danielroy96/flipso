@@ -12,9 +12,16 @@ const ItsoTap* flipso_latest_tap(const ItsoCard* card) {
     return NULL;
 }
 
-/** What a record was, "Tap out", which titles its page and its Technical entry. */
-static const char* flipso_tap_title(const ItsoTap* tap) {
-    return itso_transaction_name(tap->transaction_type);
+/**
+ * What a record was and the day it was made, "Tap out 20/09", which titles its
+ * page and its Technical entry. A card's log is a run of pages that are
+ * nearly all "Tap out", and with no page counter the day is what tells the
+ * holder which one is on screen.
+ */
+static void flipso_tap_title(FuriString* out, const ItsoTap* tap) {
+    furi_string_set(out, itso_transaction_name(tap->transaction_type));
+    furi_string_push_back(out, ' ');
+    flipso_cat_day_month(out, itso_dts_to_unix(tap->dts));
 }
 
 /**
@@ -29,7 +36,11 @@ static void flipso_cat_tap(
     const ItsoTap* tap) {
     /* The card's own log in the taps icon, and what only a saved file
      * remembers in the clock the product list gives a dropped product. */
-    flipso_cat_page(out, tap->on_card ? FlipsoIconTaps : FlipsoIconPast, flipso_tap_title(tap));
+    FuriString* title = furi_string_alloc();
+    flipso_tap_title(title, tap);
+    flipso_cat_page(
+        out, tap->on_card ? FlipsoIconTaps : FlipsoIconPast, furi_string_get_cstr(title));
+    furi_string_free(title);
     /* Said in words as well as by the icon, as a dropped product's first page
      * says it: everything below reads as a journey on the card in front of
      * the holder, and this one is only in the saved file. */
@@ -65,7 +76,9 @@ static void flipso_cat_tap(
 
     if(tap->amount.valid && tap->amount.value) {
         flipso_cat_money(out, "", "Fare", &tap->amount);
-        if(tap->has_mop)
+        /* Zero is EN1545's "Unspecified" (TS 1000-5 annex A.12): the reader
+         * did not say, which is nothing to show. */
+        if(tap->has_mop && tap->mop)
             furi_string_cat_printf(out, "  Paid by: %s\n", itso_payment_name(tap->mop));
     }
     if(tap->no_fare_charged) flipso_cat_flag(out, "", "Fare collected", false);
@@ -108,7 +121,11 @@ static bool flipso_tap_has_technical(const ItsoTap* tap) {
  * each can be matched to its journey.
  */
 static void flipso_cat_tap_technical(FuriString* out, const FlipsoFormat* f, const ItsoTap* tap) {
-    furi_string_cat_printf(out, "%s\n", flipso_tap_title(tap));
+    /* Bold, as the ID screen's Technical heads each of its products. */
+    FuriString* title = furi_string_alloc();
+    flipso_tap_title(title, tap);
+    flipso_cat_heading(out, FlipsoIconNone, furi_string_get_cstr(title));
+    furi_string_free(title);
     flipso_cat_datetime_line(out, "  ", "When", tap->dts);
     /* The entry operator's own network, where it is not the card's. */
     if(tap->has_entry_oid && tap->entry_iin_index) {
@@ -138,12 +155,6 @@ void flipso_format_taps(FuriString* out, const FlipsoFormat* f, const ItsoCard* 
     if(card->log_entry_valid) {
         flipso_cat_page(out, FlipsoIconTaps, "Last tap");
 
-        /* The entry/exit indicator counts closed systems - gated stations - the
-         * holder is inside. Zero is outside all of them, which is also what
-         * every bus tap leaves, so it is said as where the holder is rather than
-         * as "tapped out". */
-        flipso_cat_flag(out, "", "Inside ticket gates", card->log_eei != 0);
-        if(card->log_eei > 1) furi_string_cat_printf(out, "  Gated areas: %u\n", card->log_eei);
         if(card->log_dts) flipso_cat_datetime_line(out, "", "When", card->log_dts);
         /* Where, from the newest journey record, as the summary says it: where
          * it ended if it was a tap out, where it began otherwise - but only
@@ -161,6 +172,13 @@ void flipso_format_taps(FuriString* out, const FlipsoFormat* f, const ItsoCard* 
         if(card->log_passback) {
             furi_string_cat_printf(out, "Passback timeout: %u min\n", card->log_passback);
         }
+        /* The entry/exit indicator counts closed systems - gated stations - the
+         * holder is inside. Zero is outside all of them, which is also what
+         * every bus tap leaves, so it is said as where the holder is rather than
+         * as "tapped out". Last, because it is the one line of the page that
+         * means nothing off the railway. */
+        flipso_cat_flag(out, "", "Inside ticket gates", card->log_eei != 0);
+        if(card->log_eei > 1) furi_string_cat_printf(out, "  Gated areas: %u\n", card->log_eei);
         if(card->tap_count == 0) furi_string_cat(out, "No journeys stored.\n");
     }
 

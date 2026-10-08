@@ -160,10 +160,16 @@ void flipso_cat_space_saving(FlipsoPages* p, const ItsoCard* card, const ItsoPro
     }
 
     /* TYP 28: the day passes spent so far, each the day it was used. A tick of
-     * zero is a pass still to use and 31 one never sold (clause 2.15.2). */
+     * zero is a pass still to use and 31 one never sold (clause 2.15.2).
+     *
+     * The two flags are passes too, not validity: the carnet is good from its
+     * issue date to its expiry date inclusive either way. NDoIE says a pass
+     * was spent on the day it was bought, and NDoEE that one was set aside at
+     * issue for its last day, so neither needs a tick - which is why they sit
+     * with the days used rather than among the conditions. */
     if(product->typ == ItsoTypCarnet) {
-        flipso_cat_flag(rules, "", "Valid on day of issue", ss->carnet_issue_day);
-        flipso_cat_flag(rules, "", "Valid on day of expiry", ss->carnet_expiry_day);
+        flipso_cat_flag(left, "", "Used on day of issue", ss->carnet_issue_day);
+        flipso_cat_flag(left, "", "Pass kept for last day", ss->carnet_expiry_day);
         for(size_t i = 0; i < COUNT_OF(ss->carnet_ticks); i++) {
             uint8_t tick = ss->carnet_ticks[i];
             if(tick == 0 || tick == 31 || tick > product->expiry) continue;
