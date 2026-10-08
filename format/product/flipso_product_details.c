@@ -182,13 +182,17 @@ void flipso_cat_product_details(
         /* Revisions 1 and 2 of a period ticket hold a DTS here, not a DATE. */
         flipso_cat_datetime_line(start, "", "Valid from", ticket->valid_from_dts);
     }
-    /* A reserved journey's expiry is the end of its return portion, which the
+    /* Time left is counted down only on a ticket that can still be used: on
+     * one blocked, used up or gone from the card it reads as time to travel.
+     * A reserved journey's expiry is the end of its return portion, which the
      * first page has already said, so it is a detail and not counted down. */
+    const bool live = product->on_card && product->status != ItsoProductStatusBlocked &&
+                      !flipso_product_used_up(product, now);
     if(kind == FlipsoKindReserved) {
         flipso_cat_expiry(details, "", "Expires", "Expired", product->expiry, now);
     } else {
         flipso_cat_expiry(main, "", "Expires", "Expired", product->expiry, now);
-        flipso_cat_days_left(main, "  ", product->expiry, now);
+        if(live) flipso_cat_time_left(main, "  ", product->expiry, now);
     }
     if(purse->has_end_date && !flipso_same_date(purse->end_date, product->expiry)) {
         flipso_cat_expiry(main, "", "Valid to", "Ended", purse->end_date, now);
@@ -207,7 +211,7 @@ void flipso_cat_product_details(
     if(ticket->has_current_expiry) {
         flipso_cat_expiry(
             main, "", "Current pass until", "Current pass ended", ticket->current_expiry, now);
-        flipso_cat_days_left(main, "  ", ticket->current_expiry, now);
+        if(live) flipso_cat_time_left(main, "  ", ticket->current_expiry, now);
     }
     if(ticket->has_stored_expiry && !flipso_same_date(ticket->stored_expiry, product->expiry)) {
         const bool rides = product->typ == ItsoTypJourneyTicket;

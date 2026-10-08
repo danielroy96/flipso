@@ -82,10 +82,10 @@ void value_history_screens(
     const FlipsoFormat* f,
     const ItsoCard* card,
     FuriString* text); /* test_value_history.c */
-void days_left_screens(
+void time_left_screens(
     const FlipsoFormat* f,
     const ItsoCard* card,
-    FuriString* text); /* test_days_left.c */
+    FuriString* text); /* test_time_left.c */
 void about_screens(FuriString* text); /* test_about_media.c */
 void media_screens(FuriString* text);
 void demo_cards(const char* directory, FlipsoFormat f); /* test_demo_cards.c */

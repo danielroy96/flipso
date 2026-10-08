@@ -218,7 +218,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         page_starts(
             text,
             "ITSO ID",
-            "Name: JAMIE OKONKWO-LEE\nExpires: 31/08/2031\n  Days left: 2171\nStatus: Active\n") &&
+            "Name: JAMIE OKONKWO-LEE\nExpires: 31/08/2031\n  Time left: 5 years\nStatus: Active\n") &&
             on_page(text, "ITSO ID", "Operator: SEFT Central Products\n"));
     check("the holder's page", page_starts(text, "Holder", "Born: 14/05/1978\nGender: Male\n"));
     furi_string_reset(text);
@@ -229,7 +229,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         page_starts(
             text,
             "Card",
-            "633597 0289 0100 0016\nStatus: Active\nExpires: 31/08/2031\n  Days left: 2171\n"
+            "633597 0289 0100 0016\nStatus: Active\nExpires: 31/08/2031\n  Time left: 5 years\n"
             "Operator: Southeastern\n"));
     furi_string_reset(text);
     flipso_format_summary(text, f, card);
