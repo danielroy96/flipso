@@ -37,10 +37,10 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
             {"TYP 28 carnet",
              cmd4_carnet,
              sizeof(cmd4_carnet),
-             {"Passes left: 3\n",
+             {"Tickets left: 3\n",
               "Day used: ",
               "Used on day of issue: Yes\n",
-              "Pass kept for last day: Yes\n",
+              "Ticket kept for last day: Yes\n",
               "Ends at: 23:59 on the expiry date\n"}},
             {"TYP 29 multi-leg",
              cmd4_multileg,
@@ -76,7 +76,7 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
              sizeof(cmd4_journey_area),
              {"From: London Waterloo\n",
               "To: Station 1444\n",
-              "Passes left: 6\n",
+              "Tickets left: 6\n",
               "Used on day of issue: No\n",
               "Ends at: 23:59 on the expiry date\n"}},
             {"TYP 29 scaled backup",
@@ -161,10 +161,9 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
             !shows(text, "sectors") && !shows(text, "Directory: ") && !shows(text, "Key set: ") &&
                 !shows(text, "Update count: "));
         check("a paper ticket shows no 2041 expiry", !shows(text, "2041"));
-        check("an in-date paper ticket is active", shows(text, "Status: Active\n"));
-        furi_string_reset(text);
-        flipso_format_card(text, &later, &t2, NULL, false, 0);
-        check("an expired paper ticket says so", shows(text, "Status: Expired "));
+        check(
+            "a paper ticket's card screen is its chip, its state being its ticket's",
+            titles_are(text, "Chip|Technical") && !shows(text, "Status: "));
         furi_string_reset(text);
         flipso_format_summary(text, &later, &t2);
         check(

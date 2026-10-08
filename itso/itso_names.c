@@ -377,6 +377,8 @@ const char* itso_count_name(ItsoCountKind kind) {
         return "Uses left";
     case ItsoCountCrossings:
         return "Crossings left";
+    case ItsoCountTickets:
+        return "Tickets left";
     default:
         return NULL;
     }
@@ -460,6 +462,8 @@ const char* itso_count_unit(ItsoCountKind kind) {
         return "Journeys";
     case ItsoCountCrossings:
         return "Crossings";
+    case ItsoCountTickets:
+        return "Tickets";
     default:
         return NULL;
     }

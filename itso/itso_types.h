@@ -153,6 +153,10 @@ typedef enum {
     /** TYP 26 CountRemainingRidesJourneys (table 42): a toll pass's rides are
      *  crossings of a bridge, a tunnel or a ferry. */
     ItsoCountCrossings,
+    /** TYP 28: a book of day tickets (clause 2.15.2) - each is a ticket for a
+     *  day, and the product is called a book of them, so "passes" named them
+     *  for a different product. */
+    ItsoCountTickets,
 } ItsoCountKind;
 
 /* DAYOFWEEK, TS 1000-5 annex A.6: Monday is the most significant bit and the

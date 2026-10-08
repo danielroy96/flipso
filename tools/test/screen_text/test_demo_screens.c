@@ -481,7 +481,7 @@ void demo_fourteen(const FlipsoFormat* f, const ItsoCard* card) {
     check(
         "the days a carnet was used are its use, with the passes no tick records",
         page_starts(
-            text, "Use", "Used on day of issue: Yes\nPass kept for last day: No\nDay used: "));
+            text, "Use", "Used on day of issue: Yes\nTicket kept for last day: No\nDay used: "));
     check("its operator ends its first page", on_page(text, "Book of tickets", "Operator: SPT"));
     furi_string_reset(text);
     flipso_format_summary(text, f, card);

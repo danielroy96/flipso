@@ -172,7 +172,7 @@ void flipso_cat_space_saving(FlipsoPages* p, const ItsoCard* card, const ItsoPro
      * with the days used rather than among the conditions. */
     if(product->typ == ItsoTypCarnet) {
         flipso_cat_flag(left, "", "Used on day of issue", ss->carnet_issue_day);
-        flipso_cat_flag(left, "", "Pass kept for last day", ss->carnet_expiry_day);
+        flipso_cat_flag(left, "", "Ticket kept for last day", ss->carnet_expiry_day);
         for(size_t i = 0; i < COUNT_OF(ss->carnet_ticks); i++) {
             uint8_t tick = ss->carnet_ticks[i];
             if(tick == 0 || tick == 31 || tick > product->expiry) continue;
