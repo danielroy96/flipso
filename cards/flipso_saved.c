@@ -317,7 +317,7 @@ bool flipso_saved_pick(FuriString* path, const FuriString* select) {
      * is resolved too, or it would put the browser back under the alias. */
     FuriString* start = furi_string_alloc_set(folder);
     if(select && !furi_string_empty(select)) {
-        furi_string_set(start, select);
+        furi_string_set_str(start, furi_string_get_cstr(select));
         storage = furi_record_open(RECORD_STORAGE);
         storage_common_resolve_path_and_ensure_app_directory(storage, start);
         furi_record_close(RECORD_STORAGE);
