@@ -5,6 +5,44 @@
 #include "flipso_product_i.h"
 
 /**
+ * The optional elements the dataset carries, named from the type's bitmap
+ * table (TS 1000-5): "Optional fields: Locations and route, Pass length".
+ * That is the first thing to look at when a field is unexpectedly missing,
+ * and a bit the table leaves RFU is named by its number, since it should
+ * never be set.
+ */
+static void flipso_cat_optional_fields(FuriString* out, const ItsoProduct* product) {
+    furi_string_cat(out, "Optional fields: ");
+    const char* sep = "";
+    for(uint8_t bit = 0; bit < 6; bit++) {
+        if(!(product->bitmap & (1 << bit))) continue;
+        const char* name = itso_bitmap_element_name(product->typ, product->format_rev, bit);
+        if(name) {
+            furi_string_cat_printf(out, "%s%s", sep, name);
+        } else {
+            furi_string_cat_printf(out, "%sReserved bit %u", sep, bit);
+        }
+        sep = ", ";
+    }
+    furi_string_cat(out, sep[0] ? "\n" : "None\n");
+}
+
+/**
+ * True when a ticket's locations are railway ones, which is when RSPS3002
+ * gives its RouteCode the RSP fares data's meaning (its TYP 22 and 23 field
+ * tables: "the 5 digit route code ... within the RSP fares data"). Elsewhere
+ * the element is "user defined routing information" (TS 1000-5 table 27a),
+ * and a code means whatever its owner says.
+ */
+static bool flipso_product_rail(const ItsoProduct* product) {
+    char code[ITSO_LOC_CODE_LEN];
+    return (product->from.valid &&
+            itso_location_code(&product->from, code, sizeof(code)) == ItsoLocCodeNlc) ||
+           (product->to.valid &&
+            itso_location_code(&product->to, code, sizeof(code)) == ItsoLocCodeNlc);
+}
+
+/**
  * What a product's Technical page says: the codes and machine numbers behind
  * it, which mean nothing without the scheme's own tables but are what tells two
  * otherwise identical products apart. The caller gives it its title.
@@ -19,12 +57,14 @@ void flipso_cat_product_technical(
     const ItsoReservation* res) {
     const ItsoIdTerms* id = itso_product_id(product);
     const ItsoTicketTerms* ticket = itso_product_ticket(product);
-    furi_string_cat_printf(out, "Type code: %u.%u\n", product->typ, product->ptyp);
+    /* TYP is ITSO's; PTYP is the owner's own number within it, for the
+     * business rules it applies (TS 1000-2 clause 6.1.5). */
+    furi_string_cat_printf(out, "ITSO type: %u\n", product->typ);
+    furi_string_cat_printf(out, "  Operator's sub-type: %u\n", product->ptyp);
     furi_string_cat_printf(out, "Operator number: %u\n", product->oid);
-    if(product->oid_extended) {
-        furi_string_cat_printf(
-            out, "  Extended range: Yes (%u)\n", (unsigned)(product->oid & 0x1FFF));
-    }
+    /* The flag picks the numbering range, 8192 to 16383 rather than 1 to 8000
+     * (TS 1000-2 annex B), which the number above already includes. */
+    if(product->oid_extended) furi_string_cat(out, "  Range: Extended\n");
     /* IINL: the operator belongs to the network the product's own IIN names
      * (Owner network, below) rather than the card's (TS 1000-2 clause 6.1.7). */
     if(product->foreign_iin) furi_string_cat(out, "  Network: Not the card's own\n");
@@ -40,9 +80,7 @@ void flipso_cat_product_technical(
     }
 
     furi_string_cat_printf(out, "Layout version: %u\n", product->format_rev);
-    /* The bitmap says which optional elements the dataset carries, which is the
-     * first thing you need when a field is missing unexpectedly. */
-    furi_string_cat_printf(out, "Optional fields: 0x%02X\n", product->bitmap);
+    flipso_cat_optional_fields(out, product);
     if(product->has_remove_date) {
         /* Any machine may delete the product this many days after it expires,
          * but 255 means only the product owner may (TS 1000-5, RemoveDate in
@@ -89,7 +127,7 @@ void flipso_cat_product_technical(
      * the owner's own numbering; zero is as much a service as any other. */
     if(product->typ == ItsoTypVoucher && ticket->valid) {
         furi_string_cat_printf(out, "Service code: %u\n", ticket->service_id);
-        furi_string_cat_printf(out, "Owner data: %u\n", ticket->user_defined);
+        furi_string_cat_printf(out, "Operator's own data: %u\n", ticket->user_defined);
     }
     flipso_cat_toll_codes(out, f, product);
     /* IdentityDocumentID's coding, when it is one table 3.27 leaves RFU: the
@@ -99,13 +137,20 @@ void flipso_cat_product_technical(
         furi_string_cat_printf(out, "ID document coding: Type %u\n", ticket->id_doc_type);
     }
     if(ticket->has_route_code) {
-        furi_string_cat(out, "Route code: ");
-        flipso_cat_code_bytes(out, ticket->route_code, sizeof(ticket->route_code));
-        furi_string_push_back(out, '\n');
+        /* On rail, 00000 is the fares data's "any permitted" route: the
+         * ticket is good by any route the National Rail Conditions allow. */
+        if(flipso_product_rail(product) &&
+           memcmp(ticket->route_code, "00000", sizeof(ticket->route_code)) == 0) {
+            furi_string_cat(out, "Route code: Any permitted (00000)\n");
+        } else {
+            furi_string_cat(out, "Route code: ");
+            flipso_cat_code_bytes(out, ticket->route_code, sizeof(ticket->route_code));
+            furi_string_push_back(out, '\n');
+        }
     }
     /* TYP 3's UserDefined: the loyalty scheme's own two bytes. */
     if(product->has_owner_data) {
-        furi_string_cat_printf(out, "Owner data: %u\n", product->owner_data);
+        furi_string_cat_printf(out, "Operator's own data: %u\n", product->owner_data);
     }
     /* Instructions to the machine rather than facts about the product, so
      * shown here, and only those the type defines. */
@@ -150,21 +195,27 @@ void flipso_cat_product_technical(
     if(product->value_parsed) {
         furi_string_cat_printf(out, "Times updated: %u\n", product->value_ts);
         flipso_cat_machine(out, f, "", "Last updated by machine", product->value_isam);
-        if(product->value_action_seq) {
-            furi_string_cat_printf(out, "Action number: %u\n", product->value_action_seq);
-        }
+        /* ActionSequenceNumber starts at 0 and goes up by one for each
+         * Actionlist item a reader carries out - a change ordered remotely,
+         * such as a top-up bought online (TS 1000-4 clause 7.5.3.2). It is
+         * eight bits, so it counts round after 255. */
+        furi_string_cat_printf(out, "Remote changes applied: %u\n", product->value_action_seq);
     }
 
-    /* A paper period ticket's two EventTypeCodes (TYP 27). The spec neither
-     * orders nor explains them, so they are shown as numbered on the card - and
-     * here rather than above, as what they are: raw codes. */
+    /* A paper period ticket's two EventTypeCodes (TYP 27, table 47), each
+     * an EN1545 event as a value record's TransactionType is. The spec neither
+     * orders nor explains them, so they are shown in the order the card has
+     * them. */
     if(product->space_saving) {
         flipso_cat_space_codes(out, card);
         flipso_cat_space_backup(out, card, product);
     }
     if(product->space_saving && card->space && card->space->has_events) {
-        furi_string_cat_printf(out, "Event 1: %s\n", itso_transaction_name(card->space->event1));
-        furi_string_cat_printf(out, "Event 2: %s\n", itso_transaction_name(card->space->event2));
+        furi_string_cat_printf(
+            out,
+            "Events recorded: %s, %s\n",
+            itso_transaction_name(card->space->event1),
+            itso_transaction_name(card->space->event2));
     }
 
     if(res) flipso_cat_reservation_codes(out, product, res);

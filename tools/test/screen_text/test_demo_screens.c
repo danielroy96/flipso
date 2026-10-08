@@ -87,6 +87,24 @@ void demo_type2_full(const FlipsoFormat* f, const ItsoCard* card, bool ntag) {
             "its Abacus counts down its uses", shows(text, "Uses left: 10\n  Abacus: 5 of 16\n"));
         check("64-byte sectors are the layout", shows(text, "Layout: 9 sectors of 64 bytes\n"));
 
+        /* A ride off the carnet, which the reader left unspecified: the fare
+         * is the ride's value, and nothing claims a purse paid it. */
+        FuriString* taps = furi_string_alloc();
+        flipso_format_taps(taps, f, card);
+        check(
+            "a carnet ride names its fare and its carnet, and no purse",
+            shows(
+                taps,
+                "Fare: \xC2\xA3"
+                "1.80\nProduct: Journey ticket\n") &&
+                !shows(taps, "Paid by: "));
+        furi_string_reset(taps);
+        flipso_format_product(taps, f, card, &card->products[0]);
+        check(
+            "a bus ticket's route code is the operator's, and left as it is",
+            !shows(taps, "Any permitted"));
+        furi_string_free(taps);
+
         /* The same card with its Abacus run out (TS 1000-10 table 107). A copy
          * borrows the card's product and journey arrays, so it lives only as
          * long as this block and is never reset. */
@@ -168,7 +186,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         check("the toll pass's vehicle class", on_page(text, "Conditions", "Vehicle class: 2\n"));
         check(
             "the toll pass's owner data, as text, from the saved file",
-            technical(text, "Owner data: DC00417\n") &&
+            technical(text, "Operator's own data: DC00417\n") &&
                 technical(text, "Passback timeout: Set by the operator\n"));
     }
     furi_string_reset(text);
@@ -179,9 +197,10 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         page_starts(
             text,
             "History",
-            "Last transaction: Multi-leg journey\n  When: 19/09/2026 12:31\n"
+            "Multi-leg journey\n  When: 19/09/2026 12:31\n"
             "  Amount: -\xC2\xA3"
-            "3.50\nFare paid\n  When: 18/09/2026 08:12\n  Amount: -\xC2\xA3"
+            "3.50\n  Balance: \xC2\xA3"
+            "24.15\nFare paid\n  When: 18/09/2026 08:12\n  Amount: -\xC2\xA3"
             "3.55\n  Balance: \xC2\xA3"
             "27.65\nTop-up\n  When: 12/08/2026 18:05\n  Balance: \xC2\xA3"
             "31.20\n"));
@@ -203,16 +222,16 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             "two purses share one Technical page, last",
             titles_are(
                 text, "Pay as you go|Top-up|History|Pay as you go|Top-up|History|Technical") &&
-                on_page(text, "Technical", "\e#Pay as you go\nType code: 2.0\n") &&
-                on_page(text, "Technical", "\n\n\e#Pay as you go\nType code: 2.0\n"));
+                on_page(text, "Technical", "\e#Pay as you go\nITSO type: 2\n") &&
+                on_page(text, "Technical", "\n\n\e#Pay as you go\nITSO type: 2\n"));
     }
     furi_string_reset(text);
     flipso_format_id(text, f, card);
     check(
         "the ID and the entitlement, then their codes on one page",
         titles_are(text, "ITSO ID|Holder|ID terms|Entitlement|Entitlement terms|Technical") &&
-            on_page(text, "Technical", "\e#ITSO ID\nType code: 16.1\n") &&
-            on_page(text, "Technical", "\n\n\e#Entitlement\nType code: 14.0\n"));
+            on_page(text, "Technical", "\e#ITSO ID\nITSO type: 16\n  Operator's sub-type: 1\n") &&
+            on_page(text, "Technical", "\n\n\e#Entitlement\nITSO type: 14\n"));
     check(
         "the ID's first page is who and what the holder is",
         page_starts(
@@ -335,12 +354,12 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     flipso_format_payg(text, f, card);
     check(
         "the purse screen has its technical details",
-        page_starts(text, "Technical", "Type code: 2.0\n"));
+        page_starts(text, "Technical", "ITSO type: 2\n  Operator's sub-type: 0\n"));
     furi_string_reset(text);
     flipso_format_id(text, f, card);
     check(
         "the ID screen has technical details for each product",
-        shows(text, "Type code: 16.1\n") && shows(text, "Type code: 14.0\n"));
+        shows(text, "ITSO type: 16\n") && shows(text, "ITSO type: 14\n"));
 
     /* An identity document that is another product names it, a loyalty
      * scheme's own bytes are shown as they stand, and an owner numbered by
@@ -356,12 +375,35 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             check(
                 "its passback is an instruction to the gate, under Technical",
                 technical(text, "Passback timeout: Set by the operator\n"));
+            check(
+                "its type is ITSO's, then the operator's own sub-type",
+                technical(text, "ITSO type: 22\n  Operator's sub-type: 2\n"));
+            check(
+                "its bitmap is the elements it names, from table 3.28",
+                technical(text, "Optional fields: Locations and route, ID document\n"));
+            check(
+                "and the remote changes its value record has had",
+                technical(text, "Remote changes applied: 3\n"));
+        } else if(p->typ == ItsoTypReservationTicket) {
+            check(
+                "a reservation's bitmap, from table 137",
+                technical(
+                    text,
+                    "Optional fields: Passenger, Discounts, routes and restrictions, "
+                    "Reservations\n"));
+        } else if(p->typ == ItsoTypLoyalty2) {
+            check(
+                "an owner in the extended numbering range says so, not its low bits",
+                technical(text, "Operator number: 13870\n  Range: Extended\n"));
         } else if(p->typ == ItsoTypLoyalty1) {
-            check("loyalty shows its owner's data", shows(text, "Owner data: 321\n"));
+            check("loyalty shows its owner's data", shows(text, "Operator's own data: 321\n"));
         } else if(p->typ == ItsoTypJourneyTicket) {
             check(
                 "an owner on another network is a detail of its number",
                 technical(text, "Operator number: 289\n  Network: Not the card's own\n"));
+            check(
+                "a rail ticket's route 00000 is any permitted route",
+                technical(text, "Route code: Any permitted (00000)\n"));
         }
     }
 
@@ -470,8 +512,9 @@ void demo_four(const FlipsoFormat* f, const ItsoCard* card) {
         page_starts(
             text,
             "History",
-            "Last transaction: Auto top-up\n  When: 20/09/2026 18:31\n  Amount: +\xC2\xA3"
-            "15.00\n"));
+            "Auto top-up\n  When: 20/09/2026 18:31\n  Amount: +\xC2\xA3"
+            "15.00\n  Balance: \xC2\xA3"
+            "26.45\n"));
     check(
         "the amount runs across from the card to the file",
         page_starts(

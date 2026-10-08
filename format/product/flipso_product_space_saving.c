@@ -77,8 +77,11 @@ void flipso_cat_space_backup(FuriString* out, const ItsoCard* card, const ItsoPr
     if(ss->backup_step == 1) {
         furi_string_cat_printf(out, "Backup count: %u\n", ss->backup_count);
     } else {
-        furi_string_cat_printf(out, "Backup count: Up to %u\n", ss->backup_count);
-        furi_string_cat_printf(out, "  Step: %u\n", ss->backup_step);
+        /* Each bit stands for a step's worth used, so the backup pins the
+         * count to a band a step wide that ends at the count it gives. */
+        const unsigned low =
+            ss->backup_count >= ss->backup_step ? ss->backup_count - ss->backup_step + 1 : 0;
+        furi_string_cat_printf(out, "Backup count: %u to %u\n", low, ss->backup_count);
     }
     const bool agrees = product->count <= ss->backup_count &&
                         product->count + ss->backup_step > ss->backup_count;

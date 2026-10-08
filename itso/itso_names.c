@@ -382,6 +382,89 @@ const char* itso_count_name(ItsoCountKind kind) {
     }
 }
 
+const char* itso_bitmap_element_name(uint8_t typ, uint8_t format_rev, uint8_t bit) {
+    /* Bit 0 is the IIN on every type with an IIN element (TS 1000-2 clause
+     * 6.1.7); the Space Saving types have none, and leave it RFU. */
+    if(bit == 0) return typ >= ItsoTypPeriodCompact ? NULL : "Owner network";
+    switch(typ) {
+    case ItsoTypEntitlement: /* Tables 21 and 21a. */
+        if(bit == 1) return "Second holder";
+        if(bit == 2) return "Valid days and area";
+        if(bit == 3) return "Second area";
+        return NULL;
+    case ItsoTypId: /* Tables 23 and 23a. */
+        if(bit == 1) return "Second holder";
+        if(bit == 2) return "Name";
+        if(bit == 3) return "Valid days and area";
+        if(bit == 4) return "Second area";
+        return NULL;
+    case ItsoTypPeriodTicket:
+        /* Table 28 gives each end a bit; 28a and 3.28 put both, with the
+         * route code, under bit 1, and 3.28 gives bit 2 to an ID document. */
+        if(format_rev <= 1) {
+            if(bit == 1) return "Origin";
+            if(bit == 2) return "Destination";
+        } else {
+            if(bit == 1) return "Locations and route";
+            if(bit == 2 && format_rev >= 3) return "ID document";
+        }
+        if(bit == 3) return "Pass length";
+        if(bit == 4) return "Issuer code";
+        return NULL;
+    case ItsoTypJourneyTicket:
+        /* Table 32 gives each end a bit; 32a and 32b put both, with the route
+         * code, under bit 1. */
+        if(format_rev <= 1) {
+            if(bit == 1) return "Destination";
+            if(bit == 2) return "Origin";
+        } else if(bit == 1) {
+            return "Locations and route";
+        }
+        if(bit == 3) return "Ride rules";
+        return NULL;
+    case ItsoTypReservationTicket: /* Table 137. */
+        if(bit == 1) return "Passenger";
+        if(bit == 2) return "Discounts, routes and restrictions";
+        if(bit == 3) return "Reservations";
+        return NULL;
+    case ItsoTypVoucher: /* Table 37. */
+    case ItsoTypTolling: /* Table 41. */
+        return bit == 1 ? "Renewal quantity" : NULL;
+    case ItsoTypPeriodCompact: /* Table 48a. */
+    case ItsoTypCarnet: /* Table 54. */
+        return bit == 4 ? "Sequence number" : NULL;
+    case ItsoTypMultiUse: /* Table 58a. */
+        if(bit == 3) return "Backup count";
+        if(bit == 4) return "Sequence number";
+        return NULL;
+    default:
+        /* TYP 2, 3, 4, 5 and 17 define bit 0 alone (tables 3, 8, 11, 16, 26). */
+        return NULL;
+    }
+}
+
+const char* itso_count_unit(ItsoCountKind kind) {
+    switch(kind) {
+    case ItsoCountRides:
+        return "Rides";
+    case ItsoCountPasses:
+        return "Passes";
+    case ItsoCountTransactions:
+    case ItsoCountUses:
+        return "Uses";
+    case ItsoCountPoints:
+        return "Points";
+    case ItsoCountCoupons:
+        return "Coupons";
+    case ItsoCountJourneys:
+        return "Journeys";
+    case ItsoCountCrossings:
+        return "Crossings";
+    default:
+        return NULL;
+    }
+}
+
 const char* itso_gender_name(uint8_t id_flags) {
     /* IDFlags bits 1 and 2 (TS 1000-5 table 24). Both clear means not known and
      * both set means deliberately not specified; neither is worth a screen row,

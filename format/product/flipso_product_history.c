@@ -6,7 +6,7 @@
 
 /**
  * What the transaction in value record @p index did, worked out from the record
- * before it: "  Amount: -£3.55", or "  Change: -1" for a counter. Nothing when
+ * before it: "  Amount: -£3.55", or "  Rides: -1" for a counter. Nothing when
  * itso_value_change() has no amount to give.
  */
 static void flipso_cat_value_change(FuriString* out, const ItsoProduct* product, uint8_t index) {
@@ -20,24 +20,15 @@ static void flipso_cat_value_change(FuriString* out, const ItsoProduct* product,
         const ItsoMoney amount = {
             .value = change, .currency = record->amount.currency, .valid = true};
         flipso_cat_money_change(out, "  ", "Amount", &amount);
-    } else if(itso_count_name(product->count_kind)) {
-        /* A counter with no name has no line of its own for the change to explain. */
-        furi_string_cat_printf(out, "  Change: %s%ld\n", change > 0 ? "+" : "", (long)change);
-    }
-}
-
-/** What the product's newest value record says the last transaction was. */
-void flipso_cat_last_transaction(FuriString* out, const ItsoProduct* product) {
-    if(!product->value_parsed) return;
-    furi_string_cat_printf(
-        out, "Last transaction: %s\n", itso_transaction_name(product->value_txn));
-    if(product->value_dts) flipso_cat_datetime_line(out, "  ", "When", product->value_dts);
-    /* The live record is the newest in the history, unless a file remembers
-     * one newer still or the live one could not be kept; then the amount at
-     * the head of the history is some other transaction's. */
-    const ItsoValueRecord* head = &product->value_history[0];
-    if(head->ts == product->value_ts && head->dts == product->value_dts) {
-        flipso_cat_value_change(out, product, 0);
+    } else if(itso_count_unit(product->count_kind)) {
+        /* In what the counter counts, as an amount is in pounds: "Rides: -2".
+         * A counter with no name has no line of its own for it to explain. */
+        furi_string_cat_printf(
+            out,
+            "  %s: %s%ld\n",
+            itso_count_unit(product->count_kind),
+            change > 0 ? "+" : "",
+            (long)change);
     }
 }
 
@@ -63,6 +54,27 @@ static void flipso_cat_value_record(FuriString* out, const ItsoProduct* product,
         flipso_cat_money(
             out, "  ", purse->balance_is_spend ? "Spent so far" : "Balance", &record->amount);
     }
+}
+
+/**
+ * The newest transaction, the live record's, at the head of the history and
+ * in the same shape as every entry under it: a list whose first entry alone
+ * read "Last transaction: Fare paid" had two ways of saying one thing.
+ */
+void flipso_cat_last_transaction(FuriString* out, const ItsoProduct* product) {
+    if(!product->value_parsed) return;
+    /* The live record is the newest in the history, unless a file remembers
+     * one newer still or the live one could not be kept; then the head of the
+     * history is some other transaction, and only what the live record itself
+     * says is shown. */
+    const ItsoValueRecord* head = &product->value_history[0];
+    if(product->value_history_count && head->ts == product->value_ts &&
+       head->dts == product->value_dts) {
+        flipso_cat_value_record(out, product, 0);
+        return;
+    }
+    furi_string_cat_printf(out, "%s\n", itso_transaction_name(product->value_txn));
+    if(product->value_dts) flipso_cat_datetime_line(out, "  ", "When", product->value_dts);
 }
 
 /**

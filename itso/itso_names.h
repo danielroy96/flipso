@@ -68,6 +68,20 @@ const char* itso_seat_attribute_name(const char* code);
 /** Label for a product counter, e.g. "Rides left". NULL for ItsoCountNone. */
 const char* itso_count_name(ItsoCountKind kind);
 
+/**
+ * What a product counter counts, e.g. "Rides", to label a change in it -
+ * "Rides: -2" - where "Change: -2" left the unit to be guessed. NULL for
+ * ItsoCountNone.
+ */
+const char* itso_count_unit(ItsoCountKind kind);
+
+/**
+ * What bit @p bit of a product's IPEBitMap says is present, in a few words -
+ * "Pass length" - from the type's own table in TS 1000-5. NULL for a bit the
+ * table leaves RFU for that type and format revision.
+ */
+const char* itso_bitmap_element_name(uint8_t typ, uint8_t format_rev, uint8_t bit);
+
 /** Gender recorded in IDFlags, or NULL when it is not known or not specified. */
 const char* itso_gender_name(uint8_t id_flags);
 

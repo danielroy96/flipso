@@ -53,12 +53,11 @@ void value_history_screens(const FlipsoFormat* f, const ItsoCard* card, FuriStri
     house_style("value history", text);
     check(
         "the last transaction says what it cost",
-        page_starts(text, "History", "Last transaction: Fare paid\n") &&
-            on_page(
-                text,
-                "History",
-                "\n  Amount: -\xC2\xA3"
-                "3.50\n"));
+        page_starts(text, "History", "Fare paid\n") && on_page(
+                                                           text,
+                                                           "History",
+                                                           "\n  Amount: -\xC2\xA3"
+                                                           "3.50\n"));
     check(
         "a top-up says what it added, signed",
         on_page(
@@ -133,7 +132,8 @@ void value_history_screens(const FlipsoFormat* f, const ItsoCard* card, FuriStri
     flipso_format_product(text, f, card, &p);
     printf("\n%s\n", furi_string_get_cstr(text));
     house_style("journey ticket history", text);
-    check("two rides used are a change of -2", on_page(text, "History", "\n  Change: -2\n"));
-    check("rides added are signed", on_page(text, "History", "\n  Change: +3\n  Rides left: 9\n"));
-    check("the oldest has no change", occurrences_of(text, "  Change: ") == 2);
+    check("two rides used are a change of -2 rides", on_page(text, "History", "\n  Rides: -2\n"));
+    check("rides added are signed", on_page(text, "History", "\n  Rides: +3\n  Rides left: 9\n"));
+    check("the oldest has no change", occurrences_of(text, "  Rides: ") == 2);
+    check("and no change is left unitless", !shows(text, "Change: "));
 }
