@@ -101,6 +101,21 @@ void finding(void) {
     check("an empty capture matches nothing", !flipso_saved_find(empty, found, &read_at));
     flipso_capture_free(empty);
 
+    /* The list of saved cards. The browser shows a ".." row everywhere but its
+     * base folder, and compares paths as it lists them - real ones - so a base
+     * given as the /data alias put a ".." on the cursor that left the folder. */
+    FuriString* picked = furi_string_alloc();
+    flipso_saved_pick(picked, NULL);
+    check(
+        "the saved list's base folder is the real path, not the alias",
+        strcmp(last_browser_base, "resolved/" FLIPSO_SAVED_FOLDER) == 0);
+    check("and it opens in that folder", strcmp(last_browser_start, last_browser_base) == 0);
+    flipso_saved_pick(picked, found);
+    check(
+        "coming back to a card starts under the same real path",
+        strncmp(last_browser_start, last_browser_base, strlen(last_browser_base)) == 0);
+    furi_string_free(picked);
+
     furi_string_free(path);
     furi_string_free(found);
     flipso_capture_free(other);

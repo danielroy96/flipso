@@ -294,22 +294,37 @@ bool flipso_saved_pick(FuriString* path, const FuriString* select) {
      * card is saved - otherwise the first press lands the user in /ext. */
     flipso_saved_mkdir();
 
+    /* The folder by its real path, not the /data alias: the browser lists the
+     * real one, so a base path given as the alias never matches where it is,
+     * and the list opened with a ".." row - on the cursor - that walked out of
+     * the folder. */
+    FuriString* folder = furi_string_alloc_set(FLIPSO_SAVED_FOLDER);
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    storage_common_resolve_path_and_ensure_app_directory(storage, folder);
+    furi_record_close(RECORD_STORAGE);
+
     DialogsApp* dialogs = furi_record_open(RECORD_DIALOGS);
 
     DialogsFileBrowserOptions options;
     dialog_file_browser_set_basic_options(&options, FLIPSO_SAVED_EXTENSION, &I_card_10px);
-    options.base_path = FLIPSO_SAVED_FOLDER;
+    options.base_path = furi_string_get_cstr(folder);
     /* The extension is the same on every row, so showing it only costs the
      * characters that tell two cards apart. */
     options.hide_ext = true;
 
     /* The browser opens on the file its start path names, so coming back from
-     * a card lands on that card rather than on the top of the list. */
-    FuriString* start = furi_string_alloc_set(FLIPSO_SAVED_FOLDER);
-    if(select && !furi_string_empty(select))
-        furi_string_set_str(start, furi_string_get_cstr(select));
+     * a card lands on that card rather than on the top of the list. That path
+     * is resolved too, or it would put the browser back under the alias. */
+    FuriString* start = furi_string_alloc_set(folder);
+    if(select && !furi_string_empty(select)) {
+        furi_string_set(start, select);
+        storage = furi_record_open(RECORD_STORAGE);
+        storage_common_resolve_path_and_ensure_app_directory(storage, start);
+        furi_record_close(RECORD_STORAGE);
+    }
     bool picked = dialog_file_browser_show(dialogs, path, start, &options);
     furi_string_free(start);
+    furi_string_free(folder);
 
     furi_record_close(RECORD_DIALOGS);
     return picked;
