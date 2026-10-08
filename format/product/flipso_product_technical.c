@@ -211,11 +211,19 @@ void flipso_cat_product_technical(
         flipso_cat_space_backup(out, card, product);
     }
     if(product->space_saving && card->space && card->space->has_events) {
-        furi_string_cat_printf(
-            out,
-            "Events recorded: %s, %s\n",
-            itso_transaction_name(card->space->event1),
-            itso_transaction_name(card->space->event2));
+        /* Code 0 is the one TS 1000-5 gives the creation of an IPE (the
+         * TransactionType notes, table 2 on), so on a ticket that has not been
+         * through a gate it is no event at all; "Other", its name elsewhere,
+         * read as something that happened. */
+        furi_string_cat(out, "Events recorded: ");
+        const uint8_t events[] = {card->space->event1, card->space->event2};
+        const char* sep = "";
+        for(size_t i = 0; i < COUNT_OF(events); i++) {
+            if(!events[i]) continue;
+            furi_string_cat_printf(out, "%s%s", sep, itso_transaction_name(events[i]));
+            sep = ", ";
+        }
+        furi_string_cat(out, sep[0] ? "\n" : "None\n");
     }
 
     if(res) flipso_cat_reservation_codes(out, product, res);

@@ -122,12 +122,14 @@ void flipso_scene_menu_on_enter(void* context) {
         }
     }
     /* A paper ticket's Card screen is its chip and the codes behind it: its
-     * state and operator are its ticket's, on the row above. */
+     * state and operator are its ticket's, on the row above - and one with no
+     * ticket on it is still a chip, whose screen opens on the chip. */
+    const bool paper = app->card.shell_compact;
     flipso_menu_view_add_tagged_item(
         menu,
-        ticket ? "Chip" : "Card",
+        paper ? "Chip" : "Card",
         card_tag,
-        ticket ? &I_chip_10px : &I_card_10px,
+        paper ? &I_chip_10px : &I_card_10px,
         FlipsoCardMenuRowCard);
 
     const ItsoProduct* purse = flipso_find_product(&app->card, ItsoTypStoredTravelRights);

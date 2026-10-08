@@ -4,6 +4,8 @@
  */
 #include "flipso_product_i.h"
 
+#include <ctype.h>
+
 /**
  * What the transaction in value record @p index did, worked out from the record
  * before it: "  Amount: -£3.55", or "  Rides: -1" for a counter. Nothing when
@@ -49,7 +51,20 @@ static void flipso_cat_value_record(FuriString* out, const ItsoProduct* product,
         /* The counter means whatever the product's type says it means, and it
          * means the same thing in every record. */
         const char* label = itso_count_name(product->count_kind);
-        if(label) furi_string_cat_printf(out, "  %s: %lu\n", label, (unsigned long)record->count);
+        const char* unit = itso_count_unit(product->count_kind);
+        if(label && unit && strcmp(label, unit) == 0) {
+            /* A counter named by its own unit - loyalty's "Points" - would
+             * label the change above and the total here alike, so the total
+             * is the balance, in that unit: "Balance: 4250 points". */
+            furi_string_cat_printf(
+                out,
+                "  Balance: %lu %c%s\n",
+                (unsigned long)record->count,
+                tolower((unsigned char)unit[0]),
+                unit + 1);
+        } else if(label) {
+            furi_string_cat_printf(out, "  %s: %lu\n", label, (unsigned long)record->count);
+        }
     } else if(record->amount.valid) {
         flipso_cat_money(
             out, "  ", purse->balance_is_spend ? "Spent so far" : "Balance", &record->amount);

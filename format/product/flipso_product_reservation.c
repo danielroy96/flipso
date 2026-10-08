@@ -101,13 +101,6 @@ static uint32_t flipso_reservation_id(const ItsoReservation* res) {
            ((uint32_t)res->id_doc[2] << 8) | res->id_doc[3];
 }
 
-/**
- * The railcard or ID a reserved journey is held to, under the line that names
- * it: the number the ticket carries for it. On rail that is only its last
- * four digits. A discount that is not a card to carry - a GroupSave, or a code
- * the table does not know - is not a railcard to number, so the line stands on
- * its own.
- */
 void flipso_cat_ticket_type(FuriString* out, const FlipsoFormat* f, const ItsoReservation* res) {
     /* FaresTypeOfTicket is the RSP fares data's ticket type (TS 1000-5 table
      * 136, RSPS3002), which is the name a passenger knows the ticket by. */
@@ -115,6 +108,13 @@ void flipso_cat_ticket_type(FuriString* out, const FlipsoFormat* f, const ItsoRe
     if(name) furi_string_cat_printf(out, "Ticket type: %s\n", name);
 }
 
+/**
+ * The railcard or ID a reserved journey is held to, under the line that names
+ * it: the number the ticket carries for it. On rail that is only its last
+ * four digits. A discount that is not a card to carry - a GroupSave, or a code
+ * the table does not know - is not a railcard to number, so the line stands on
+ * its own.
+ */
 void flipso_cat_reservation_id(
     FuriString* out,
     const ItsoProduct* product,
