@@ -5,6 +5,8 @@ test_saved
 stub_data_cards/
 test_parse.dSYM/
 test_stations
+test_ticket_types
+ticket_types.dat
 stub_*.dat
 replay
 replay_data.h

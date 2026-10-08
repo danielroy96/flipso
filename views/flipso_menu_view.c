@@ -37,6 +37,9 @@ typedef struct {
 
 typedef struct {
     char header[FLIPSO_MENU_HEADER_LEN];
+    /** Kept whole after the header, which is cut to make room for it: the
+     *  caller's, a string that outlives the view. NULL for none. */
+    const char* header_suffix;
     const Icon* header_icon;
     bool has_header;
     FlipsoMenuItem items[FLIPSO_MENU_MAX_ITEMS];
@@ -120,16 +123,24 @@ static void flipso_menu_view_draw(Canvas* canvas, void* model) {
         /* Fitted like a row label: the header is a card's branding, which comes
          * from a table the user can edit and is longer than "ITSO Card" ever
          * was. */
-        char fitted[FLIPSO_MENU_LABEL_LEN + 4];
+        char fitted[FLIPSO_MENU_LABEL_LEN + 4 + FLIPSO_MENU_SUFFIX_LEN];
         uint16_t icon_w = m->header_icon ? (uint16_t)(icon_get_width(m->header_icon) +
                                                       FLIPSO_MENU_HEADER_ICON_GAP) :
                                            0;
+        /* A suffix - " (Blocked)" - is what the header is for, so it is kept
+         * whole and the branding before it is what gets cut. */
+        char suffix[FLIPSO_MENU_SUFFIX_LEN] = "";
+        if(m->header_suffix) flipso_glyphs_copy(suffix, sizeof(suffix), m->header_suffix);
+        uint16_t suffix_w = flipso_glyphs_width(canvas, suffix);
+        uint16_t room = (uint16_t)(FLIPSO_MENU_SCREEN_W - 2 * FLIPSO_MENU_HEADER_MARGIN - icon_w);
         flipso_menu_fit(
             canvas,
             m->header,
-            (uint16_t)(FLIPSO_MENU_SCREEN_W - 2 * FLIPSO_MENU_HEADER_MARGIN - icon_w),
+            room > suffix_w ? (uint16_t)(room - suffix_w) : 0,
             fitted,
-            sizeof(fitted));
+            FLIPSO_MENU_LABEL_LEN + 4);
+        const size_t fitted_len = strlen(fitted);
+        snprintf(fitted + fitted_len, sizeof(fitted) - fitted_len, "%s", suffix);
 
         /* The icon and the text are centred as one group, so the header stays
          * balanced rather than the text sitting centred with an icon hung off
@@ -299,6 +310,7 @@ void flipso_menu_view_reset(FlipsoMenuView* instance) {
             model->window = 0;
             model->has_header = false;
             model->header[0] = '\0';
+            model->header_suffix = NULL;
             model->header_icon = NULL;
         },
         true);
@@ -320,6 +332,12 @@ void flipso_menu_view_set_header(FlipsoMenuView* instance, const char* header) {
             flipso_menu_reveal(model);
         },
         true);
+}
+
+void flipso_menu_view_set_header_suffix(FlipsoMenuView* instance, const char* suffix) {
+    furi_assert(instance);
+    with_view_model(
+        instance->view, FlipsoMenuModel * model, { model->header_suffix = suffix; }, true);
 }
 
 void flipso_menu_view_set_header_icon(FlipsoMenuView* instance, const Icon* icon) {

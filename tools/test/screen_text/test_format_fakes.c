@@ -23,6 +23,14 @@ const char* flipso_stations_name(FlipsoStations* instance, const char* nlc) {
     return NULL;
 }
 
+const char* flipso_ticket_types_name(
+    FlipsoTicketTypes* instance,
+    const uint8_t code[FLIPSO_TICKET_TYPE_CODE_LEN]) {
+    (void)instance;
+    if(memcmp(code, "SOR", FLIPSO_TICKET_TYPE_CODE_LEN) == 0) return "Anytime Return";
+    return NULL;
+}
+
 const char* flipso_naptan_stop(FlipsoNaptan* instance, const char* digits) {
     (void)instance;
     if(strcmp(digits, "00062624") == 0) return "High Street";

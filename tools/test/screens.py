@@ -33,13 +33,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 
 # The renderer, and every part of the app it renders through.
-PARTS = ("format", "capture", "media", "stations", "naptan", "itso")
+PARTS = ("format", "capture", "media", "stations", "naptan", "ticket_types", "itso")
 
 # What the storage stub in screens.c opens for each table - the device's
 # APP_ASSETS_PATH, mapped by tools/test/stub/storage/storage.h - and the file
 # in the tree that holds it.
 TABLES = {
     "stub_assets_stations.dat": "assets/stations.dat",
+    "stub_assets_ticket_types.dat": "assets/ticket_types.dat",
     "stub_assets_naptan.dat": "data/naptan.dat",
 }
 

@@ -7,13 +7,17 @@
 /** About, with every table present and with none. */
 void about_screens(FuriString* text) {
     furi_string_reset(text);
-    flipso_format_about(text, "1.0", 4009, 400000, 3);
+    flipso_format_about(text, "1.0", 4009, 400000, 3467, 3);
     house_style("about", text);
     check(
         "about is a page to each thing it says",
-        titles_are(text, "Flipso|Station names|Bus stop names|Operator names|Saved cards"));
+        titles_are(
+            text, "Flipso|Station names|Ticket types|Bus stop names|Operator names|Saved cards"));
+    check(
+        "it counts the ticket types",
+        on_page(text, "Ticket types", "Installed: 3467 rail ticket types\n"));
     furi_string_reset(text);
-    flipso_format_about(text, NULL, 0, 0, 0);
+    flipso_format_about(text, NULL, 0, 0, 0, 0);
     house_style("about, nothing installed", text);
 }
 

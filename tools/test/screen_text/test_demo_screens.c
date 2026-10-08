@@ -4,6 +4,9 @@
  */
 #include "test_format.h"
 
+#include <locale/locale.h>
+#include <stdlib.h>
+
 /*
  * The encodings Demo 07 carries from a real GWR Touch card, pinned by the lines
  * only they produce: a gate check-in and check-out in the revision 4 shapes a
@@ -17,17 +20,17 @@ void demo_seven(const FlipsoFormat* f, const ItsoCard* card) {
     flipso_format_taps(text, f, card);
     check(
         "a check-in names the operator whose gate it was",
-        page_starts(text, "Tap in", "When: 18/09/2026 17:52\n") &&
-            on_page(text, "Tap in", "Tapped in with: Transport for London\n"));
+        page_starts(text, "Tap in 18/09", "When: 18/09/2026 17:52\n") &&
+            on_page(text, "Tap in 18/09", "Tapped in with: Transport for London\n"));
     /* The stub table knows no GWR stations, so the check is the shape, not the
      * names: a dated tap out with a destination and no fare line. */
     check(
         "a check-out with no amount is still a journey",
-        page_starts(text, "Tap out", "When: 18/09/2026 18:49\nFrom: ") &&
-            on_page(text, "Tap out", "\nTo: ") && !shows(text, "Fare: "));
+        page_starts(text, "Tap out 18/09", "When: 18/09/2026 18:49\nFrom: ") &&
+            on_page(text, "Tap out 18/09", "\nTo: ") && !shows(text, "Fare: "));
     check(
         "each record names the reader that wrote it, under Technical",
-        technical(text, "Tap out\n  When: 18/09/2026 18:49\n  Reader: FF00A3C7\n"));
+        technical(text, "\e#Tap out 18/09\n  When: 18/09/2026 18:49\n  Reader: FF00A3C7\n"));
 
     furi_string_reset(text);
     flipso_format_card(text, f, card, NULL, false, 0);
@@ -86,6 +89,24 @@ void demo_type2_full(const FlipsoFormat* f, const ItsoCard* card, bool ntag) {
         check(
             "its Abacus counts down its uses", shows(text, "Uses left: 10\n  Abacus: 5 of 16\n"));
         check("64-byte sectors are the layout", shows(text, "Layout: 9 sectors of 64 bytes\n"));
+
+        /* A ride off the carnet, which the reader left unspecified: the fare
+         * is the ride's value, and nothing claims a purse paid it. */
+        FuriString* taps = furi_string_alloc();
+        flipso_format_taps(taps, f, card);
+        check(
+            "a carnet ride names its fare and its carnet, and no purse",
+            shows(
+                taps,
+                "Fare: \xC2\xA3"
+                "1.80\nProduct: Journey ticket\n") &&
+                !shows(taps, "Paid by: "));
+        furi_string_reset(taps);
+        flipso_format_product(taps, f, card, &card->products[0]);
+        check(
+            "a bus ticket's route code is the operator's, and left as it is",
+            !shows(taps, "Any permitted"));
+        furi_string_free(taps);
 
         /* The same card with its Abacus run out (TS 1000-10 table 107). A copy
          * borrows the card's product and journey arrays, so it lives only as
@@ -168,7 +189,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         check("the toll pass's vehicle class", on_page(text, "Conditions", "Vehicle class: 2\n"));
         check(
             "the toll pass's owner data, as text, from the saved file",
-            technical(text, "Owner data: DC00417\n") &&
+            technical(text, "Operator's own data: DC00417\n") &&
                 technical(text, "Passback timeout: Set by the operator\n"));
     }
     furi_string_reset(text);
@@ -179,9 +200,10 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         page_starts(
             text,
             "History",
-            "Last transaction: Multi-leg journey\n  When: 19/09/2026 12:31\n"
+            "Multi-leg journey\n  When: 19/09/2026 12:31\n"
             "  Amount: -\xC2\xA3"
-            "3.50\nFare paid\n  When: 18/09/2026 08:12\n  Amount: -\xC2\xA3"
+            "3.50\n  Balance: \xC2\xA3"
+            "24.15\nFare paid\n  When: 18/09/2026 08:12\n  Amount: -\xC2\xA3"
             "3.55\n  Balance: \xC2\xA3"
             "27.65\nTop-up\n  When: 12/08/2026 18:05\n  Balance: \xC2\xA3"
             "31.20\n"));
@@ -203,22 +225,22 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             "two purses share one Technical page, last",
             titles_are(
                 text, "Pay as you go|Top-up|History|Pay as you go|Top-up|History|Technical") &&
-                on_page(text, "Technical", "\e#Pay as you go\nType code: 2.0\n") &&
-                on_page(text, "Technical", "\n\n\e#Pay as you go\nType code: 2.0\n"));
+                on_page(text, "Technical", "\e#Pay as you go\nITSO type: 2\n") &&
+                on_page(text, "Technical", "\n\n\e#Pay as you go\nITSO type: 2\n"));
     }
     furi_string_reset(text);
     flipso_format_id(text, f, card);
     check(
         "the ID and the entitlement, then their codes on one page",
         titles_are(text, "ITSO ID|Holder|ID terms|Entitlement|Entitlement terms|Technical") &&
-            on_page(text, "Technical", "\e#ITSO ID\nType code: 16.1\n") &&
-            on_page(text, "Technical", "\n\n\e#Entitlement\nType code: 14.0\n"));
+            on_page(text, "Technical", "\e#ITSO ID\nITSO type: 16\n  Operator's sub-type: 1\n") &&
+            on_page(text, "Technical", "\n\n\e#Entitlement\nITSO type: 14\n"));
     check(
         "the ID's first page is who and what the holder is",
         page_starts(
             text,
             "ITSO ID",
-            "Name: JAMIE OKONKWO-LEE\nExpires: 31/08/2031\n  Time left: 5 years\nStatus: Active\n") &&
+            "Name: JAMIE OKONKWO-LEE\nStatus: Active\nExpires: 31/08/2031\n  Time left: 5 years\n") &&
             on_page(text, "ITSO ID", "Operator: SEFT Central Products\n"));
     check("the holder's page", page_starts(text, "Holder", "Born: 14/05/1978\nGender: Male\n"));
     furi_string_reset(text);
@@ -233,31 +255,81 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             "Operator: Southeastern\n"));
     furi_string_reset(text);
     flipso_format_summary(text, f, card);
-    check("the summary's pages", titles_are(text, "Summary|Tickets|Not valid"));
+    check("the summary's pages", titles_are(text, "Summary|Not valid"));
     check(
-        "the card and the holder lead it, with their money and their pass",
-        page_starts(
+        "the tickets that can be used today lead it, a season by the pass in use",
+        page_starts(text, "Summary", "Period ticket: Until 20/10/2026\n  Passes left: 5\n"));
+    check(
+        "then the money, the holder and who they are to the scheme",
+        on_page(
             text,
             "Summary",
-            "Card: Active\nCard expires: 31/08/2031\nHolder: JAMIE OKONKWO-LEE\n"
-            "Pay as you go: \xC2\xA3"
-            "24.15\nITSO ID: Commuter\n") &&
-            on_page(text, "Summary", "Last tap: London Bridge\n"));
+            "\nPay as you go: \xC2\xA3"
+            "24.15\nHolder: JAMIE OKONKWO-LEE\nConcession: Commuter\n"));
     check(
-        "the tickets that can be used today are a page, a season by the pass in use",
-        page_starts(text, "Tickets", "Period ticket: Until 20/10/2026\n  Passes left: 5\n"));
+        "then the card, and the last tap",
+        on_page(
+            text,
+            "Summary",
+            "\nCard: Active\nCard expires: 31/08/2031\nLast tap: London Bridge\n"));
     check(
-        "and the ones that cannot, another",
+        "an account is good until it stops paying, not until it leaves the card",
+        on_page(text, "Summary", "Charge to account: Until 05/04/2027\n"));
+    {
+        /* After the account has stopped paying, and before the product leaves
+         * the card: it has ended, not expired. */
+        FlipsoFormat later = *f;
+        later.now = 1811808000u; /* 2027-06-01 */
+        FuriString* other = furi_string_alloc();
+        flipso_format_summary(other, &later, card);
+        check(
+            "an account that has stopped paying has ended, and cannot be used",
+            on_page(other, "Not valid", "Charge to account: Ended 05/04/2027\n"));
+        furi_string_free(other);
+    }
+    check(
+        "and the ones that cannot be used, a page of their own",
         on_page(text, "Not valid", "Loyalty: Blocked\n") &&
-            !on_page(text, "Tickets", "Loyalty: Blocked\n"));
+            !on_page(text, "Summary", "Loyalty: Blocked\n"));
     furi_string_reset(text);
     flipso_format_taps(text, f, card);
     check(
-        "the journeys: the last tap, a page a journey, then the readers",
-        titles_are(text, "Last tap|Tap in|Tap out|Tap out|Tap out|Technical"));
+        "the journeys: the last tap, a page a journey titled by its day, then the readers",
+        titles_are(
+            text, "Last tap|Tap in 21/09|Tap out 21/09|Tap out 19/09|Tap out 18/09|Technical"));
+    {
+        /* A record whose name would leave no room for its day is shortened in
+         * its title, and the day follows the locale's order. The taps are
+         * copied, so the card the later checks read is left as it was. */
+        ItsoCard renamed = *card;
+        ItsoTap* taps = malloc(sizeof(ItsoTap) * card->tap_count);
+        memcpy(taps, card->taps, sizeof(ItsoTap) * card->tap_count);
+        taps[0].transaction_type = 14; /* Multi-leg journey */
+        renamed.taps = taps;
+        FuriString* other = furi_string_alloc();
+        flipso_format_taps(other, f, &renamed);
+        check(
+            "a multi-leg journey's title keeps its day",
+            find_page(other, "Multi-leg 21/09") != NULL);
+        stub_locale_date_format = LocaleDateFormatMDY;
+        furi_string_reset(other);
+        flipso_format_taps(other, f, card);
+        check(
+            "a month-first locale titles it month first",
+            find_page(other, "Tap in 09/21") != NULL);
+        stub_locale_date_format = LocaleDateFormatYMD;
+        furi_string_reset(other);
+        flipso_format_taps(other, f, card);
+        check("and so does a year-first one", find_page(other, "Tap in 09/21") != NULL);
+        stub_locale_date_format = LocaleDateFormatDMY;
+        furi_string_free(other);
+        free(taps);
+    }
 
     flipso_format_summary(text, f, card);
-    check("an ITSO ID is summed up by its concession", shows(text, "ITSO ID: Commuter\n"));
+    check(
+        "an ITSO ID is summed up by its concession, not as the ID",
+        shows(text, "Concession: Commuter\n") && !shows(text, "ITSO ID: "));
 
     furi_string_reset(text);
     flipso_format_taps(text, f, card);
@@ -266,10 +338,10 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         shows(text, "\nProducts checked: Period ticket, Pay as you go, Journey ticket\n"));
     check(
         "the last tap says where it was",
-        page_starts(
-            text,
-            "Last tap",
-            "Inside ticket gates: Yes\nWhen: 21/09/2026 17:46\nAt: London Bridge\n"));
+        page_starts(text, "Last tap", "When: 21/09/2026 17:46\nAt: London Bridge\n"));
+    check(
+        "and whether the holder is inside the gates, last of all",
+        on_page(text, "Last tap", "Passback timeout: 20 min\nInside ticket gates: Yes\n"));
     {
         /* The place belongs to the newest record, so it is only said when that
          * record is the entry's: not after an update that wrote none, and not
@@ -294,7 +366,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         "a journey's page leads with its times, in the order they happened",
         strstr(
             furi_string_get_cstr(text),
-            "\e#\x14Tap out\nIn: 21/09/2026 07:12\nOut: 21/09/2026 08:03\nJourney time: 51 min\n") !=
+            "\e#\x14Tap out 21/09\nIn: 21/09/2026 07:12\nOut: 21/09/2026 08:03\nJourney time: 51 min\n") !=
             NULL);
     check(
         "a reader names its machine, then its operator, under Technical",
@@ -328,12 +400,12 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     flipso_format_payg(text, f, card);
     check(
         "the purse screen has its technical details",
-        page_starts(text, "Technical", "Type code: 2.0\n"));
+        page_starts(text, "Technical", "ITSO type: 2\n  Operator's sub-type: 0\n"));
     furi_string_reset(text);
     flipso_format_id(text, f, card);
     check(
         "the ID screen has technical details for each product",
-        shows(text, "Type code: 16.1\n") && shows(text, "Type code: 14.0\n"));
+        shows(text, "ITSO type: 16\n") && shows(text, "ITSO type: 14\n"));
 
     /* An identity document that is another product names it, a loyalty
      * scheme's own bytes are shown as they stand, and an owner numbered by
@@ -349,12 +421,72 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
             check(
                 "its passback is an instruction to the gate, under Technical",
                 technical(text, "Passback timeout: Set by the operator\n"));
+            check(
+                "its type is ITSO's, then the operator's own sub-type",
+                technical(text, "ITSO type: 22\n  Operator's sub-type: 2\n"));
+            check(
+                "its bitmap is the elements it names, from table 3.28",
+                technical(text, "Optional fields: Locations and route, ID document\n"));
+            check(
+                "and the remote changes its value record has had",
+                technical(text, "Remote changes applied: 3\n"));
+        } else if(p->typ == ItsoTypReservationTicket) {
+            check(
+                "a reserved journey is named by its ticket type, after where it goes",
+                on_page(text, "Reserved journey", "\nTicket type: Anytime Return\nStatus: "));
+            check(
+                "an off-peak band from midnight is a time not to travel before",
+                on_page(
+                    text,
+                    "Restrictions",
+                    "Valid times: Not before 09:30\n  Days: Mon-Fri\n"
+                    "  Applies to: Outward departures\n"));
+            check(
+                "a reservation's bitmap, from table 137",
+                technical(
+                    text,
+                    "Optional fields: Passenger, Discounts, routes and restrictions, "
+                    "Reservations\n"));
+        } else if(p->typ == ItsoTypChargeToAccount2) {
+            check(
+                "an account's end date says what ends",
+                on_page(text, "Charge to account", "Account ends: 05/04/2027\n") &&
+                    !shows(text, "Valid to: "));
+        } else if(p->typ == ItsoTypLoyalty2) {
+            check(
+                "an owner in the extended numbering range says so, not its low bits",
+                technical(text, "Operator number: 13870\n  Range: Extended\n"));
         } else if(p->typ == ItsoTypLoyalty1) {
-            check("loyalty shows its owner's data", shows(text, "Owner data: 321\n"));
+            check("loyalty shows its owner's data", shows(text, "Operator's own data: 321\n"));
+            check(
+                "a points change and the points held are told apart",
+                on_page(text, "History", "  Points: -850\n  Balance: 4250 points\n"));
+        } else if(p->typ == ItsoTypStoredTravelRights) {
+            /* A bit its table leaves RFU, which no card should set. */
+            ItsoProduct odd = *p;
+            odd.bitmap |= 0x20;
+            furi_string_reset(text);
+            flipso_format_product(text, f, card, &odd);
+            check(
+                "a bitmap bit the spec leaves reserved is named by its number",
+                technical(text, "Optional fields: Reserved bit 5\n"));
+        } else if(p->typ == ItsoTypEntitlement) {
+            /* EntitlementExpiryDate a month before the product's own. */
+            ItsoProduct sooner = *p;
+            sooner.terms.id.has_sub_expiry = true;
+            sooner.terms.id.sub_expiry = (ItsoDate)(p->expiry - 30);
+            furi_string_reset(text);
+            flipso_format_product(text, f, card, &sooner);
+            check(
+                "an entitlement that ends before its product says its benefit does",
+                on_page(text, "Entitlement terms", "Benefit until: 01/03/2027\n"));
         } else if(p->typ == ItsoTypJourneyTicket) {
             check(
                 "an owner on another network is a detail of its number",
                 technical(text, "Operator number: 289\n  Network: Not the card's own\n"));
+            check(
+                "a rail ticket's route 00000 is any permitted route",
+                technical(text, "Route code: Any permitted (00000)\n"));
         }
     }
 
@@ -414,7 +546,10 @@ void demo_fourteen(const FlipsoFormat* f, const ItsoCard* card) {
     check(
         "a paper ticket's pages",
         titles_are(text, "Book of tickets|Conditions|Use|Purchase|Technical"));
-    check("the days a carnet was used are its use", page_starts(text, "Use", "Day used: "));
+    check(
+        "the days a carnet was used are its use, with the passes no tick records",
+        page_starts(
+            text, "Use", "Used on day of issue: Yes\nTicket kept for last day: No\nDay used: "));
     check("its operator ends its first page", on_page(text, "Book of tickets", "Operator: SPT"));
     furi_string_reset(text);
     flipso_format_summary(text, f, card);
@@ -460,8 +595,9 @@ void demo_four(const FlipsoFormat* f, const ItsoCard* card) {
         page_starts(
             text,
             "History",
-            "Last transaction: Auto top-up\n  When: 20/09/2026 18:31\n  Amount: +\xC2\xA3"
-            "15.00\n"));
+            "Auto top-up\n  When: 20/09/2026 18:31\n  Amount: +\xC2\xA3"
+            "15.00\n  Balance: \xC2\xA3"
+            "26.45\n"));
     check(
         "the amount runs across from the card to the file",
         page_starts(

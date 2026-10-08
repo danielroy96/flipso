@@ -111,6 +111,18 @@ bool storage_simply_mkdir(Storage* storage, const char* path) {
     return mkdir(path, 0777) == 0 || errno == EEXIST;
 }
 
+/* Prefixed to a path the stub resolves, so a test can tell a resolved path
+ * from the alias the app was built with. */
+#define STUB_RESOLVED "resolved/"
+
+void storage_common_resolve_path_and_ensure_app_directory(Storage* storage, FuriString* path) {
+    (void)storage;
+    if(strncmp(furi_string_get_cstr(path), STUB_RESOLVED, strlen(STUB_RESOLVED)) == 0) return;
+    char real[256];
+    snprintf(real, sizeof(real), STUB_RESOLVED "%s", furi_string_get_cstr(path));
+    furi_string_set(path, real);
+}
+
 bool storage_simply_remove(Storage* storage, const char* path) {
     (void)storage;
     return remove(path) == 0;
@@ -187,6 +199,9 @@ void dialog_file_browser_set_basic_options(
     options->icon = icon;
 }
 
+char last_browser_base[128];
+char last_browser_start[128];
+
 bool dialog_file_browser_show(
     DialogsApp* context,
     FuriString* result_path,
@@ -194,8 +209,8 @@ bool dialog_file_browser_show(
     const DialogsFileBrowserOptions* options) {
     (void)context;
     (void)result_path;
-    (void)path;
-    (void)options;
+    snprintf(last_browser_base, sizeof(last_browser_base), "%s", options->base_path);
+    snprintf(last_browser_start, sizeof(last_browser_start), "%s", furi_string_get_cstr(path));
     return false; /* Nobody is here to choose one. */
 }
 

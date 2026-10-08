@@ -25,8 +25,10 @@
 /* Pixels per leading space. A fixed step rather than the font's own space,
  * which is narrow enough that a two-space indent barely shows. */
 #define FLIPSO_TEXT_INDENT_STEP 3
-/* How far the continuation of a wrapped "Label: value" line hangs in. */
-#define FLIPSO_TEXT_HANG        6
+/* How far the continuation of a wrapped "Label: value" line hangs in. One step
+ * deeper than a detail's two-space indent: at the same depth, the tail of a
+ * wrapped value read as a detail line of its own. */
+#define FLIPSO_TEXT_HANG        (3 * FLIPSO_TEXT_INDENT_STEP)
 /* Between a heading's icon and its text. */
 #define FLIPSO_TEXT_ICON_GAP    3
 /* Longest wrapped line we will assemble. No line of a 128px screen comes near

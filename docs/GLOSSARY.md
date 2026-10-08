@@ -204,7 +204,7 @@ as the specification spells them.
 | **EventTypeCode** | What a transaction was: Sale, Top-up, Tap in, Tap out, Fare paid, Refunded, Ticket activated and so on. |
 | **EXP** | The shell's expiry date: when the card itself expires. |
 | **Format revision** | The version of a product type's layout. Several types have more than one (TYP 22 has revisions 1-3) and the fields move between them. |
-| **FTOT** | Fares Type Of Ticket: rail's three-character code for the kind of ticket (single, return, off-peak and so on) in the fares data (*Fare type*). |
+| **FTOT** | Fares Type Of Ticket: rail's three-character code for the kind of ticket (single, return, off-peak and so on) in the fares data (*Fare type*). Flipso names it from the Rail Delivery Group's ticket types reference data: "SOR" is an Anytime Return. |
 | **FVC** | Format Version Code: which CMD the shell is laid out for. On a Type 2 tag it is what tells CMD4, CMD9 and CMD10 apart. |
 | **HalfDayOfWeek** | Which half-days a product is valid: two periods per day, defined by the network (annex A.10). |
 | **HolderID** | The issuer's number for the cardholder or their photo (*Holder number*); *SecondaryHolderID* is a second one. |

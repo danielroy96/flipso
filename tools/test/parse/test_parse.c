@@ -35,6 +35,7 @@ int main(void) {
 
     printf("\n== Fields from the TS 1000-5 review ==\n");
     spec_review_fields();
+    bitmap_names();
     reservation_ticket();
     rail_profile();
 

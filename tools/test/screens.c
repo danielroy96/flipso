@@ -18,6 +18,7 @@
 #include "format/flipso_format.h"
 #include "lookup/flipso_naptan.h"
 #include "lookup/flipso_stations.h"
+#include "lookup/flipso_ticket_types.h"
 #include "itso/itso_operators.h"
 #include "itso_i.h"
 
@@ -223,9 +224,11 @@ int main(int argc, char** argv) {
 
     FlipsoStations* stations = flipso_stations_alloc();
     FlipsoNaptan* naptan = flipso_naptan_alloc();
+    FlipsoTicketTypes* ticket_types = flipso_ticket_types_alloc();
     FlipsoFormat f = {
         .stations = stations,
         .naptan = naptan,
+        .ticket_types = ticket_types,
         .capture = capture,
         .now = (ItsoUnixTime)strtoul(argv[2], NULL, 10),
     };
@@ -268,6 +271,7 @@ int main(int argc, char** argv) {
 
     operators(&card);
 
+    flipso_ticket_types_free(ticket_types);
     flipso_naptan_free(naptan);
     flipso_stations_free(stations);
     flipso_capture_free(capture);

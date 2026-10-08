@@ -31,8 +31,10 @@ PARTS = {
     "media": ["reader/flipso_media.c"],
     "scan_session": ["reader/flipso_scan_session.c"],
     "operators": ["lookup/flipso_operators.c"],
-    "stations": ["lookup/flipso_stations.c"],
-    "naptan": ["lookup/flipso_naptan.c"],
+    # The SD card tables, each with the reader they share.
+    "stations": ["lookup/flipso_stations.c", "lookup/flipso_table.c"],
+    "naptan": ["lookup/flipso_naptan.c", "lookup/flipso_table.c"],
+    "ticket_types": ["lookup/flipso_ticket_types.c", "lookup/flipso_table.c"],
     "views": ["views/flipso_glyphs.c"],
     "menu_view": ["views/flipso_menu_view.c"],
     "text_view": ["views/flipso_text_view.c"],

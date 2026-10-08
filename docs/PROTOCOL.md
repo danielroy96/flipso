@@ -8,6 +8,7 @@ Contents:
 - [Oyster cards](#oyster-cards)
 - [Operator names and card branding](#operator-names-and-card-branding)
 - [Station names](#station-names)
+- [Ticket types](#ticket-types)
 - [Bus stop names](#bus-stop-names)
 - [How it reads the card](#how-it-reads-the-card)
 - [Specification references](#specification-references)
@@ -93,6 +94,16 @@ packaged table maps those to station names and fare group names, and the
 codes of the sales offices and ticket machines a ticket's retailer can name to
 theirs — see
 `tools/stations/FORMAT.md` and `tools/stations/SOURCES.md`.
+
+## Ticket types
+
+A reserved rail journey (TYP 24) carries its Fares Type of Ticket, the
+three-character code the RSP fares data prices it under (TS 1000-5 table 136,
+RSPS3002). The packaged table names those codes from the Rail Delivery Group's
+ticket types reference data - "SOR" is an Anytime Return - and the name goes
+on the ticket's first page, with the code under Technical. Like the station
+table it is a file asset searched in place, but opened only for the lookup:
+see `tools/ticket_types/FORMAT.md` and `tools/ticket_types/SOURCES.md`.
 
 ## Bus stop names
 
@@ -714,7 +725,7 @@ Beyond that:
 | TYP 16 — ITSO ID (rev 1, 2) | Holder name, date of birth, gender, companion and photo flags, entitlement, class, validity dates, locations; CPICC (the concessionary pass issuer), HolderID and SecondaryHolderID, language (annex A.24), HalfDayOfWeek, fare rounding rule, deposit and card deposit with payment, VAT and refundability, PrintTicket; the language is marked as not in use when IDFlags bit 3 sends a POST to another application |
 | TYP 22 — Period ticket (rev 1, 2, 3) | Validity start (DTS in rev 1–2, date and time in rev 3), from/to locations — or, when both are absent, that the area is the operator's to define — passes remaining, expiry of the active pass and of the unused stock, auto-renew and what it adds, stored-pass mode; days and AM/PM periods it is valid (ValidOnDayCode and TYP22Flags together), off-peak, transferable, end time, pass length and unit, party size, class, issue date, amount paid with payment and VAT, CPICC, validity and promotion codes, RouteCode, print flags; in rev 3, what a top-up does with expired passes (TreatmentOfExpiredSP) and the identity document it is valid only with, as a number, text or another product on the card, at the top of its screen and on the Summary |
 | TYP 23 — Journey ticket (rev 1, 2, 3) | Origin, destination, rides remaining, transfers made, auto-renew, used flag, stored-ride expiry (rev 3); issue date, validity start (rev 3), end time, class, party size, amount paid with payment and VAT, photocard number, CPICC, validity and promotion codes, RouteCode, print flags, and the mode group — how rides are counted (rev 3 adds return pairs), transfer and time limits, ride value in its own currency code |
-| TYP 24 — Reserved journey (rev 2) | The railcard it is valid only with, and the railcard number, on the first page and on the Summary; journeys remaining, transfers remaining (one total), part-used flag; single, return or either-way and journeys sold; outward and return portions, each a start and a period in days; origin, destination and their alternatives, Route, the station or operator that sold it; TYP24Flags (test ticket first, the others only when set, the clear ones under Technical); days it may be used and days restrictions apply, the operator it is limited to, class, party size, amount paid and how; the eight optional groups - associated products, out-of-station interchanges, break of journey and other transfers, valid times, specific trains, routing points, and under Technical the discount code, percentage and code type, and the supplement codes - the passenger's name and gender, ticket number, FTOT, restriction code and ID type; and the reserved legs of its VGXRef 3 extension: the kind of place, coach, seat or berth, which way it faces and where it is (below) |
+| TYP 24 — Reserved journey (rev 2) | The railcard it is valid only with, and the railcard number, on the first page and on the Summary; journeys remaining, transfers remaining (one total), part-used flag; single, return or either-way and journeys sold; outward and return portions, each a start and a period in days; origin, destination and their alternatives, Route, the station or operator that sold it; TYP24Flags (test ticket first, the others only when set, the clear ones under Technical); days it may be used and days restrictions apply, the operator it is limited to, class, party size, amount paid and how; the eight optional groups - associated products, out-of-station interchanges, break of journey and other transfers, valid times, specific trains, routing points, and under Technical the discount code, percentage and code type, and the supplement codes - the passenger's name and gender, ticket number, FTOT (named on the first page from the ticket type table), restriction code and ID type; and the reserved legs of its VGXRef 3 extension: the kind of place, coach, seat or berth, which way it faces and where it is (below) |
 | TYP 25 — Voucher | Uses remaining and auto-renew, with the uses each renewal adds (AutoRenewQuantity2); issue date, validity start, expiry time, the most it buys (MaxValue25, in its own currency), amount paid with payment and VAT, ServiceID and UserDefined, print flags, passback |
 | TYP 26 — Tolling | Crossings remaining (CountRemainingRidesJourneys) and auto-renew, with the crossings each renewal adds (AutoRenewQuantity3); vehicle class (TYP26Class, the owner's own numbering rather than EN1545's class code), issue date, validity start, print flags, passback, and under Technical the seven UserDefined bytes, read from the card's bytes as the screen is drawn |
 | TYP 27 — Period ticket (space saving) | Issue date, price paid and currency, adult or child, class, passback, off-peak and weekday restrictions, expiry time, where it is valid (fare code, fare value, or a LOC4 of origin, destination and via), last use, both event codes, photocard number, the expiry offset from the directory date, the InstanceID, and blocking by a zero Seal |

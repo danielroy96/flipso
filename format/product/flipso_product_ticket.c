@@ -168,7 +168,7 @@ void flipso_cat_toll_codes(FuriString* out, const FlipsoFormat* f, const ItsoPro
     const uint8_t* group = flipso_capture_product_group(f->capture, product->dir_index, &len);
     uint8_t data[ITSO_TOLL_USER_DATA_LEN];
     if(!group || !itso_toll_user_data(group, len, data)) return;
-    furi_string_cat(out, "Owner data: ");
+    furi_string_cat(out, "Operator's own data: ");
     flipso_cat_code_bytes(out, data, sizeof(data));
     furi_string_push_back(out, '\n');
 }

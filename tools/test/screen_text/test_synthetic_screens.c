@@ -108,8 +108,8 @@ void product_lines(const FlipsoFormat* f, const ItsoCard* card, FuriString* text
         furi_string_reset(text);
         flipso_format_product(text, f, card, &ticket);
         check(
-            "a ticket's zone map is where it is valid",
-            shows(text, "Valid in: Zones 1,2,3\n") && !shows(text, "From: Zones"));
+            "a ticket's zone map is its area",
+            shows(text, "Area: Zones 1,2,3\n") && !shows(text, "From: Zones"));
     }
 
     /* A location listing several stops, the first of which the stop table

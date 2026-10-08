@@ -46,6 +46,18 @@ void flipso_cat_short_date(FuriString* out, ItsoDate date) {
     furi_string_free(full);
 }
 
+void flipso_day_month(char* out, size_t len, ItsoUnixTime timestamp) {
+    DateTime dt;
+    datetime_timestamp_to_datetime(timestamp, &dt);
+    /* Day first wherever the locale puts the day before the month; a
+     * year-first locale reads month then day, as it does with the year. */
+    if(locale_get_date_format() == LocaleDateFormatDMY) {
+        snprintf(out, len, "%02u/%02u", dt.day, dt.month);
+    } else {
+        snprintf(out, len, "%02u/%02u", dt.month, dt.day);
+    }
+}
+
 void flipso_cat_time(FuriString* out, ItsoUnixTime timestamp) {
     flipso_cat_timestamp(out, timestamp, true);
 }

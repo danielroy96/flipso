@@ -72,7 +72,9 @@ void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
     check("the alternative origin", shows(text, "Or from: Station 0035\n"));
     check("a null alternative is left out", !shows(text, "Or to: "));
     check("the days", shows(text, "Valid days: Mon-Fri\n  Public holidays: No\n"));
-    check("the restricted days", shows(text, "Restrictions apply: Sat Sun\n"));
+    check(
+        "the days a restriction holds on are a detail of its times",
+        shows(text, "\n  Days: Sat Sun\n") && !shows(text, "Restrictions apply: "));
     check("one operator only", shows(text, "Only on operator: GR\n"));
     check("the railcard IPE it was sold with", shows(text, "Part of this ticket: ITSO ID\n"));
     check("a via", shows(text, "Via: Station 1555\n"));
@@ -85,7 +87,10 @@ void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
     check("break of journey, transfer type 2", shows(text, "Break of journey: Allowed\n"));
     check(
         "valid times, and the journeys they apply to",
-        shows(text, "Valid times: Outside 07:00-09:30\n  Applies to: Outward departures\n"));
+        shows(
+            text,
+            "Valid times: Not 07:00 to 09:30\n  Days: Sat Sun\n"
+            "  Applies to: Outward departures\n"));
     check(
         "a train it may not be used on",
         shows(text, "Not valid on train: GR1234\n  From: Station 1444\n  Departs: 18:30\n"));
@@ -125,7 +130,12 @@ void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
         "no type code left on the screen",
         !shows(text, "Type code: 0") && !shows(text, "Type code: 1\n"));
     check("the ticket number, under Technical", technical(text, "Ticket number: 123456\n"));
-    check("the fare type", technical(text, "Fare type: SOR\nRestriction code: OP\nID type: 1\n"));
+    check(
+        "the ticket type's code, under Technical",
+        technical(text, "Ticket type code: SOR\nRestriction code: OP\nID type: 1\n"));
+    check(
+        "and its name on the first page, from the RDG table",
+        on_page(text, "Reserved journey", "Ticket type: Anytime Return\n"));
     check(
         "the discount's code, rail's whole percent and its type under Technical",
         technical(
@@ -163,6 +173,47 @@ void reservation_screen(const FlipsoFormat* f, const ItsoCard* card) {
         sizeof(reservation_group));
     check("without the capture, the portions still show", shows(text, "Outward: 01/10/2026"));
     check("and the legs cannot be read", shows(text, "Reservations: Could not be read\n"));
+
+    {
+        /* The bus ticket's three time bands: good only within one, and an
+         * exclusion from midnight and one to the end of the day. */
+        static ItsoProduct bus;
+        FlipsoCapture* buses = flipso_capture_alloc();
+        flipso_capture_add(
+            buses, FlipsoBlockProduct, 9, reservation_atco_group, sizeof(reservation_atco_group));
+        FlipsoFormat on_bus = *f;
+        on_bus.capture = buses;
+        product_screen(
+            text,
+            &on_bus,
+            card,
+            &bus,
+            ItsoTypReservationTicket,
+            true,
+            reservation_atco_group,
+            sizeof(reservation_atco_group));
+        check(
+            "a band the ticket is good within is its hours",
+            on_page(
+                text,
+                "Restrictions",
+                "Valid times: 10:00 to 16:00\n  Applies to: Outward departures\n"));
+        check(
+            "an exclusion from midnight is a time not to travel before",
+            on_page(
+                text,
+                "Restrictions",
+                "Valid times: Not before 09:30\n  Applies to: Return departures\n"));
+        check(
+            "and one to the end of the day a time not to travel after",
+            on_page(
+                text,
+                "Restrictions",
+                "Valid times: Not after 15:59\n  Applies to: Return arrivals\n"));
+        check("with no days to say, it says none", !on_page(text, "Restrictions", "  Days: "));
+        flipso_capture_free(buses);
+        itso_product_free(&bus);
+    }
 
     /* The summary carries the test flag under the product's line. */
     ItsoCard one = *card;
