@@ -46,15 +46,15 @@ void flipso_cat_short_date(FuriString* out, ItsoDate date) {
     furi_string_free(full);
 }
 
-void flipso_cat_day_month(FuriString* out, ItsoUnixTime timestamp) {
+void flipso_day_month(char* out, size_t len, ItsoUnixTime timestamp) {
     DateTime dt;
     datetime_timestamp_to_datetime(timestamp, &dt);
     /* Day first wherever the locale puts the day before the month; a
      * year-first locale reads month then day, as it does with the year. */
     if(locale_get_date_format() == LocaleDateFormatDMY) {
-        furi_string_cat_printf(out, "%02u/%02u", dt.day, dt.month);
+        snprintf(out, len, "%02u/%02u", dt.day, dt.month);
     } else {
-        furi_string_cat_printf(out, "%02u/%02u", dt.month, dt.day);
+        snprintf(out, len, "%02u/%02u", dt.month, dt.day);
     }
 }
 

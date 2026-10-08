@@ -12,16 +12,45 @@ const ItsoTap* flipso_latest_tap(const ItsoCard* card) {
     return NULL;
 }
 
+/* Room for the longest title: a record's short name, a space and "20/09". */
+#define FLIPSO_TAP_TITLE_LEN 24
+
 /**
  * What a record was and the day it was made, "Tap out 20/09", which titles its
  * page and its Technical entry. A card's log is a run of pages that are
  * nearly all "Tap out", and with no page counter the day is what tells the
- * holder which one is on screen.
+ * holder which one is on screen. The names too long to leave room for the day
+ * beside them - "Multi-leg journey" - are shortened: a title too wide is cut
+ * from the end, and the day is what would go.
  */
-static void flipso_tap_title(FuriString* out, const ItsoTap* tap) {
-    furi_string_set(out, itso_transaction_name(tap->transaction_type));
-    furi_string_push_back(out, ' ');
-    flipso_cat_day_month(out, itso_dts_to_unix(tap->dts));
+static void flipso_tap_title(char* out, size_t len, const ItsoTap* tap) {
+    const char* name;
+    switch(tap->transaction_type) {
+    case 2:
+        name = "Outward";
+        break;
+    case 6:
+        name = "Return";
+        break;
+    case 9:
+        name = "Redeemed";
+        break;
+    case 13:
+        name = "Activated";
+        break;
+    case 14:
+        name = "Multi-leg";
+        break;
+    case 15:
+        name = "Payment";
+        break;
+    default:
+        name = itso_transaction_name(tap->transaction_type);
+        break;
+    }
+    char day[8];
+    flipso_day_month(day, sizeof(day), itso_dts_to_unix(tap->dts));
+    snprintf(out, len, "%s %s", name, day);
 }
 
 /**
@@ -36,11 +65,9 @@ static void flipso_cat_tap(
     const ItsoTap* tap) {
     /* The card's own log in the taps icon, and what only a saved file
      * remembers in the clock the product list gives a dropped product. */
-    FuriString* title = furi_string_alloc();
-    flipso_tap_title(title, tap);
-    flipso_cat_page(
-        out, tap->on_card ? FlipsoIconTaps : FlipsoIconPast, furi_string_get_cstr(title));
-    furi_string_free(title);
+    char title[FLIPSO_TAP_TITLE_LEN];
+    flipso_tap_title(title, sizeof(title), tap);
+    flipso_cat_page(out, tap->on_card ? FlipsoIconTaps : FlipsoIconPast, title);
     /* Said in words as well as by the icon, as a dropped product's first page
      * says it: everything below reads as a journey on the card in front of
      * the holder, and this one is only in the saved file. */
@@ -122,10 +149,9 @@ static bool flipso_tap_has_technical(const ItsoTap* tap) {
  */
 static void flipso_cat_tap_technical(FuriString* out, const FlipsoFormat* f, const ItsoTap* tap) {
     /* Bold, as the ID screen's Technical heads each of its products. */
-    FuriString* title = furi_string_alloc();
-    flipso_tap_title(title, tap);
-    flipso_cat_heading(out, FlipsoIconNone, furi_string_get_cstr(title));
-    furi_string_free(title);
+    char title[FLIPSO_TAP_TITLE_LEN];
+    flipso_tap_title(title, sizeof(title), tap);
+    flipso_cat_heading(out, FlipsoIconNone, title);
     flipso_cat_datetime_line(out, "  ", "When", tap->dts);
     /* The entry operator's own network, where it is not the card's. */
     if(tap->has_entry_oid && tap->entry_iin_index) {
