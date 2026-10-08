@@ -2,8 +2,8 @@
  * @file flipso_naptan.c
  * @brief Binary search over the packed NaPTAN stop table held on the SD card.
  *
- * The same seek-and-compare design as flipso_stations.c, and for the same
- * reason: the table stays on the card and is searched in place, so a lookup
+ * The same seek-and-compare design as flipso_stations.c, through the reader
+ * they share (flipso_table.c), and for the same reason: the table stays on the card and is searched in place, so a lookup
  * costs a handful of short reads whatever the table holds. That matters more
  * here than it does for stations, because this table is two orders of
  * magnitude larger - NaPTAN lists around 390,000 active stops.
@@ -20,6 +20,7 @@
  * tools/naptan/FORMAT.md.
  */
 #include "flipso_naptan.h"
+#include "flipso_table.h"
 
 #include <furi.h>
 #include <storage/storage.h>
@@ -40,31 +41,15 @@
 
 struct FlipsoNaptan {
     Storage* storage;
-    File* file;
+    FlipsoTable table;
     bool open;
     uint32_t stops; /**< NaptanCode index entries, ascending by folded code. */
     uint32_t atcos; /**< AtcoCode index entries, ascending by memcmp order. */
     uint32_t atco_index; /**< Absolute offset of the AtcoCode index. */
-    uint32_t names; /**< Absolute offset of the name blob. */
-    uint32_t size; /**< File size, so a corrupt offset cannot read past the end. */
     /* Scratch for the entry being examined, and the name handed back. */
     uint8_t entry[FLIPSO_NAPTAN_ATCO_ENTRY];
     char name[FLIPSO_NAPTAN_NAME_MAX + 1];
 };
-
-static uint32_t flipso_naptan_le(const uint8_t* bytes, size_t n) {
-    uint32_t value = 0;
-    for(size_t i = 0; i < n; i++) {
-        value |= (uint32_t)bytes[i] << (8 * i);
-    }
-    return value;
-}
-
-static bool
-    flipso_naptan_read_at(FlipsoNaptan* instance, uint32_t offset, void* into, uint16_t length) {
-    if(!storage_file_seek(instance->file, offset, true)) return false;
-    return storage_file_read(instance->file, into, length) == length;
-}
 
 /**
  * Validate the header and record what the searches need from it.
@@ -73,18 +58,19 @@ static bool
  * file that disagrees with itself is refused here instead of sending a search
  * off the end of it. The table lives on a removable card.
  */
-static bool flipso_naptan_read_header(FlipsoNaptan* instance) {
+static bool flipso_naptan_check(FlipsoTable* table, void* context) {
+    FlipsoNaptan* instance = context;
     uint8_t header[FLIPSO_NAPTAN_HEADER];
-    if(!flipso_naptan_read_at(instance, 0, header, sizeof(header))) return false;
+    if(!flipso_table_read_at(table, 0, header, sizeof(header))) return false;
 
     if(memcmp(header, FLIPSO_NAPTAN_MAGIC, 4) != 0) return false;
     if(header[4] != FLIPSO_NAPTAN_VERSION) return false;
     if(header[5] > FLIPSO_NAPTAN_NAME_MAX) return false;
 
-    instance->stops = flipso_naptan_le(header + 8, 4);
-    instance->atcos = flipso_naptan_le(header + 12, 4);
-    instance->atco_index = flipso_naptan_le(header + 16, 4);
-    instance->names = flipso_naptan_le(header + 20, 4);
+    instance->stops = flipso_table_le(header + 8, 4);
+    instance->atcos = flipso_table_le(header + 12, 4);
+    instance->atco_index = flipso_table_le(header + 16, 4);
+    table->names = flipso_table_le(header + 20, 4);
 
     if(instance->stops == 0 && instance->atcos == 0) return false;
     /* Guard the multiplications below before performing them. */
@@ -96,20 +82,14 @@ static bool flipso_naptan_read_header(FlipsoNaptan* instance) {
     if(stop_bytes > UINT32_MAX - FLIPSO_NAPTAN_HEADER) return false;
     if(instance->atco_index != FLIPSO_NAPTAN_HEADER + stop_bytes) return false;
     if(atco_bytes > UINT32_MAX - instance->atco_index) return false;
-    if(instance->names != instance->atco_index + atco_bytes) return false;
-    return instance->names <= instance->size;
+    if(table->names != instance->atco_index + atco_bytes) return false;
+    return table->names <= table->size;
 }
 
 /** Open @p path if it holds a table we understand. */
 static bool flipso_naptan_try(FlipsoNaptan* instance, const char* path) {
-    if(!storage_file_open(instance->file, path, FSAM_READ, FSOM_OPEN_EXISTING)) {
-        /* A failed open still has to be closed; see flipso_stations_try(). */
-        storage_file_close(instance->file);
-        return false;
-    }
-
-    instance->size = (uint32_t)storage_file_size(instance->file);
-    if(flipso_naptan_read_header(instance)) {
+    switch(flipso_table_try(&instance->table, path, flipso_naptan_check, instance)) {
+    case FlipsoTableReady:
         FURI_LOG_I(
             TAG,
             "Stop table: %lu NaptanCodes, %lu AtcoCodes from %s",
@@ -117,11 +97,12 @@ static bool flipso_naptan_try(FlipsoNaptan* instance, const char* path) {
             instance->atcos,
             path);
         return true;
+    case FlipsoTableUnusable:
+        FURI_LOG_W(TAG, "Unusable stop table at %s", path);
+        return false;
+    default:
+        return false;
     }
-
-    FURI_LOG_W(TAG, "Unusable stop table at %s", path);
-    storage_file_close(instance->file);
-    return false;
 }
 
 FlipsoNaptan* flipso_naptan_alloc(void) {
@@ -129,7 +110,7 @@ FlipsoNaptan* flipso_naptan_alloc(void) {
     memset(instance, 0, sizeof(FlipsoNaptan));
 
     instance->storage = furi_record_open(RECORD_STORAGE);
-    instance->file = storage_file_alloc(instance->storage);
+    instance->table.file = storage_file_alloc(instance->storage);
 
     instance->open = flipso_naptan_try(instance, FLIPSO_NAPTAN_USER_PATH) ||
                      flipso_naptan_try(instance, FLIPSO_NAPTAN_ASSET_PATH);
@@ -139,8 +120,8 @@ FlipsoNaptan* flipso_naptan_alloc(void) {
 
 void flipso_naptan_free(FlipsoNaptan* instance) {
     furi_assert(instance);
-    storage_file_close(instance->file);
-    storage_file_free(instance->file);
+    storage_file_close(instance->table.file);
+    storage_file_free(instance->table.file);
     furi_record_close(RECORD_STORAGE);
     free(instance);
 }
@@ -151,28 +132,6 @@ bool flipso_naptan_available(const FlipsoNaptan* instance) {
 
 uint32_t flipso_naptan_count(const FlipsoNaptan* instance) {
     return flipso_naptan_available(instance) ? instance->stops : 0;
-}
-
-/**
- * Copy the name an index entry points at into the instance buffer.
- * @param at  offset of the name pointer within the entry.
- */
-static const char* flipso_naptan_fetch(FlipsoNaptan* instance, const uint8_t* entry, size_t at) {
-    uint32_t offset = flipso_naptan_le(entry + at, 3);
-    uint8_t length = entry[at + 3];
-
-    if(length == 0 || length > FLIPSO_NAPTAN_NAME_MAX) return NULL;
-    /* Written as subtractions rather than as names + offset + length: the
-     * offset is 24 bits of whatever the file happened to contain, and the sum
-     * of three of these can wrap a uint32 and pass a check it should fail.
-     * The header check has already established names <= size. */
-    if(offset > instance->size - instance->names) return NULL;
-    if(length > instance->size - instance->names - offset) return NULL;
-    if(!flipso_naptan_read_at(instance, instance->names + offset, instance->name, length))
-        return NULL;
-
-    instance->name[length] = '\0';
-    return instance->name;
 }
 
 /**
@@ -194,6 +153,13 @@ static bool flipso_naptan_key(const char* digits, uint32_t* out) {
     return true;
 }
 
+/** The stop index is keyed on the folded code as a little-endian number. */
+static int flipso_naptan_stop_order(const uint8_t* entry, const void* key) {
+    const uint32_t code = flipso_table_le(entry, 4);
+    const uint32_t wanted = *(const uint32_t*)key;
+    return code < wanted ? -1 : code > wanted ? 1 : 0;
+}
+
 const char* flipso_naptan_stop(FlipsoNaptan* instance, const char* digits) {
     if(!flipso_naptan_available(instance) || digits == NULL) return NULL;
     if(instance->stops == 0) return NULL;
@@ -201,26 +167,18 @@ const char* flipso_naptan_stop(FlipsoNaptan* instance, const char* digits) {
     uint32_t wanted;
     if(!flipso_naptan_key(digits, &wanted)) return NULL;
 
-    uint32_t low = 0;
-    uint32_t high = instance->stops;
-
-    while(low < high) {
-        uint32_t mid = low + (high - low) / 2;
-        uint32_t at = FLIPSO_NAPTAN_HEADER + mid * FLIPSO_NAPTAN_STOP_ENTRY;
-        if(!flipso_naptan_read_at(instance, at, instance->entry, FLIPSO_NAPTAN_STOP_ENTRY))
-            return NULL;
-
-        uint32_t code = flipso_naptan_le(instance->entry, 4);
-        if(code == wanted) {
-            return flipso_naptan_fetch(instance, instance->entry, 4);
-        } else if(code < wanted) {
-            low = mid + 1;
-        } else {
-            high = mid;
-        }
+    if(!flipso_table_find(
+           &instance->table,
+           FLIPSO_NAPTAN_HEADER,
+           instance->stops,
+           FLIPSO_NAPTAN_STOP_ENTRY,
+           flipso_naptan_stop_order,
+           &wanted,
+           instance->entry)) {
+        return NULL;
     }
-
-    return NULL;
+    return flipso_table_name(
+        &instance->table, instance->entry, 4, instance->name, FLIPSO_NAPTAN_NAME_MAX);
 }
 
 /**
@@ -242,6 +200,11 @@ static bool flipso_naptan_atco_key(const char* atco, uint8_t* out) {
     return i > 0;
 }
 
+/** The AtcoCode index is keyed on twelve zero-padded bytes, in memcmp order. */
+static int flipso_naptan_atco_order(const uint8_t* entry, const void* key) {
+    return memcmp(entry, key, FLIPSO_NAPTAN_ATCO_MAX);
+}
+
 const char* flipso_naptan_atco(FlipsoNaptan* instance, const char* atco) {
     if(!flipso_naptan_available(instance) || atco == NULL) return NULL;
     if(instance->atcos == 0) return NULL;
@@ -249,24 +212,20 @@ const char* flipso_naptan_atco(FlipsoNaptan* instance, const char* atco) {
     uint8_t wanted[FLIPSO_NAPTAN_ATCO_MAX];
     if(!flipso_naptan_atco_key(atco, wanted)) return NULL;
 
-    uint32_t low = 0;
-    uint32_t high = instance->atcos;
-
-    while(low < high) {
-        uint32_t mid = low + (high - low) / 2;
-        uint32_t at = instance->atco_index + mid * FLIPSO_NAPTAN_ATCO_ENTRY;
-        if(!flipso_naptan_read_at(instance, at, instance->entry, FLIPSO_NAPTAN_ATCO_ENTRY))
-            return NULL;
-
-        int order = memcmp(instance->entry, wanted, FLIPSO_NAPTAN_ATCO_MAX);
-        if(order == 0) {
-            return flipso_naptan_fetch(instance, instance->entry, FLIPSO_NAPTAN_ATCO_MAX);
-        } else if(order < 0) {
-            low = mid + 1;
-        } else {
-            high = mid;
-        }
+    if(!flipso_table_find(
+           &instance->table,
+           instance->atco_index,
+           instance->atcos,
+           FLIPSO_NAPTAN_ATCO_ENTRY,
+           flipso_naptan_atco_order,
+           wanted,
+           instance->entry)) {
+        return NULL;
     }
-
-    return NULL;
+    return flipso_table_name(
+        &instance->table,
+        instance->entry,
+        FLIPSO_NAPTAN_ATCO_MAX,
+        instance->name,
+        FLIPSO_NAPTAN_NAME_MAX);
 }

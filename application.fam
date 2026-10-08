@@ -23,6 +23,7 @@ App(
         "reader/flipso_media.c",
         "cards/*.c",
         "lookup/flipso_operators.c",
+        "lookup/flipso_table.c",
         "lookup/flipso_stations.c",
         "lookup/flipso_naptan.c",
         "lookup/flipso_ticket_types.c",
