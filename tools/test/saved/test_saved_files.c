@@ -14,6 +14,15 @@ void round_trip(void) {
     flipso_capture_set_time(capture, 1758400000u);
 
     check("nothing is saved yet", !flipso_saved_any());
+    {
+        /* With no card to open on, the list opens on its folder. */
+        FuriString* picked = furi_string_alloc();
+        flipso_saved_pick(picked, NULL);
+        check(
+            "an empty saved list opens on its folder",
+            strcmp(last_browser_start, "resolved/" FLIPSO_SAVED_FOLDER) == 0);
+        furi_string_free(picked);
+    }
 
     FuriString* path = furi_string_alloc();
     flipso_saved_path(path, "Test Card");

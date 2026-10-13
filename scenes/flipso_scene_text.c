@@ -73,12 +73,14 @@ void flipso_scene_text_on_enter(void* context) {
             flipso_version(),
             flipso_stations_count(app->stations),
             flipso_naptan_count(app->naptan),
+            flipso_ticket_types_count(app->ticket_types),
+            flipso_ticket_restrictions_count(app->ticket_restrictions),
             flipso_operators_user_count(app->operators));
         break;
     }
 
+    /* The panel takes the string itself, not a copy, and frees it. */
     flipso_show_text(app, text);
-    furi_string_free(text);
 }
 
 bool flipso_scene_text_on_event(void* context, SceneManagerEvent event) {
@@ -89,5 +91,7 @@ bool flipso_scene_text_on_event(void* context, SceneManagerEvent event) {
 
 void flipso_scene_text_on_exit(void* context) {
     Flipso* app = context;
-    flipso_text_view_set_text(app->text_view, "");
+    /* Its memory back now, not when the next screen replaces it: the next
+     * screen is built while this one's text would otherwise still be held. */
+    flipso_text_view_clear(app->text_view);
 }

@@ -31,6 +31,9 @@ extern long stub_write_budget;
 extern bool stub_rename_fails;
 /** The header of the last message the dialogs service was asked to show. */
 extern char last_alert[128];
+/* What the last file browser was opened on: its base folder and start path. */
+extern char last_browser_base[128];
+extern char last_browser_start[128];
 
 /* --- test_saved_util.c --- */
 

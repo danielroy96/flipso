@@ -96,6 +96,8 @@ FlipsoFormat flipso_format_context(const Flipso* app) {
         .operators = app->operators,
         .stations = app->stations,
         .naptan = app->naptan,
+        .ticket_types = app->ticket_types,
+        .ticket_restrictions = app->ticket_restrictions,
         .capture = app->capture,
         .media = &app->media,
         .now = flipso_now(),
@@ -109,8 +111,8 @@ void flipso_reset_card_menus(Flipso* app) {
     app->selected_product = 0;
 }
 
-void flipso_show_text(Flipso* app, const FuriString* text) {
-    flipso_text_view_set_text(app->text_view, furi_string_get_cstr(text));
+void flipso_show_text(Flipso* app, FuriString* text) {
+    flipso_text_view_take_text(app->text_view, text);
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipsoViewText);
 }
 
@@ -202,6 +204,8 @@ static Flipso* flipso_alloc(void) {
     app->operators = flipso_operators_alloc();
     app->stations = flipso_stations_alloc();
     app->naptan = flipso_naptan_alloc();
+    app->ticket_types = flipso_ticket_types_alloc();
+    app->ticket_restrictions = flipso_ticket_restrictions_alloc();
 
     return app;
 }
@@ -228,6 +232,8 @@ static void flipso_free(Flipso* app) {
     flipso_operators_free(app->operators);
     flipso_stations_free(app->stations);
     flipso_naptan_free(app->naptan);
+    flipso_ticket_types_free(app->ticket_types);
+    flipso_ticket_restrictions_free(app->ticket_restrictions);
 
     view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewScan);
     view_dispatcher_remove_view(app->view_dispatcher, FlipsoViewMenu);

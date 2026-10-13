@@ -65,17 +65,20 @@ void flipso_scene_menu_on_enter(void* context) {
      * single product's owner is the only thing on it naming the operator - see
      * itso_card_issuer_oid().
      *
-     * A blocked shell displaces the branding entirely. The header is the one
-     * line of this screen that is read every time, and someone who never opens
-     * Card would otherwise leave without learning the card is dead. A retired
-     * CMD9, whose Abacus has run out, is as dead: a POST rejects it too. */
+     * A blocked shell says so after the branding. The header is the one line
+     * of this screen that is read every time, and someone who never opens
+     * Card would otherwise leave without learning the card is dead - but
+     * "Blocked card" alone left them not knowing which card. The suffix is
+     * kept whole and a long brand cut to make room. A retired CMD9, whose
+     * Abacus has run out, is as dead: a POST rejects it too. */
     const char* brand = flipso_operators_brand(app->operators, itso_card_issuer_oid(&app->card));
     const bool retired = itso_card_retired(&app->card);
-    flipso_menu_view_set_header(
+    flipso_menu_view_set_header(menu, brand ? brand : "ITSO card");
+    flipso_menu_view_set_header_suffix(
         menu,
-        app->card.shell_blocked ? "Blocked card" :
-        retired                 ? "Retired card" :
-                                  (brand ? brand : "ITSO card"));
+        app->card.shell_blocked ? " (Blocked)" :
+        retired                 ? " (Retired)" :
+                                  NULL);
     flipso_menu_view_set_header_icon(
         menu, app->card.shell_blocked || retired ? &I_warning_10px : &I_card_10px);
 
@@ -118,7 +121,16 @@ void flipso_scene_menu_on_enter(void* context) {
             card_tag = "Expired";
         }
     }
-    flipso_menu_view_add_tagged_item(menu, "Card", card_tag, &I_card_10px, FlipsoCardMenuRowCard);
+    /* A paper ticket's Card screen is its chip and the codes behind it: its
+     * state and operator are its ticket's, on the row above - and one with no
+     * ticket on it is still a chip, whose screen opens on the chip. */
+    const bool paper = app->card.shell_compact;
+    flipso_menu_view_add_tagged_item(
+        menu,
+        paper ? "Chip" : "Card",
+        card_tag,
+        paper ? &I_chip_10px : &I_card_10px,
+        FlipsoCardMenuRowCard);
 
     const ItsoProduct* purse = flipso_find_product(&app->card, ItsoTypStoredTravelRights);
     if(purse) {

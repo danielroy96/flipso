@@ -23,7 +23,7 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
              {"Fare code: 0\n",
               "Ends at: Set by the operator\n",
               "Off-peak only: No\n",
-              "Event 2: Tap out\n",
+              "Events recorded: Tap out\n",
               "  Operator: SPT (Strathclyde)\n"}},
             {"TYP 29 return",
              cmd4_return,
@@ -37,10 +37,10 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
             {"TYP 28 carnet",
              cmd4_carnet,
              sizeof(cmd4_carnet),
-             {"Passes left: 3\n",
+             {"Tickets left: 3\n",
               "Day used: ",
-              "Valid on day of issue: Yes\n",
-              "Valid on day of expiry: Yes\n",
+              "Used on day of issue: Yes\n",
+              "Ticket kept for last day: Yes\n",
               "Ends at: 23:59 on the expiry date\n"}},
             {"TYP 29 multi-leg",
              cmd4_multileg,
@@ -59,7 +59,7 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
              sizeof(cmd4_fare_value),
              {"Area: Set by fare value\n  Fare value: \xC2\xA3"
               "1.75\n",
-              "Event 1: Tap in\n",
+              "Events recorded: Tap in, ",
               "Photocard number: 424242\n",
               "Passback timeout: Set by the operator\n",
               "Travellers: 1 adult\n"}},
@@ -69,20 +69,20 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
              {"Area: Zones 1,2,3\n",
               "Photocard number: None\n",
               "Last used: Never\n",
-              "Event 1: Other\n",
+              "Events recorded: None\n",
               "Issued: "}},
             {"TYP 28 between stations",
              cmd4_journey_area,
              sizeof(cmd4_journey_area),
              {"From: London Waterloo\n",
               "To: Station 1444\n",
-              "Passes left: 6\n",
-              "Valid on day of issue: No\n",
+              "Tickets left: 6\n",
+              "Used on day of issue: No\n",
               "Ends at: 23:59 on the expiry date\n"}},
             {"TYP 29 scaled backup",
              cmd4_backup_scaled,
              sizeof(cmd4_backup_scaled),
-             {"Backup count: Up to 12\n  Step: 4\n  Agrees with rides left: Yes\n",
+             {"Backup count: 9 to 12\n  Agrees with rides left: Yes\n",
               "Price paid: \xC2\xA3"
               "15.00\n",
               "Last used: Never\n",
@@ -148,7 +148,7 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
             technical(text, "Operator number: 8323\n") && !shows(text, "(compact)"));
         check("and is not the screen's headline", !shows(text, "Card number\n"));
         check("a paper ticket shows its UID", shows(text, "UID: 04A2B3C4D5E6F7\n"));
-        check("and its chip maker", shows(text, "Maker: NXP\n"));
+        check("and its chip maker", shows(text, "Manufacturer: NXP\n"));
         check("and its memory", shows(text, "Memory: 64 bytes\n"));
         check(
             "and which pages are locked, as ITSO requires",
@@ -161,10 +161,9 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
             !shows(text, "sectors") && !shows(text, "Directory: ") && !shows(text, "Key set: ") &&
                 !shows(text, "Update count: "));
         check("a paper ticket shows no 2041 expiry", !shows(text, "2041"));
-        check("an in-date paper ticket is active", shows(text, "Status: Active\n"));
-        furi_string_reset(text);
-        flipso_format_card(text, &later, &t2, NULL, false, 0);
-        check("an expired paper ticket says so", shows(text, "Status: Expired "));
+        check(
+            "a paper ticket's card screen is its chip, its state being its ticket's",
+            titles_are(text, "Chip|Technical") && !shows(text, "Status: "));
         furi_string_reset(text);
         flipso_format_summary(text, &later, &t2);
         check(
@@ -179,9 +178,9 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
         flipso_format_summary(text, f, &t2);
         check(
             "a day ticket's summary has its state, last use and price",
-            shows(
+            page_starts(
                 text,
-                "Ticket: Active\n"
+                "Summary",
                 "Paper period ticket: Until 27/09/2026\n"
                 "Last used: 27/09/2026 17:47\n"
                 "Price paid: \xC2\xA3"
@@ -193,12 +192,12 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
         flipso_format_summary(text, f, &t2);
         check(
             "a return's summary has its rides left and where it was last used",
-            shows(
+            page_starts(
                 text,
-                "Ticket: Active\n"
+                "Summary",
                 "Multi-use ticket: Until 26/09/2026\n"
                 "  Rides left: 1\n"
-                "Last used: Hillhead\n"
+                "Last used at: Hillhead\n"
                 "Price paid: \xC2\xA3"
                 "3.30\n"));
         check("a place with no time claims no time", !shows(text, "When: "));
@@ -224,7 +223,7 @@ void paper_ticket_screens(const FlipsoFormat* f, FuriString* text) {
         check("a single never used says so", shows(text, "Last used: Never\n"));
         furi_string_reset(text);
         flipso_format_card(text, f, &t2, NULL, false, 0);
-        check("an Infineon chip is named", shows(text, "Maker: Infineon\n"));
+        check("an Infineon chip is named", shows(text, "Manufacturer: Infineon\n"));
         check(
             "a ticket locked short of ITSO's rule says what is still writable",
             shows(text, "Locked pages: 6-9\n  As ITSO requires: No\n  Still writable: 10-13\n"));

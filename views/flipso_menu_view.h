@@ -49,6 +49,17 @@ void flipso_menu_view_reset(FlipsoMenuView* instance);
 /** Set the title above the list. Pass NULL for a list with no header. */
 void flipso_menu_view_set_header(FlipsoMenuView* instance, const char* header);
 
+/** Most of a header suffix that is drawn, terminator included. */
+#define FLIPSO_MENU_SUFFIX_LEN 16
+
+/**
+ * Draw @p suffix, " (Blocked)", after the header and always in full: when the
+ * two do not fit, the header is cut rather than the suffix. @p suffix is not
+ * copied, so it must outlive the view - a string literal. NULL for none;
+ * flipso_menu_view_reset() clears it.
+ */
+void flipso_menu_view_set_header_suffix(FlipsoMenuView* instance, const char* suffix);
+
 /**
  * Draw @p icon to the left of the header text, the two centred as one group.
  * Pass NULL for no icon. Not owned; the caller keeps the icon alive.

@@ -82,7 +82,7 @@ appear on Flipso's screens.
 | **Railcard** | A National Rail discount card - typically a third off fares - for a group of people: the 16-25, Senior, Disabled Persons, Two Together, Family & Friends Railcards and others. A ticket bought with one is only valid when the railcard is carried, hence *Valid only with*. |
 | **Reservation** | A seat, berth, wheelchair space or bicycle space booked on a particular train. |
 | **Reserved journey** | A rail ticket with reservations, carrying what a paper ticket would: dates, route, railcard, seats (TYP 24). |
-| **Restriction code** | A rail code that refers to a published set of conditions on when a ticket may be used, typically which trains count as off-peak. |
+| **Restriction code** | A rail code that refers to a published set of conditions on when a ticket may be used, typically which trains count as off-peak. Flipso says what a reserved journey's code allows in National Rail's words, from the Rail Delivery Group's ticket restrictions feed: "OP" is "Not valid on trains timed to depart before 09.30". |
 | **Retail service ID** | The eight-character code (RSID) that identifies a train on a given day for rail retailing and seat reservations: the operator's two letters, a four-digit number and two digits for the portion of a train that splits. Recorded on a reservation. |
 | **Return** | A ticket for a journey and the journey back. *Return, journeys in pairs* is a journey ticket whose rides are counted as outward-and-return pairs. |
 | **Rides** | Journeys a journey ticket or carnet allows. *Rides left* counts them down. |
@@ -204,7 +204,7 @@ as the specification spells them.
 | **EventTypeCode** | What a transaction was: Sale, Top-up, Tap in, Tap out, Fare paid, Refunded, Ticket activated and so on. |
 | **EXP** | The shell's expiry date: when the card itself expires. |
 | **Format revision** | The version of a product type's layout. Several types have more than one (TYP 22 has revisions 1-3) and the fields move between them. |
-| **FTOT** | Fares Type Of Ticket: rail's three-character code for the kind of ticket (single, return, off-peak and so on) in the fares data (*Fare type*). |
+| **FTOT** | Fares Type Of Ticket: rail's three-character code for the kind of ticket (single, return, off-peak and so on) in the fares data (*Fare type*). Flipso names it from the Rail Delivery Group's ticket types reference data: "SOR" is an Anytime Return. |
 | **FVC** | Format Version Code: which CMD the shell is laid out for. On a Type 2 tag it is what tells CMD4, CMD9 and CMD10 apart. |
 | **HalfDayOfWeek** | Which half-days a product is valid: two periods per day, defined by the network (annex A.10). |
 | **HolderID** | The issuer's number for the cardholder or their photo (*Holder number*); *SecondaryHolderID* is a second one. |

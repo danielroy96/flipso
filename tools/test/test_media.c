@@ -45,6 +45,28 @@ const char* flipso_naptan_atco(FlipsoNaptan* instance, const char* atco) {
     return NULL;
 }
 
+bool flipso_ticket_restrictions_find(
+    FlipsoTicketRestrictions* instance,
+    const uint8_t code[FLIPSO_TICKET_RESTRICTION_CODE_LEN],
+    FuriString* name,
+    FuriString* outward,
+    FuriString* back) {
+    (void)instance;
+    (void)code;
+    (void)name;
+    (void)outward;
+    (void)back;
+    return false;
+}
+
+const char* flipso_ticket_types_name(
+    FlipsoTicketTypes* instance,
+    const uint8_t code[FLIPSO_TICKET_TYPE_CODE_LEN]) {
+    (void)instance;
+    (void)code;
+    return NULL;
+}
+
 static void shows(const FuriString* text, const char* needle) {
     check(needle, strstr(furi_string_get_cstr(text), needle) != NULL);
 }
@@ -138,10 +160,10 @@ int main(void) {
     dump("Oyster", text);
 
     shows(text, "MIFARE DESFire EV1");
-    shows(text, "Storage: 2048 bytes");
+    shows(text, "Memory: 2048 bytes");
     shows(text, "Free space: 1248 bytes");
     shows(text, "UID: 048B1FF1AD2680");
-    shows(text, "Made: Week 42 of 2008");
+    shows(text, "Manufactured: Week 42 of 2008");
     shows(text, "4F5931: Oyster");
     shows(text, "Files read from: Oyster\n");
     /* A page to each file, titled with its number. */
@@ -209,7 +231,7 @@ int main(void) {
     dump("Unlisted applications, readable files", text);
 
     shows(text, "MIFARE DESFire EV3");
-    shows(text, "Storage: Up to 8192 bytes");
+    shows(text, "Memory: Up to 8192 bytes");
     shows(text, "Listed by the card: No");
     shows(text, "ABCDEF: Unknown\n");
     shows(text, "\nContents: DEADBEEF\n");

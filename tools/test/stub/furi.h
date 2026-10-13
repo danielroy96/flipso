@@ -86,6 +86,22 @@ static inline size_t furi_string_size(const FuriString* s) {
     return s->len;
 }
 
+/** Make room for @p size bytes in all, as the firmware's does. */
+static inline void furi_string_reserve(FuriString* s, size_t size) {
+    if(size + 1 > s->cap) {
+        s->cap = size + 1;
+        s->data = realloc(s->data, s->cap);
+    }
+}
+
+/** Keep the first @p index characters, as the firmware's does. */
+static inline void furi_string_left(FuriString* s, size_t index) {
+    if(index < s->len) {
+        s->len = index;
+        s->data[index] = '\0';
+    }
+}
+
 static inline void furi_string_push_back(FuriString* s, char c) {
     furi_string_grow(s, 1);
     s->data[s->len++] = c;

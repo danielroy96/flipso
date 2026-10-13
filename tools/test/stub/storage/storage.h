@@ -55,4 +55,9 @@ typedef enum {
 } FS_Error;
 
 bool storage_common_exists(Storage* storage, const char* path);
+
+typedef struct FuriString FuriString;
+/* The firmware turns the /data alias into the app's real folder; the host's
+ * paths are real already, and the stub marks that it was asked. */
+void storage_common_resolve_path_and_ensure_app_directory(Storage* storage, FuriString* path);
 FS_Error storage_common_rename(Storage* storage, const char* old_path, const char* new_path);

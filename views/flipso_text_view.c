@@ -25,8 +25,10 @@
 /* Pixels per leading space. A fixed step rather than the font's own space,
  * which is narrow enough that a two-space indent barely shows. */
 #define FLIPSO_TEXT_INDENT_STEP 3
-/* How far the continuation of a wrapped "Label: value" line hangs in. */
-#define FLIPSO_TEXT_HANG        6
+/* How far the continuation of a wrapped "Label: value" line hangs in. One step
+ * deeper than a detail's two-space indent: at the same depth, the tail of a
+ * wrapped value read as a detail line of its own. */
+#define FLIPSO_TEXT_HANG        (3 * FLIPSO_TEXT_INDENT_STEP)
 /* Between a heading's icon and its text. */
 #define FLIPSO_TEXT_ICON_GAP    3
 /* Longest wrapped line we will assemble. No line of a 128px screen comes near
@@ -465,6 +467,20 @@ View* flipso_text_view_get_view(FlipsoTextView* instance) {
     return instance->view;
 }
 
+/** Back to the top of the first page of whatever the model now holds. */
+static void flipso_text_view_rewind(FlipsoTextModel* model) {
+    model->page = 0;
+    model->pages = 1;
+    for(const char* c = furi_string_get_cstr(model->text);
+        (c = strchr(c, FLIPSO_TEXT_PAGE)) != NULL;
+        c++) {
+        model->pages++;
+    }
+    model->scroll = 0;
+    model->lines = 0;
+    model->rows = 0;
+}
+
 void flipso_text_view_set_text(FlipsoTextView* instance, const char* text) {
     furi_assert(instance);
     furi_assert(text);
@@ -473,16 +489,38 @@ void flipso_text_view_set_text(FlipsoTextView* instance, const char* text) {
         FlipsoTextModel * model,
         {
             furi_string_set_str(model->text, text);
-            model->page = 0;
-            model->pages = 1;
-            for(const char* c = text; (c = strchr(c, FLIPSO_TEXT_PAGE)) != NULL; c++) {
-                model->pages++;
-            }
-            model->scroll = 0;
-            model->lines = 0;
-            model->rows = 0;
+            flipso_text_view_rewind(model);
         },
         true);
+}
+
+void flipso_text_view_take_text(FlipsoTextView* instance, FuriString* text) {
+    furi_assert(instance);
+    furi_assert(text);
+    with_view_model(
+        instance->view,
+        FlipsoTextModel * model,
+        {
+            furi_string_free(model->text);
+            model->text = text;
+            flipso_text_view_rewind(model);
+        },
+        true);
+}
+
+void flipso_text_view_clear(FlipsoTextView* instance) {
+    furi_assert(instance);
+    with_view_model(
+        instance->view,
+        FlipsoTextModel * model,
+        {
+            /* A fresh string rather than an emptied one: emptying keeps the
+             * capacity, and that is the memory this is here to give back. */
+            furi_string_free(model->text);
+            model->text = furi_string_alloc();
+            flipso_text_view_rewind(model);
+        },
+        false);
 }
 
 void flipso_text_view_set_icons(FlipsoTextView* instance, const Icon* const* icons, uint8_t count) {

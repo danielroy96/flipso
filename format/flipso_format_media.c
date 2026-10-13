@@ -29,7 +29,7 @@ void flipso_cat_chip_summary(FuriString* out, const FlipsoMedia* media) {
     uint32_t bytes = flipso_media_storage_bytes(media->hw_storage, &exact);
     if(bytes) {
         furi_string_cat_printf(
-            out, "Storage: %s%lu bytes\n", exact ? "" : "Up to ", (unsigned long)bytes);
+            out, "Memory: %s%lu bytes\n", exact ? "" : "Up to ", (unsigned long)bytes);
     }
     if(media->free_memory_valid) {
         furi_string_cat_printf(out, "Free space: %lu bytes\n", (unsigned long)media->free_memory);
@@ -43,7 +43,7 @@ void flipso_cat_chip_summary(FuriString* out, const FlipsoMedia* media) {
     uint8_t week = flipso_bcd(media->prod_week);
     if(week >= 1 && week <= 53) {
         furi_string_cat_printf(
-            out, "Made: Week %u of 20%02u\n", week, flipso_bcd(media->prod_year));
+            out, "Manufactured: Week %u of 20%02u\n", week, flipso_bcd(media->prod_year));
     }
 }
 

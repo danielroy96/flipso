@@ -23,6 +23,39 @@ const char* flipso_stations_name(FlipsoStations* instance, const char* nlc) {
     return NULL;
 }
 
+const char* flipso_ticket_types_name(
+    FlipsoTicketTypes* instance,
+    const uint8_t code[FLIPSO_TICKET_TYPE_CODE_LEN]) {
+    (void)instance;
+    if(memcmp(code, "SOR", FLIPSO_TICKET_TYPE_CODE_LEN) == 0) return "Anytime Return";
+    return NULL;
+}
+
+bool flipso_ticket_restrictions_find(
+    FlipsoTicketRestrictions* instance,
+    const uint8_t code[FLIPSO_TICKET_RESTRICTION_CODE_LEN],
+    FuriString* name,
+    FuriString* outward,
+    FuriString* back) {
+    (void)instance;
+    furi_string_reset(name);
+    furi_string_reset(outward);
+    furi_string_reset(back);
+    /* One the same both ways, and one with a name and its own words each way. */
+    if(memcmp(code, "OP", FLIPSO_TICKET_RESTRICTION_CODE_LEN) == 0) {
+        furi_string_cat_str(outward, "Not valid on trains timed to depart before 09.30");
+        furi_string_cat_str(back, "Not valid on trains timed to depart before 09.30");
+        return true;
+    }
+    if(memcmp(code, "O1", FLIPSO_TICKET_RESTRICTION_CODE_LEN) == 0) {
+        furi_string_cat_str(name, "Chiltern Off-Peak (From 0930)");
+        furi_string_cat_str(outward, "Not valid on trains timed to depart before 09:30.");
+        furi_string_cat_str(back, "Valid on any train.");
+        return true;
+    }
+    return false;
+}
+
 const char* flipso_naptan_stop(FlipsoNaptan* instance, const char* digits) {
     (void)instance;
     if(strcmp(digits, "00062624") == 0) return "High Street";

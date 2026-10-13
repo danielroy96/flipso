@@ -70,6 +70,7 @@ void log_sectors(void);
 /* --- Products and locations --- */
 
 void spec_review_fields(void); /* test_spec_review.c */
+void bitmap_names(void);
 void reservation_ticket(void); /* test_reservation.c */
 void value_changes(const ItsoCard* card); /* test_value_change.c */
 void rail_profile(void); /* test_rail_profile.c */
