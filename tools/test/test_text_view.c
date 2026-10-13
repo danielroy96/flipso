@@ -408,6 +408,24 @@ int main(void) {
     render(text);
     check("an empty panel draws nothing", canvas.text_count == 0 || line_drawn(""));
 
+    /* --- A screen handed over rather than copied, and given back on exit. The
+     * panel owns the string from here: ASan reports a double free or a leak if
+     * take or clear gets that wrong. --- */
+    FuriString* owned = furi_string_alloc();
+    furi_string_cat_str(owned, "\e#One\nFirst page\n\f\e#Two\nSecond page\n");
+    flipso_text_view_take_text(text, owned);
+    render(text);
+    check("a handed-over screen is drawn", on_screen("First page"));
+    press(text, InputKeyRight, InputTypeShort);
+    render(text);
+    check("and pages as a copied one does", on_screen("Second page"));
+    flipso_text_view_clear(text);
+    render(text);
+    check("cleared, it draws nothing", !on_screen("First page") && !on_screen("Second page"));
+    flipso_text_view_set_text(text, "Operator: Reading Buses\n");
+    render(text);
+    check("and takes text again after", on_screen("Reading Buses"));
+
     flipso_text_view_free(text);
 
     printf("\n%s\n", failures ? "FAILED" : "All text view tests passed");

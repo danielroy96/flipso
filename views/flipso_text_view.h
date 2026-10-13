@@ -65,6 +65,21 @@ View* flipso_text_view_get_view(FlipsoTextView* instance);
 void flipso_text_view_set_text(FlipsoTextView* instance, const char* text);
 
 /**
+ * As flipso_text_view_set_text(), but taking @p text itself rather than a
+ * copy of it: the panel owns it from here, and frees it. A screen's text runs
+ * to a few KB, and building it, copying it and the panel's last screen held
+ * three copies at once as the reserved journey opened - more than the heap
+ * had to spare beside a screenshot session.
+ */
+void flipso_text_view_take_text(FlipsoTextView* instance, FuriString* text);
+
+/**
+ * Empty the panel and give its string's memory back, rather than keeping it
+ * at the size of the longest screen shown until the next one replaces it.
+ */
+void flipso_text_view_clear(FlipsoTextView* instance);
+
+/**
  * Icons a heading can name, numbered from 1 in the order given.
  *
  * Not copied: the table and the icons must outlive the view, which static
