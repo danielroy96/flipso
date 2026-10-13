@@ -81,8 +81,9 @@ tools/flipper/flipctl walk <scratch>/leak ok back --repeat 5       # open and cl
 It ends with the free heap at the end of each repeat and the drift from the
 first to the last. `--repeat` repeats every step it is given, which is why the
 navigation is a walk of its own. Compare repeats with each other, not with the
-idle figure: the text panel keeps its longest string until the app exits
-(CLAUDE.md), so the first open of a long screen costs once and then holds.
+idle figure: the menus, the card and the lookups' state are held while the
+app runs. The text panel gives its string back when a screen closes (since
+2026-10-13; it used to keep the longest one until the app exited).
 
 Then exit the app entirely and confirm the heap comes back to the idle figure —
 that is the test for teardown, and it catches anything the scene manager did not

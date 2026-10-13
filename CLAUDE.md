@@ -102,7 +102,11 @@ cards/                flipso_capture*.c: the raw blocks a read produced (the sto
 lookup/               flipso_operators.c operator id -> name, built-in table plus the
                       user's file; flipso_stations.c NLC -> station name, binary search
                       over the SD card table; flipso_naptan.c NaptanCode/AtcoCode ->
-                      bus stop name, same design
+                      bus stop name, same design; flipso_ticket_types.c
+                      rail FTOT -> ticket type name, same design but opened per lookup;
+                      flipso_ticket_restrictions.c rail restriction code -> what it
+                      allows, likewise; flipso_table.c the open, search and name
+                      fetch they all share
 scenes/               one file per scene; every paged text screen is the one
                       text scene (flipso_open_text()); list in flipso_scene_config.h
 views/                custom views (the icon list, the text panel, the scan screen),
@@ -124,6 +128,9 @@ tools/demo/           the builder for the synthetic demo cards the About menu op
 assets/demo/          those demo cards, generated - rerun the builder, never edit;
                       run.sh fails when they are stale
 tools/stations/       station table builder and its data provenance
+tools/ticket_types/   ticket type table builder, RDG's source XML and its provenance
+tools/ticket_restrictions/ restriction table builder, RDG's feed response and its
+                      provenance
 data/                 reference data shipped but not packaged; see its README
 tools/naptan/         stop table builder; data/naptan.dat is its output
 tools/icons/          pixel art the images/ icons are generated from
@@ -152,14 +159,21 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-91.0 KB of the 290 KB file as of 2026-10-04 - 1.8 KB of that came with
+96.4 KB of the 540 KB file as of 2026-10-13 - 1.2 KB of that came with the
+ticket restriction reader and its screen (95.2 KB on 2026-10-08), 2.9 KB with the UI
+review's fixes, the decoded Technical pages and the ticket type reader (92.2 KB
+before, measured the same day), 1.8 KB with
 splitting the sources a responsibility to a file (a call between files is not
 inlined, and a string used in several files is stored once in each), 2.2 KB
 with the paged screens and the title icons, 10.4 KB with the TYP 24 decoder, its screen and the rail
-railcard and seat tables, 76 KB before - because the 141 KB station table and the 26 KB of demo cards live in
+railcard and seat tables, 76 KB before - because the 141 KB station table, the
+58 KB ticket type table, the 117 KB ticket restriction table and the 26 KB of
+demo cards live in
 `.fapassets`, which the firmware unpacks to the SD card and never maps.
 Anything added as a `const` array *does* reach RAM. With the app at its idle
-scan screen 30.9 KB of the heap is free (measured 2026-10-04). A card on
+scan screen 26.6 KB of the heap is free (measured 2026-10-08, fresh boot;
+30.9 KB in another boot on 2026-10-04, which says as much about the boot as
+the build - see below). A card on
 screen costs what it holds: `ItsoCard` allocates its products (268 bytes each
 on the device since 2026-10-04; 672 before, when every product carried every
 type's fields, eight value records and its locations as display text), each
@@ -172,21 +186,29 @@ free. A location is kept as the card's bytes and rendered as it is drawn
 non-ITSO DESFire's file list are allocated only for the cards that have them.
 A TYP 24's screen decodes the rest of its dataset and its reservations as it
 is drawn, about 750 bytes for Demo 01's two legs, once for the whole screen
-and freed before the text is shown. With it open, 22.1 KB is free (measured
+and freed before the text is shown. With it open, 16.4 KB is free, and five
+open-and-close cycles leave it there to the byte (measured 2026-10-13 on a
+fresh boot; 17.6 KB on 2026-10-08, before the restriction table, and 22.1 KB on
 2026-10-04). In that boot the build before the struct review of 2026-10-04
 left 29.4 KB at idle and 18.0 KB with it open, so the review gave back 1.5 KB
 at idle and 4.1 KB with a card on screen.
 
-The text panel keeps its string at the size of the longest screen shown until
-the app exits, so a screen's text is not given back when it closes: back at
-the scan screen the heap is 1.5 KB short of idle after a period ticket and
-2.8 KB short after Demo 01's reserved journey, Flipso's longest screen. That
-is a high-water mark, not a leak - five open-and-close cycles leave the heap
-to the byte where one did (measured 2026-10-02) - so compare like with like:
-measure a leak as cycles against the same screen, not against a fresh launch.
+The text panel takes a screen's string rather than copying it, and gives it
+back when the screen closes (`flipso_text_view_take_text()`,
+`flipso_text_view_clear()`). Until 2026-10-13 it copied the text and kept its
+string at the size of the longest screen shown, so reopening the reserved
+journey held the old copy while the new one was built: with a screenshot
+session's 12 KB alongside, that was more than the heap had, and the Flipper
+rebooted twice in one afternoon. Still compare like with like - measure a leak
+as cycles against the same screen, not against a fresh launch.
 The firmware's file browser takes 7.4 KB while the saved-card list is open,
 and a screenshot or push borrows about 12 KB for its RPC session, which takes
-the low-water mark down to 8.4 KB on a screenshot-heavy check. Read the free
+the low-water mark down to 3.8 KB on a screenshot-heavy check of the reserved
+journey (2026-10-13) - the narrowest margin the app has, so measure that walk
+after any change to the screen.
+Hours of them in one boot can leave too little for the next screen: on
+2026-10-08 the device rebooted itself opening the reserved journey after a long
+session, and the same walk on a fresh boot was fine. Reboot before measuring. Read the free
 heap with the app up and compare within one boot: the desktop's own idle
 figure moves by 15 KB between boots and gives it back when an app opens, so a
 difference against it is not the app's cost.
