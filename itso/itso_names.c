@@ -47,6 +47,58 @@ const char* itso_typ_name(uint8_t typ) {
     }
 }
 
+const char* itso_rail_product_name(uint8_t typ, uint8_t ptyp) {
+    if(typ == ItsoTypPeriodTicket) {
+        /* RSPS3002 3.6.2. Four PTYPs are all "Season Ticket"; the profile does
+         * not say what tells them apart. */
+        switch(ptyp) {
+        case 0:
+        case 1:
+        case 2:
+        case 3:
+            return "Season ticket";
+        case 4:
+            /* "Charge To Account season ticket (Flexismart)". */
+            return "Flexismart season";
+        case 5:
+            /* "Season ticket with stored passes (Flexi Season)". */
+            return "Flexi Season";
+        case 19:
+            return "Travelcard";
+        case 28:
+            return "Rover ticket";
+        case 29:
+            return "PlusBus";
+        case 30:
+            return "Gate pass";
+        case 31:
+            return "Staff pass";
+        default:
+            return NULL;
+        }
+    }
+    if(typ == ItsoTypJourneyTicket) {
+        /* RSPS3002 3.7.2. */
+        switch(ptyp) {
+        case 1:
+            return "Peak single";
+        case 2:
+            return "Off-peak single";
+        case 3:
+            return "Peak return";
+        case 4:
+            return "Off-peak return";
+        case 5:
+            return "Peak carnet";
+        case 6:
+            return "Off-peak carnet";
+        default:
+            return NULL;
+        }
+    }
+    return NULL;
+}
+
 const char* itso_entitlement_name(uint8_t code) {
     switch(code) {
     case 0:

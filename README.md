@@ -50,7 +50,7 @@ Station and operator names are resolved on the device from bundled reference
 data.
 
 <p align="center">
-  <img src="docs/screenshots/sheet.png" width="816" alt="Twelve Flipso screens, numbered in the order a walk through the demo cards reaches them: the scan screen, the demo card list, a card menu, the card number and expiry, Pay as you go, the products list, a period ticket, a blocked card's menu, an ITSO ID, the last tap, a Subway paper ticket with one ride left, and the screen asking for a card to be held against the back">
+  <img src="docs/screenshots/sheet.png" width="816" alt="Twelve Flipso screens, numbered in the order a walk through the demo cards reaches them: the scan screen, the demo card list, a card menu, the card number and expiry, Pay as you go, the products list, a season ticket, a blocked card's menu, an ITSO ID, the last tap, a Subway paper ticket with one ride left, and the screen asking for a card to be held against the back">
 </p>
 
 ## Getting started

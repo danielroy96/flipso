@@ -939,6 +939,36 @@ group count that runs past its end stops the walk there: the groups before it
 are shown, and Technical says the rest ran past the dataset. No real TYP 24 has
 been seen; Demo 01 carries one built from the specification.
 
+RSPS3002 also allocates the IPE sub-type, PTYP, of TYP 22 and 23 (sections
+3.6.2 and 3.7.2), and every TOC and retailer is to use it. Elsewhere a PTYP is
+the owner's own number - a bus operator's TYP 22 PTYP 2 means whatever that
+operator decided - so Flipso uses the allocation only on a product that shows
+it is rail: one end a rail location (LocDefType 203 or 208, which PlusBus
+uses at both ends, appendix C.3), or a retailer in the station range above. The
+owner is no test, for the reason the retailer's is not. Such a product is named
+by its PTYP everywhere a product is named - the Summary, the product list, its
+own screen's first page, a journey's **Product:** - and Technical keeps the
+number with the name beside it, **Operator's sub-type: 29 (PlusBus)**. Any
+other product, and a PTYP the table leaves unallocated, keeps its ITSO name.
+
+| TYP | PTYP | RSPS3002's name | Flipso's title |
+| --- | --- | --- | --- |
+| 22 | 0, 1, 2, 3 | Season Ticket | Season ticket |
+| 22 | 4 | Charge To Account season ticket (Flexismart) | Flexismart season |
+| 22 | 5 | Season ticket with stored passes (Flexi Season) | Flexi Season |
+| 22 | 19 | Travelcards | Travelcard |
+| 22 | 28 | Rover Tickets | Rover ticket |
+| 22 | 29 | PlusBus | PlusBus |
+| 22 | 30 | Gate Passes | Gate pass |
+| 22 | 31 | Staff Passes | Staff pass |
+| 23 | 1, 2 | Peak Single, Off Peak Single | Peak single, Off-peak single |
+| 23 | 3, 4 | Peak Return, Off Peak Return | Peak return, Off-peak return |
+| 23 | 5, 6 | Peak Carnet, Off Peak Carnet | Peak carnet, Off-peak carnet |
+
+The profile does not say what tells the four season ticket PTYPs apart. Its
+TYP 24 PTYP (1, all products) and its TYP 14 and 16 ones (1, a railcard or
+concession) name nothing a title does not already.
+
 ### The records behind the live one
 
 The records the live one displaces are the transactions before it, and Flipso

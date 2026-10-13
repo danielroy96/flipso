@@ -13,6 +13,15 @@ extern "C" {
 const char* itso_typ_name(uint8_t typ);
 
 /**
+ * What National Rail calls a TYP 22 or 23 product by its PTYP - "Season
+ * ticket", "PlusBus", "Off-peak return" - from the allocation RSPS3002 makes in
+ * 3.6.2 and 3.7.2. NULL for a PTYP it leaves unallocated, and for any other
+ * type. Only meaningful for a product itso_product_rail() accepts: elsewhere
+ * the PTYP is its owner's own number.
+ */
+const char* itso_rail_product_name(uint8_t typ, uint8_t ptyp);
+
+/**
  * SPT Glasgow Subway station name for its 1-15 station id, or NULL if out of
  * range. Scheme-specific, not from the ITSO spec: see the table's provenance in
  * itso_names.c. The Subway's tickets are a compact-shell Type 2 medium

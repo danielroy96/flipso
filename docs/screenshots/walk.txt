@@ -18,7 +18,7 @@ menu=ok                     # Demo 01's card menu
 card=down ok
 payg=back down ok
 products=back down down down ok
-product-detail=ok           # the period ticket
+product-detail=ok           # the season ticket
 back back back down ok      # the list again, and Demo 02's card menu
 id=down down down ok
 journeys=back down ok

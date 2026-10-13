@@ -156,8 +156,8 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
         uint8_t typ;
         const char* pages;
     } kinds[] = {
-        {ItsoTypPeriodTicket, "Period ticket|Passes|Conditions|Purchase|History|Technical"},
-        {ItsoTypJourneyTicket, "Journey ticket|Rides|Conditions|Purchase|History|Technical"},
+        {ItsoTypPeriodTicket, "Season ticket|Passes|Conditions|Purchase|History|Technical"},
+        {ItsoTypJourneyTicket, "Off-peak return|Rides|Conditions|Purchase|History|Technical"},
         {ItsoTypReservationTicket,
          "Reserved journey|Leg 1|Leg 2|Restrictions|Route|Details|Purchase|History|Technical"},
         {ItsoTypChargeToAccount2, "Charge to account|Account|History|Technical"},
@@ -258,7 +258,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     check("the summary's pages", titles_are(text, "Summary|Not valid"));
     check(
         "the tickets that can be used today lead it, a season by the pass in use",
-        page_starts(text, "Summary", "Period ticket: Until 20/10/2026\n  Passes left: 5\n"));
+        page_starts(text, "Summary", "Season ticket: Until 20/10/2026\n  Passes left: 5\n"));
     check(
         "then the money, the holder and who they are to the scheme",
         on_page(
@@ -335,7 +335,7 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
     flipso_format_taps(text, f, card);
     check(
         "the products a gate checked are one line",
-        shows(text, "\nProducts checked: Period ticket, Pay as you go, Journey ticket\n"));
+        shows(text, "\nProducts checked: Season ticket, Pay as you go, Off-peak return\n"));
     check(
         "the last tap says where it was",
         page_starts(text, "Last tap", "When: 21/09/2026 17:46\nAt: London Bridge\n"));
@@ -422,8 +422,8 @@ void demo_one(const FlipsoFormat* f, const ItsoCard* card) {
                 "its passback is an instruction to the gate, under Technical",
                 technical(text, "Passback timeout: Set by the operator\n"));
             check(
-                "its type is ITSO's, then the operator's own sub-type",
-                technical(text, "ITSO type: 22\n  Operator's sub-type: 2\n"));
+                "its type is ITSO's, then the sub-type and the name rail gives it",
+                technical(text, "ITSO type: 22\n  Operator's sub-type: 2 (Season ticket)\n"));
             check(
                 "its bitmap is the elements it names, from table 3.28",
                 technical(text, "Optional fields: Locations and route, ID document\n"));

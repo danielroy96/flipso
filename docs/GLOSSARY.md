@@ -58,6 +58,7 @@ appear on Flipso's screens.
 | **Fare rounding** | How a reader rounds a half or proportional fare for this holder - up, down or to the nearest unit. |
 | **Fare stage** | A point along a bus route where the fare changes. Bus fares are often priced from one stage to another, and older ticket machines record the stage number rather than a stop. The Glasgow Subway records its 15 stations as fare stages. |
 | **Fare type** | See *FTOT*. |
+| **Flexi Season** | A rail season ticket of stored day passes - eight in 28 days - for people who travel some days a week rather than every day. A rail period ticket with PTYP 5 (RSPS3002). |
 | **Follow-on renewal** | A season ticket bought to start when the current one ends. One of the reserved journey's flags. |
 | **Gates, ticket gates** | The barriers at a station that open for a valid ticket. See *closed system*. |
 | **Interchange** | Changing from one train, bus or line to another. An *out-of-station interchange* is a change between two nearby stations that needs the passenger to leave one and walk to the other, permitted on the same ticket within a time limit (*Change stations at*). |
@@ -75,6 +76,7 @@ appear on Flipso's screens.
 | **Pay as you go** | Money stored on the card and spent on fares as they are travelled, rather than a ticket bought in advance. ITSO calls it *Stored Travel Rights* (TYP 2); it is also called a *purse* or *e-purse*. |
 | **Period ticket** | A ticket for unlimited travel between two places or within an area for a period - anything from a day to a year. One of a week or longer is a *season ticket*. TYP 22 on a smartcard, TYP 27 on a paper ticket. |
 | **Photocard** | A card bearing the holder's photo that must be carried with a ticket or railcard. *Photocard number* identifies it. |
+| **PlusBus** | A ticket for unlimited bus travel around a town, bought with a train ticket to or from its station. A rail period ticket with PTYP 29, both ends of which are the station's NLC (RSPS3002 appendix C). |
 | **Portion** | On a ticket, one half of a return: see *Outward / Return*. Not the railway's other sense of a portion, the part of a train that divides from the rest. |
 | **Promotion code** | An operator's code for the offer or promotion a ticket was sold under. |
 | **Public holidays** | Bank holidays, which some tickets treat differently from ordinary weekdays (*Special days*). |
@@ -88,7 +90,8 @@ appear on Flipso's screens.
 | **Rides** | Journeys a journey ticket or carnet allows. *Rides left* counts them down. |
 | **Route** | On a rail ticket, the route the passenger must take: a five-digit *Route code* from the fares data, such as `00000` for *Any Permitted*, which Flipso shows as the code itself. On a bus, the service number. |
 | **Routing point** | A station a rail ticket's route is defined by - a place the journey must, or must not, pass through. |
-| **Season ticket** | See *Period ticket*. |
+| **Rover** | A rail ticket for unlimited travel within an area over a set number of days. A rail period ticket with PTYP 28. |
+| **Season ticket** | A period ticket of a week or longer. On rail it is the name of a product: Flipso titles a rail period ticket *Season ticket* when its PTYP is one RSPS3002 gives that name to (0 to 3), and the other rail period tickets *Travelcard*, *PlusBus* and so on. See *Period ticket*. |
 | **Single** | A ticket for one journey in one direction. |
 | **Sleeper** | An overnight train with berths - not the beam the rails are laid on. |
 | **Stored pass** | One of several passes a period ticket holds in reserve, activated one at a time. *Unused passes until* is when the stock expires. |
@@ -98,6 +101,7 @@ appear on Flipso's screens.
 | **Top-up** | Adding money to pay as you go, or passes or rides to a ticket. |
 | **Transfer** | Changing to another service partway through a journey without paying again. *Transfers left* counts how many changes remain; *Changes allowed* sets the limit. |
 | **Transferable** | A ticket that may be used by someone other than the person who bought it. |
+| **Travelcard** | A rail ticket that adds travel on London's Underground, buses and trams within a set of zones (*Zone*). A rail period ticket with PTYP 19. |
 | **TVM** | Ticket vending machine: a self-service ticket machine at a station. Each one has an NLC of its own, so a ticket bought from one names the machine as its seller - *Sold by: High Wycombe (TVM)*. A number tells a station's machines apart: *(TVM 2)*. |
 | **Valid days** | The days of the week a ticket may be used, such as *Weekdays only*. |
 | **Validity code** | An operator's code for the conditions a ticket is valid under. |

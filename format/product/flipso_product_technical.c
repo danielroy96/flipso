@@ -28,21 +28,6 @@ static void flipso_cat_optional_fields(FuriString* out, const ItsoProduct* produ
 }
 
 /**
- * True when a ticket's locations are railway ones, which is when RSPS3002
- * gives its RouteCode the RSP fares data's meaning (its TYP 22 and 23 field
- * tables: "the 5 digit route code ... within the RSP fares data"). Elsewhere
- * the element is "user defined routing information" (TS 1000-5 table 27a),
- * and a code means whatever its owner says.
- */
-static bool flipso_product_rail(const ItsoProduct* product) {
-    char code[ITSO_LOC_CODE_LEN];
-    return (product->from.valid &&
-            itso_location_code(&product->from, code, sizeof(code)) == ItsoLocCodeNlc) ||
-           (product->to.valid &&
-            itso_location_code(&product->to, code, sizeof(code)) == ItsoLocCodeNlc);
-}
-
-/**
  * What a product's Technical page says: the codes and machine numbers behind
  * it, which mean nothing without the scheme's own tables but are what tells two
  * otherwise identical products apart. The caller gives it its title.
@@ -60,7 +45,13 @@ void flipso_cat_product_technical(
     /* TYP is ITSO's; PTYP is the owner's own number within it, for the
      * business rules it applies (TS 1000-2 clause 6.1.5). */
     furi_string_cat_printf(out, "ITSO type: %u\n", product->typ);
-    furi_string_cat_printf(out, "  Operator's sub-type: %u\n", product->ptyp);
+    furi_string_cat_printf(out, "  Operator's sub-type: %u", product->ptyp);
+    /* On rail the number is RSPS3002's, and the title above it already uses the
+     * name; this says where the name came from. */
+    const char* rail =
+        itso_product_rail(product) ? itso_rail_product_name(product->typ, product->ptyp) : NULL;
+    if(rail) furi_string_cat_printf(out, " (%s)", rail);
+    furi_string_push_back(out, '\n');
     furi_string_cat_printf(out, "Operator number: %u\n", product->oid);
     /* The flag picks the numbering range, 8192 to 16383 rather than 1 to 8000
      * (TS 1000-2 annex B), which the number above already includes. */
@@ -137,9 +128,12 @@ void flipso_cat_product_technical(
         furi_string_cat_printf(out, "ID document coding: Type %u\n", ticket->id_doc_type);
     }
     if(ticket->has_route_code) {
-        /* On rail, 00000 is the fares data's "any permitted" route: the
-         * ticket is good by any route the National Rail Conditions allow. */
-        if(flipso_product_rail(product) &&
+        /* On rail, RSPS3002's TYP 22 and 23 field tables make it "the 5 digit
+         * route code ... within the RSP fares data", where 00000 is "any
+         * permitted": the ticket is good by any route the National Rail
+         * Conditions allow. Elsewhere it is "user defined routing information"
+         * (TS 1000-5 table 27a), and a code means whatever its owner says. */
+        if(itso_product_rail(product) &&
            memcmp(ticket->route_code, "00000", sizeof(ticket->route_code)) == 0) {
             furi_string_cat(out, "Route code: Any permitted (00000)\n");
         } else {
