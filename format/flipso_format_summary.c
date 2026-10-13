@@ -5,6 +5,20 @@
 #include "flipso_format_i.h"
 
 /**
+ * The last day a product is good for: its expiry, or a charge-to-account's
+ * EndDate where that comes first - the day the account stops paying, which
+ * TS 1000-5 tables 13 and 17 let fall before the product leaves the card.
+ */
+static ItsoDate flipso_summary_until(const ItsoProduct* product) {
+    const ItsoPurseTerms* purse = itso_product_purse(product);
+    if(purse->has_end_date && !itso_date_open(purse->end_date) &&
+       (itso_date_open(product->expiry) || purse->end_date < product->expiry)) {
+        return purse->end_date;
+    }
+    return product->expiry;
+}
+
+/**
  * True when a product's summary line leads with its state - blocked, used
  * up, or expired with the date - as flipso_summary_product() writes it.
  */
@@ -14,7 +28,8 @@ static bool flipso_summary_states(const ItsoProduct* product, ItsoUnixTime now) 
     if(product->status == ItsoProductStatusBlocked) return true;
     if(purse->balance.valid || id->has_entitlement) return false;
     if(flipso_product_used_up(product, now)) return true;
-    return !itso_date_open(product->expiry) && itso_date_expired(product->expiry, now);
+    const ItsoDate until = flipso_summary_until(product);
+    return !itso_date_open(until) && itso_date_expired(until, now);
 }
 
 /** One product as a summary line: "Period ticket: Until 20/10/2026". */
@@ -39,12 +54,20 @@ static void flipso_summary_product(
             out, "%s: %s%s\n", title, money, purse->balance_is_spend ? " spent" : "");
     } else if(id->has_entitlement) {
         /* An ITSO ID is summed up by who the holder is to the scheme - a
-         * pensioner, a student - where it says; "ITSO ID: Capped fare" reads as
-         * though the ID were a fare. An entitlement is its entitlement. */
-        const char* what = product->typ == ItsoTypId && id->concession_class ?
-                               itso_profile_name(id->concession_class) :
-                               itso_entitlement_name(id->entitlement_code);
-        furi_string_cat_printf(out, "%s: %s\n", title, what);
+         * pensioner, a student - and labelled as that, not as the ID: "ITSO
+         * ID: Adult" read as the ID's name, even on a card that stores none.
+         * Without a concession it is the holder's benefit, as its own page
+         * calls it. An entitlement is its benefit, under its own name. */
+        if(product->typ == ItsoTypId && id->concession_class) {
+            furi_string_cat_printf(
+                out, "Concession: %s\n", itso_profile_name(id->concession_class));
+        } else if(product->typ == ItsoTypId) {
+            furi_string_cat_printf(
+                out, "Benefit: %s\n", itso_entitlement_name(id->entitlement_code));
+        } else {
+            furi_string_cat_printf(
+                out, "%s: %s\n", title, itso_entitlement_name(id->entitlement_code));
+        }
     } else {
         furi_string_cat_printf(out, "%s: ", title);
         /* A period ticket's own expiry is when its unused passes lapse; day
@@ -53,23 +76,23 @@ static void flipso_summary_product(
          * all there is to go by. */
         const bool pass = ticket->has_current_expiry && !itso_date_open(ticket->current_expiry) &&
                           !itso_date_expired(ticket->current_expiry, now);
-        const bool lapsed = !itso_date_open(product->expiry) &&
-                            itso_date_expired(product->expiry, now);
+        const ItsoDate until = flipso_summary_until(product);
+        const bool lapsed = !itso_date_open(until) && itso_date_expired(until, now);
         /* A date it is good until reads as a ticket still good, and an
          * expired one is the more telling of the two. */
         if(flipso_product_used_up(product, now) && !lapsed) {
             furi_string_cat(out, "Used up");
         } else if(lapsed) {
-            furi_string_cat(out, "Expired ");
-            flipso_cat_date(out, product->expiry);
+            furi_string_cat(out, until == product->expiry ? "Expired " : "Ended ");
+            flipso_cat_date(out, until);
         } else if(pass) {
             furi_string_cat(out, "Until ");
             flipso_cat_date(out, ticket->current_expiry);
-        } else if(itso_date_open(product->expiry)) {
+        } else if(itso_date_open(until)) {
             furi_string_cat(out, "No expiry");
         } else {
             furi_string_cat(out, "Until ");
-            flipso_cat_date(out, product->expiry);
+            flipso_cat_date(out, until);
         }
         furi_string_push_back(out, '\n');
     }
@@ -94,17 +117,15 @@ static void flipso_summary_product(
 void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
     flipso_cat_page(out, FlipsoIconInfo, "Summary");
 
-    /* The card's own state first: a blocked or expired card is the headline,
-     * whatever its products say. */
+    /* A card that cannot be used is the headline, whatever its products say:
+     * a blocked, retired or expired card is the one line that answers for all
+     * of them. A card that is fine says so last, under what it holds. */
     const bool expired = !itso_date_open(card->expiry) && itso_date_expired(card->expiry, f->now);
     if(card->shell_compact) {
-        /* A paper ticket, not a card: its state is its one product's. Where the
-         * product's own line below leads with it - "Blocked", "Expired
-         * 21/09/2026" - saying it here too put the same words on two lines in
-         * a row; the line earns its place for what that one cannot say. */
-        if(!card->product_count || !flipso_summary_states(&card->products[0], f->now)) {
-            flipso_cat_ticket_state(out, "Ticket", card, f->now);
-        }
+        /* A paper ticket, not a card: its state is its one product's, which
+         * that product's own line below already says - "Until", "Expired",
+         * "Used up" - so only a ticket with nothing on it needs a line here. */
+        if(!card->product_count) flipso_cat_ticket_state(out, "Ticket", card, f->now);
     } else if(card->shell_blocked) {
         furi_string_cat(out, "Card: Blocked by its issuer\n");
     } else if(itso_card_retired(card)) {
@@ -115,10 +136,40 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
         furi_string_cat(out, "Card: Expired ");
         flipso_cat_date(out, card->expiry);
         furi_string_push_back(out, '\n');
-    } else {
-        if(card->dir_valid) furi_string_cat(out, "Card: Active\n");
-        flipso_cat_expiry(out, "", "Card expires", "Card expired", card->expiry, f->now);
     }
+
+    /* Then what will get the holder through the gate today - the tickets that
+     * can be used, the purse - ahead of who they are and of the card itself.
+     * The tickets that cannot be used have a page of their own after this
+     * one. A paper ticket is its one product, whatever state it is in. */
+    FuriString* tickets = furi_string_alloc();
+    FuriString* money = furi_string_alloc();
+    FuriString* who = furi_string_alloc();
+    FuriString* lapsed = furi_string_alloc();
+    uint8_t shown = 0, past = 0;
+    for(uint8_t i = 0; i < card->product_count; i++) {
+        const ItsoProduct* product = &card->products[i];
+        if(!product->on_card) {
+            past++;
+            continue;
+        }
+        FuriString* to = tickets;
+        if(card->shell_compact) {
+            /* Its one product, in whatever state: there is nothing else. */
+        } else if(product->typ == ItsoTypStoredTravelRights) {
+            to = money;
+        } else if(product->typ == ItsoTypId || product->typ == ItsoTypEntitlement) {
+            to = who;
+        } else if(flipso_summary_states(product, f->now)) {
+            to = lapsed;
+        }
+        flipso_summary_product(to, card, product, f->now);
+        shown++;
+    }
+    furi_string_cat(out, furi_string_get_cstr(tickets));
+    furi_string_cat(out, furi_string_get_cstr(money));
+    if(card->dir_valid && !shown) furi_string_cat(out, "Products: None\n");
+    if(!card->dir_valid) furi_string_cat(out, "Products: Could not be read\n");
 
     for(uint8_t i = 0; i < card->product_count; i++) {
         const ItsoProduct* product = &card->products[i];
@@ -128,37 +179,20 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
             break;
         }
     }
+    furi_string_cat(out, furi_string_get_cstr(who));
 
-    /* The first page is the card and the holder: their money and who they are
-     * to the scheme, whatever state those are in. The tickets follow on pages
-     * of their own, the ones that can be used today ahead of the ones that
-     * cannot, so a glance finds what will get the holder through the gate. A
-     * paper ticket is its one product, and keeps it on the first page. */
-    FuriString* tickets = furi_string_alloc();
-    FuriString* lapsed = furi_string_alloc();
-    uint8_t shown = 0, past = 0;
-    for(uint8_t i = 0; i < card->product_count; i++) {
-        const ItsoProduct* product = &card->products[i];
-        if(!product->on_card) {
-            past++;
-            continue;
-        }
-        FuriString* to = out;
-        if(!card->shell_compact && product->typ != ItsoTypStoredTravelRights &&
-           product->typ != ItsoTypId && product->typ != ItsoTypEntitlement) {
-            to = flipso_summary_states(product, f->now) ? lapsed : tickets;
-        }
-        flipso_summary_product(to, card, product, f->now);
-        shown++;
+    if(!card->shell_compact && !card->shell_blocked && !itso_card_retired(card) && !expired) {
+        if(card->dir_valid) furi_string_cat(out, "Card: Active\n");
+        flipso_cat_expiry(out, "", "Card expires", "Card expired", card->expiry, f->now);
     }
-    if(card->dir_valid && !shown) furi_string_cat(out, "Products: None\n");
-    if(!card->dir_valid) furi_string_cat(out, "Products: Could not be read\n");
 
     /* A paper ticket keeps no log, so what a card's last tap says is in its one
      * product instead - and a holder checks a ticket against what they paid. */
     if(card->shell_compact && card->product_count) {
         const ItsoProduct* ticket = &card->products[0];
-        flipso_cat_last_use(out, f, card, ticket, "Last used");
+        /* "Last used at": the one revision that keeps a place rather than a
+         * time, so the label says which it is. */
+        flipso_cat_last_use(out, f, card, ticket, "Last used at");
         flipso_cat_money(out, "", "Price paid", &itso_product_ticket(ticket)->amount_paid);
     }
 
@@ -183,8 +217,9 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
     if(past) {
         furi_string_cat_printf(lapsed, "Products off card: %u\n", past);
     }
-    flipso_cat_page_from(out, FlipsoIconProducts, "Tickets", tickets);
     flipso_cat_page_from(out, FlipsoIconInvalid, "Not valid", lapsed);
     furi_string_free(tickets);
+    furi_string_free(money);
+    furi_string_free(who);
     furi_string_free(lapsed);
 }

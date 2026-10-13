@@ -7,13 +7,23 @@
 /** About, with every table present and with none. */
 void about_screens(FuriString* text) {
     furi_string_reset(text);
-    flipso_format_about(text, "1.0", 4009, 400000, 3);
+    flipso_format_about(text, "1.0", 4009, 400000, 3467, 644, 3);
     house_style("about", text);
     check(
         "about is a page to each thing it says",
-        titles_are(text, "Flipso|Station names|Bus stop names|Operator names|Saved cards"));
+        titles_are(
+            text, "Flipso|Station names|Ticket types|Bus stop names|Operator names|Saved cards"));
+    check(
+        "it counts the ticket types",
+        on_page(text, "Ticket types", "Installed: 3467 rail ticket types\n"));
+    check(
+        "and the restriction codes, on the same page",
+        on_page(text, "Ticket types", "Restriction codes: 644\n"));
     furi_string_reset(text);
-    flipso_format_about(text, NULL, 0, 0, 0);
+    flipso_format_about(text, NULL, 0, 0, 0, 0, 0);
+    check(
+        "a missing restriction table says so",
+        on_page(text, "Ticket types", "Restriction codes: Not installed\n"));
     house_style("about, nothing installed", text);
 }
 

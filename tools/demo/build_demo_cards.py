@@ -1191,13 +1191,16 @@ def card_ntag():
     # log is Log File A in sector 2 linking to B in sector 3; Record Offset 0
     # says T0 is next to be written, so T1 is the newer.
     chain = {1: 5, 5: 6, 6: 8, 2: 3}
+    # A ride off the carnet is not paid from a purse, which is what MOP 8
+    # (Stored Travel Rights, TS 1000-5 annex A.12) would say: the reader
+    # leaves it unspecified, and the record names the carnet instead.
     log = b"".join([
         tt_record(12, dts(2026, 9, 15, 8, 5), 180,
                   origin=loc2(209, bus_stage(163, "17", 2)),
-                  dest=loc2(209, bus_stage(163, "17", 9)), ipe_ptr=1, mop=8),
+                  dest=loc2(209, bus_stage(163, "17", 9)), ipe_ptr=1, mop=0),
         tt_record(12, dts(2026, 9, 21, 17, 40), 180,
                   origin=loc2(209, bus_stage(163, "17", 9)),
-                  dest=loc2(209, bus_stage(163, "17", 2)), ipe_ptr=1, mop=8),
+                  dest=loc2(209, bus_stage(163, "17", 2)), ipe_ptr=1, mop=0),
     ])
 
     return "Demo 08 Reading Buses", unix(2026, 9, 21, 20, 15), [

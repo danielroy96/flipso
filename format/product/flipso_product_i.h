@@ -157,6 +157,13 @@ void flipso_cat_portion(FuriString* out, const char* label, ItsoDts from_dts, ui
 /** What NumberOfJourneysSold buys, given ProductTypeEncoding. */
 void flipso_cat_sold_as(FuriString* out, const ItsoTicketTerms* t);
 
+/**
+ * "Ticket type: Anytime Return": a reserved journey's Fares Type of Ticket,
+ * named from the RDG ticket type table. Nothing when the table has no name
+ * for it; the code itself is under Technical either way.
+ */
+void flipso_cat_ticket_type(FuriString* out, const FlipsoFormat* f, const ItsoReservation* res);
+
 /** The number of the railcard or ID a reserved journey is held to. */
 void flipso_cat_reservation_id(
     FuriString* out,

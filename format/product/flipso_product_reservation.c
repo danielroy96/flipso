@@ -102,6 +102,56 @@ static uint32_t flipso_reservation_id(const ItsoReservation* res) {
 }
 
 /**
+ * "Restriction: OP", and what it allows each way, from the RDG restriction
+ * table (RestrictionCode, TS 1000-5 table 136; RSPS3002). A restriction that
+ * is the same both ways is said once. Nothing when the table has no entry
+ * for it; the code itself is under Technical either way.
+ */
+static void
+    flipso_cat_restriction(FuriString* out, const FlipsoFormat* f, const ItsoReservation* res) {
+    if(itso_is_blank(res->restriction_code, sizeof(res->restriction_code))) return;
+    /* Each sized to its text: fifty bytes for "OP", where buffers for the
+     * longest three would take 750 as Flipso's longest screen opens. */
+    FuriString* name = furi_string_alloc();
+    FuriString* outward = furi_string_alloc();
+    FuriString* back = furi_string_alloc();
+    /* A code the feed has only a placeholder for ("C") has nothing to add to
+     * the code Technical already shows. */
+    if(flipso_ticket_restrictions_find(
+           f->ticket_restrictions, res->restriction_code, name, outward, back) &&
+       (!furi_string_empty(name) || !furi_string_empty(outward) || !furi_string_empty(back))) {
+        if(!furi_string_empty(name)) {
+            furi_string_cat_printf(out, "Restriction: %s\n", furi_string_get_cstr(name));
+        } else {
+            furi_string_cat_printf(
+                out,
+                "Restriction: %.*s\n",
+                (int)sizeof(res->restriction_code),
+                (const char*)res->restriction_code);
+        }
+        if(!furi_string_empty(outward) &&
+           strcmp(furi_string_get_cstr(outward), furi_string_get_cstr(back)) == 0) {
+            furi_string_cat_printf(out, "  Both ways: %s\n", furi_string_get_cstr(outward));
+        } else {
+            if(!furi_string_empty(outward))
+                furi_string_cat_printf(out, "  Outward: %s\n", furi_string_get_cstr(outward));
+            if(!furi_string_empty(back))
+                furi_string_cat_printf(out, "  Return: %s\n", furi_string_get_cstr(back));
+        }
+    }
+    furi_string_free(name);
+    furi_string_free(outward);
+    furi_string_free(back);
+}
+
+void flipso_cat_ticket_type(FuriString* out, const FlipsoFormat* f, const ItsoReservation* res) {
+    /* FaresTypeOfTicket is the RSP fares data's ticket type (TS 1000-5 table
+     * 136, RSPS3002), which is the name a passenger knows the ticket by. */
+    const char* name = flipso_ticket_types_name(f->ticket_types, res->ftot);
+    if(name) furi_string_cat_printf(out, "Ticket type: %s\n", name);
+}
+
+/**
  * The railcard or ID a reserved journey is held to, under the line that names
  * it: the number the ticket carries for it. On rail that is only its last
  * four digits. A discount that is not a card to carry - a GroupSave, or a code
@@ -158,6 +208,34 @@ static const FlipsoT24Flag flipso_t24_flags[] = {
     {ITSO_T24_SEAT_REQUIRED, "Seat reservation required", FlipsoSlotRules},
     {ITSO_T24_COMPANION, "Companion allowed", FlipsoSlotDetails},
 };
+
+/**
+ * A time band as a timetable says it. TimeBandIncludeExcludeFlag says whether
+ * the ticket is good within the band or only outside it (TS 1000-5 table 136);
+ * an excluded band that runs from midnight, or to the end of the day, is a
+ * "not before" or a "not after", which is how an off-peak ticket is sold.
+ */
+static void flipso_cat_time_band(FuriString* out, const ItsoTimeBand* b) {
+    const uint16_t last = 23 * 60 + 59;
+    furi_string_cat(out, "Valid times: ");
+    if(b->include) {
+        flipso_cat_minutes(out, b->start);
+        furi_string_cat(out, " to ");
+        flipso_cat_minutes(out, b->end);
+    } else if(b->start == 0 && b->end < last) {
+        furi_string_cat(out, "Not before ");
+        flipso_cat_minutes(out, (uint16_t)(b->end + 1));
+    } else if(b->start > 0 && b->end >= last) {
+        furi_string_cat(out, "Not after ");
+        flipso_cat_minutes(out, (uint16_t)(b->start - 1));
+    } else {
+        furi_string_cat(out, "Not ");
+        flipso_cat_minutes(out, b->start);
+        furi_string_cat(out, " to ");
+        flipso_cat_minutes(out, b->end);
+    }
+    furi_string_push_back(out, '\n');
+}
 
 /** "Outward departures": which journeys a time band applies to, and how. */
 static void flipso_cat_band_applies(FuriString* out, const ItsoTimeBand* b) {
@@ -233,16 +311,29 @@ void flipso_cat_reservation(
             flipso_cat_product_ref(details, card, "", "Part of this ticket", res->associated[i]);
         }
 
+        /* The restriction the fare is sold under, first: what it allows, in
+         * the words National Rail prints for it, is the one statement of the
+         * rule the times and days below encode. */
+        flipso_cat_restriction(rules, f, res);
+
         /* The times first: on an off-peak ticket they decide which train the
-         * holder may catch. */
+         * holder may catch. Said the way a timetable says them - "Not before
+         * 09:30" - rather than as the band the card holds, "Outside
+         * 00:00-09:29", and with the days they hold on beside them.
+         * DaysRestrictionApplies is the days the restriction applies (TS
+         * 1000-5 table 136); rail leaves it zero (RSPS3002), and then the
+         * card does not say. */
+        char days[40];
         for(uint8_t i = 0; i < res->time_band_count; i++) {
             const ItsoTimeBand* b = &res->time_bands[i];
-            /* TimeBandIncludeExcludeFlag: valid within the band, or only outside it. */
-            furi_string_cat(rules, b->include ? "Valid times: " : "Valid times: Outside ");
-            flipso_cat_minutes(rules, b->start);
-            furi_string_push_back(rules, '-');
-            flipso_cat_minutes(rules, b->end);
-            furi_string_push_back(rules, '\n');
+            flipso_cat_time_band(rules, b);
+            if(res->restricted_days) {
+                itso_format_days(res->restricted_days, days, sizeof(days));
+                furi_string_cat_printf(rules, "  Days: %s\n", days);
+                if(res->restricted_days & ITSO_DOW_SPECIAL) {
+                    flipso_cat_flag(rules, "  ", "Public holidays", true);
+                }
+            }
             flipso_cat_band_applies(rules, b);
             if(!itso_is_blank(b->operator_code, sizeof(b->operator_code))) {
                 flipso_cat_ud_line(
@@ -251,16 +342,17 @@ void flipso_cat_reservation(
             flipso_cat_location(rules, f, "  ", "At", &b->location);
         }
 
-        char days[40];
         itso_format_days(res->valid_days, days, sizeof(days));
         furi_string_cat_printf(rules, "Valid days: %s\n", days);
         flipso_cat_flag(rules, "  ", "Public holidays", res->valid_days & ITSO_DOW_SPECIAL);
-        itso_format_days(res->restricted_days, days, sizeof(days));
-        /* DaysRestrictionApplies: the days the RestrictionCode holds on, not
-         * days the ticket is not valid. */
-        furi_string_cat_printf(rules, "Restrictions apply: %s\n", days);
-        if(res->restricted_days & ITSO_DOW_SPECIAL) {
-            flipso_cat_flag(rules, "  ", "Public holidays", true);
+        /* Days a restriction holds on, with no time band to hang them on:
+         * the RestrictionCode's, which Technical shows. */
+        if(res->restricted_days && !res->time_band_count) {
+            itso_format_days(res->restricted_days, days, sizeof(days));
+            furi_string_cat_printf(rules, "Restrictions apply: %s\n", days);
+            if(res->restricted_days & ITSO_DOW_SPECIAL) {
+                flipso_cat_flag(rules, "  ", "Public holidays", true);
+            }
         }
 
         if(itso_is_blank(res->operator_code, sizeof(res->operator_code))) {
@@ -386,7 +478,7 @@ void flipso_cat_reservation_codes(
 
     if(!res->valid) return;
     flipso_cat_ud_line(out, "", "Ticket number", res->ticket_number, sizeof(res->ticket_number));
-    flipso_cat_ud_line(out, "", "Fare type", res->ftot, sizeof(res->ftot));
+    flipso_cat_ud_line(out, "", "Ticket type code", res->ftot, sizeof(res->ftot));
     flipso_cat_ud_line(
         out, "", "Restriction code", res->restriction_code, sizeof(res->restriction_code));
     const uint32_t id = flipso_reservation_id(res);

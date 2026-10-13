@@ -134,14 +134,15 @@ void flipso_cat_product_details(
      * flipso_cat_last_use() labels it with the other facts of its use. */
     /* A ticket's zone map (LocDefType 204, "valid within zone", TS 1000-1
      * table 6) is an area too, when it stands alone: "From: Zones 1,2,3" reads
-     * as the start of a journey that has no end. */
+     * as the start of a journey that has no end. It is called an area, as a
+     * paper ticket's is and as a ticket with no locations says it is. */
     if(!identity) {
         const bool zones = product->from.valid && !product->to.valid &&
                            product->from.def_type == 204;
         if(product->space_saving) {
             flipso_cat_space_area(main, f, card);
         } else {
-            flipso_cat_location(main, f, "", zones ? "Valid in" : "From", &product->from);
+            flipso_cat_location(main, f, "", zones ? "Area" : "From", &product->from);
             flipso_cat_location(main, f, "", "To", &product->to);
         }
         /* A period ticket may leave both locations out, and then it is good
@@ -155,7 +156,43 @@ void flipso_cat_product_details(
         }
     }
 
+    /* --- What kind of ticket it is, which on rail is what the holder calls
+     * it: "Off-Peak Return" says as much about when it is good as the dates
+     * below do. --- */
+    if(res && res->valid) flipso_cat_ticket_type(main, f, res);
+
+    /* --- Whether it is still good, straight after where: it is what a holder
+     * reads the first page for, and below the dates it sat out of sight. --- */
+    /* The status comes from where the card keeps the product - in use, blocked,
+     * never used - not from whether it is still any good. A ticket still "in
+     * use" by that measure can have run out of date or of rides, and saying
+     * "Active" beside "Expired" contradicts the line under it, and so does
+     * "Active" above nothing left to travel on. */
+    if(product->status == ItsoProductStatusActive && !itso_date_open(product->expiry) &&
+       itso_date_expired(product->expiry, now)) {
+        furi_string_cat(main, "Status: Expired\n");
+    } else if(product->status == ItsoProductStatusActive && flipso_product_used_up(product, now)) {
+        furi_string_cat(main, "Status: Used up\n");
+    } else if(product->status != ItsoProductStatusUnknown) {
+        furi_string_cat_printf(main, "Status: %s\n", itso_status_name(product->status));
+    }
+
     /* --- When it is good for. --- */
+    /* Time left is counted down only on a ticket that can still be used: on
+     * one blocked, used up or gone from the card it reads as time to travel.
+     * A reserved journey's expiry is the end of its return portion, which the
+     * first page has already said, so it is a detail and not counted down. */
+    const bool live = product->on_card && product->status != ItsoProductStatusBlocked &&
+                      !flipso_product_used_up(product, now);
+    /* The pass in use and the stock of unused passes expire separately, so a
+     * season ticket can be live while the passes behind it have lapsed. The
+     * pass in use comes first: it is what the ticket is good until today,
+     * and the season's own dates are the bounds of the passes behind it. */
+    if(ticket->has_current_expiry) {
+        flipso_cat_expiry(
+            main, "", "Current pass until", "Current pass ended", ticket->current_expiry, now);
+        if(live) flipso_cat_time_left(main, "  ", ticket->current_expiry, now);
+    }
     /* A season ticket's start is one of the dates it is checked against; a
      * carnet's, an account's or an ID's is one of its terms. */
     FuriString* start =
@@ -182,36 +219,22 @@ void flipso_cat_product_details(
         /* Revisions 1 and 2 of a period ticket hold a DTS here, not a DATE. */
         flipso_cat_datetime_line(start, "", "Valid from", ticket->valid_from_dts);
     }
-    /* Time left is counted down only on a ticket that can still be used: on
-     * one blocked, used up or gone from the card it reads as time to travel.
-     * A reserved journey's expiry is the end of its return portion, which the
-     * first page has already said, so it is a detail and not counted down. */
-    const bool live = product->on_card && product->status != ItsoProductStatusBlocked &&
-                      !flipso_product_used_up(product, now);
     if(kind == FlipsoKindReserved) {
         flipso_cat_expiry(details, "", "Expires", "Expired", product->expiry, now);
     } else {
         flipso_cat_expiry(main, "", "Expires", "Expired", product->expiry, now);
         if(live) flipso_cat_time_left(main, "  ", product->expiry, now);
     }
+    /* A charge-to-account's EndDate is when the account stops paying for
+     * travel, which may come before the product's own expiry (TS 1000-5
+     * tables 13 and 17): two bare dates, "Expires" and "Valid to", left the
+     * holder to guess which one counts. */
     if(purse->has_end_date && !flipso_same_date(purse->end_date, product->expiry)) {
-        flipso_cat_expiry(main, "", "Valid to", "Ended", purse->end_date, now);
+        flipso_cat_expiry(main, "", "Account ends", "Account ended", purse->end_date, now);
     }
     if(id->has_sub_expiry && !flipso_same_date(id->sub_expiry, product->expiry)) {
         flipso_cat_expiry(
-            identity ? rules : main,
-            "",
-            "Entitlement until",
-            "Entitlement ended",
-            id->sub_expiry,
-            now);
-    }
-    /* The pass in use and the stock of unused passes expire separately, so a
-     * season ticket can be live while the passes behind it have lapsed. */
-    if(ticket->has_current_expiry) {
-        flipso_cat_expiry(
-            main, "", "Current pass until", "Current pass ended", ticket->current_expiry, now);
-        if(live) flipso_cat_time_left(main, "  ", ticket->current_expiry, now);
+            identity ? rules : main, "", "Benefit until", "Benefit ended", id->sub_expiry, now);
     }
     if(ticket->has_stored_expiry && !flipso_same_date(ticket->stored_expiry, product->expiry)) {
         const bool rides = product->typ == ItsoTypJourneyTicket;
@@ -222,23 +245,6 @@ void flipso_cat_product_details(
             rides ? "Unused rides expired" : "Unused passes expired",
             ticket->stored_expiry,
             now);
-    }
-
-    /* --- Whether it is still good, after where and when: the status is the
-     * card's bookkeeping, and the places and dates are what a holder reads
-     * the ticket for. --- */
-    /* The status comes from where the card keeps the product - in use, blocked,
-     * never used - not from whether it is still any good. A ticket still "in
-     * use" by that measure can have run out of date or of rides, and saying
-     * "Active" beside "Expired" contradicts the line under it, and so does
-     * "Active" above nothing left to travel on. */
-    if(product->status == ItsoProductStatusActive && !itso_date_open(product->expiry) &&
-       itso_date_expired(product->expiry, now)) {
-        furi_string_cat(main, "Status: Expired\n");
-    } else if(product->status == ItsoProductStatusActive && flipso_product_used_up(product, now)) {
-        furi_string_cat(main, "Status: Used up\n");
-    } else if(product->status != ItsoProductStatusUnknown) {
-        furi_string_cat_printf(main, "Status: %s\n", itso_status_name(product->status));
     }
 
     /* --- What it is not valid without: a railcard, or an ID. On the first
@@ -257,10 +263,13 @@ void flipso_cat_product_details(
         flipso_cat_money(main, "  ", "Fare so far", &purse->cumulative_fare);
     }
 
-    /* --- What it entitles the holder to. --- */
+    /* --- What it entitles the holder to. EntitlementCode (TS 1000-5 annex
+     * A.8) is the kind of fare deal - capped, free, a loyalty tier - and is
+     * called the holder's benefit: "Entitlement" is also the name of a
+     * product, whose page said "Entitlement: Proportional fare" under a
+     * title of "Entitlement". --- */
     if(id->has_entitlement) {
-        furi_string_cat_printf(
-            main, "Entitlement: %s\n", itso_entitlement_name(id->entitlement_code));
+        furi_string_cat_printf(main, "Benefit: %s\n", itso_entitlement_name(id->entitlement_code));
         /* Profile code zero is "unspecified", which tells the holder nothing. */
         if(id->concession_class) {
             furi_string_cat_printf(

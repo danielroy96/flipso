@@ -46,7 +46,9 @@ void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
         shows(text, "Print ticket: No\n") && !shows(text, "Print receipt: "));
     furi_string_reset(text);
     flipso_format_product(text, f, card, &card->products[3]);
-    check("a rail RouteCode reads as text", shows(text, "Route code: 00000\n"));
+    check(
+        "a rail RouteCode of 00000 is the fares data's any permitted route",
+        shows(text, "Route code: Any permitted (00000)\n"));
     check(
         "a rail journey ticket was sold by a station",
         on_page(text, "Journey ticket", "Operator: South Western Railway\n") &&
@@ -58,7 +60,7 @@ void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
         shows(text, "Sold by: Unknown (57345)\n"));
     furi_string_reset(text);
     flipso_format_product(text, f, card, &card->products[4]);
-    check("loyalty has its owner's data", shows(text, "Owner data: 4660\n"));
+    check("loyalty has its owner's data", shows(text, "Operator's own data: 4660\n"));
 
     product_screen(
         text,
@@ -158,7 +160,8 @@ void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
     check("a voucher runs past midnight", shows(text, "Ends at: 01:00 the day after expiry\n"));
     check(
         "a voucher's codes, under Technical",
-        shows(text, "Service code: 42\nOwner data: 7\n") && shows(text, "Print ticket: Yes\n"));
+        shows(text, "Service code: 42\nOperator's own data: 7\n") &&
+            shows(text, "Print ticket: Yes\n"));
 
     /* A toll pass's owner data is read from the capture as the screen is
      * drawn, so it is put in one at the slot product_screen() gives it. */
@@ -191,7 +194,7 @@ void spec_review(const FlipsoFormat* f, const ItsoCard* card) {
         check(
             "a toll pass's print flags and passback, under Technical",
             technical(text, "Print ticket: No\nPrint receipt: Yes\nPassback timeout: 45 min\n"));
-        check("its owner data, as hex", technical(text, "Owner data: 00123456789ABC\n"));
+        check("its owner data, as hex", technical(text, "Operator's own data: 00123456789ABC\n"));
         flipso_capture_free(capture);
     }
     /* An entry the directory lists with no dataset that could be read: the

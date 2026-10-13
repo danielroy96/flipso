@@ -205,7 +205,7 @@ void space_saving_types(void) {
     check("TYP 28 carnet decodes", carnet->typ == 28 && carnet->space_saving);
     check(
         "TYP 28 counts the expiry-day pass among those left",
-        carnet->count_kind == ItsoCountPasses && carnet->count == 3);
+        carnet->count_kind == ItsoCountTickets && carnet->count == 3);
     check(
         "TYP 28 keeps the days its passes were used",
         card.space->carnet_ticks[0] == 20 && card.space->carnet_ticks[1] == 10 &&

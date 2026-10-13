@@ -147,13 +147,12 @@ static void
     }
 }
 
-void flipso_format_card(
-    FuriString* out,
-    const FlipsoFormat* f,
-    const ItsoCard* card,
-    const char* saved_name,
-    bool demo,
-    ItsoUnixTime read_at) {
+/**
+ * A card's first page: whether the issuer still honours it, its number, its
+ * expiry and who issued it. Not a paper ticket's, whose shell stores no
+ * number or expiry and whose state is its one product's.
+ */
+static void flipso_cat_card_page(FuriString* out, const FlipsoFormat* f, const ItsoCard* card) {
     /* The blocking indicator is a property of the whole shell, so it comes
      * before anything else on the screen: once it is set a machine rejects the
      * card, however valid the products further down still look.
@@ -166,24 +165,16 @@ void flipso_format_card(
             "even where the products on it are still in date.\n");
     }
 
-    /* A compact shell stores no number, so a paper ticket has no headline one:
-     * the number it implies is under Technical, said for what it is. The
-     * number stands alone under the page's title: with a label in front, its
-     * eighteen digits break across two rows. */
-    if(!card->shell_compact) {
-        flipso_cat_isrn(out, card);
-        furi_string_push_back(out, '\n');
-        if(!card->isrn_check_ok) furi_string_cat(out, "  Check digit: Does not match\n");
-    }
+    /* The number stands alone under the page's title: with a label in front,
+     * its eighteen digits break across two rows. */
+    flipso_cat_isrn(out, card);
+    furi_string_push_back(out, '\n');
+    if(!card->isrn_check_ok) furi_string_cat(out, "  Check digit: Does not match\n");
 
     /* The good case is stated rather than left to silence, because nothing else
      * on the screen separates a card the issuer is happy with from one whose
-     * directory was never read. A compact shell's expiry is implied rather
-     * than stored, and never comes, so a paper ticket's validity is its
-     * product's and takes the place of both lines. */
-    if(card->shell_compact) {
-        flipso_cat_ticket_state(out, "Status", card, f->now);
-    } else if(card->shell_blocked) {
+     * directory was never read. */
+    if(card->shell_blocked) {
         furi_string_cat(out, "Status: Blocked\n");
     } else if(itso_card_retired(card)) {
         furi_string_cat(out, "Status: Retired\n");
@@ -192,12 +183,10 @@ void flipso_format_card(
     } else if(card->dir_valid) {
         furi_string_cat(out, "Status: Active\n");
     }
-    if(!card->shell_compact) {
-        flipso_cat_expiry(out, "", "Expires", "Expired", card->expiry, f->now);
-        /* A blocked or retired card has no time left to use, whatever its date. */
-        if(!card->shell_blocked && !itso_card_retired(card)) {
-            flipso_cat_time_left(out, "  ", card->expiry, f->now);
-        }
+    flipso_cat_expiry(out, "", "Expires", "Expired", card->expiry, f->now);
+    /* A blocked or retired card has no time left to use, whatever its date. */
+    if(!card->shell_blocked && !itso_card_retired(card)) {
+        flipso_cat_time_left(out, "  ", card->expiry, f->now);
     }
 
     /* The shell owner is the operator that issued the card and so the one that
@@ -208,6 +197,19 @@ void flipso_format_card(
     if(card->mcrn_present && card->mcrn[0]) {
         furi_string_cat_printf(out, "Card reference: %s\n", card->mcrn);
     }
+}
+
+void flipso_format_card(
+    FuriString* out,
+    const FlipsoFormat* f,
+    const ItsoCard* card,
+    const char* saved_name,
+    bool demo,
+    ItsoUnixTime read_at) {
+    /* A paper ticket is its one product: its state and operator are that
+     * product's, which the ticket's own screen leads with, so this screen is
+     * its chip and the codes behind it, and opens on the chip. */
+    if(!card->shell_compact) flipso_cat_card_page(out, f, card);
 
     /* What the chip says about itself, which only a live DESFire read asks. */
     if(f->media && f->media->valid) {
@@ -243,9 +245,9 @@ void flipso_format_card(
         /* The first byte of a 7-byte UID is the maker's ISO/IEC 7816-6 code. */
         const char* maker = flipso_chip_maker(card->chip_uid[0]);
         if(maker) {
-            furi_string_cat_printf(out, "Maker: %s\n", maker);
+            furi_string_cat_printf(out, "Manufacturer: %s\n", maker);
         } else {
-            furi_string_cat_printf(out, "Maker: Unknown (%02X)\n", card->chip_uid[0]);
+            furi_string_cat_printf(out, "Manufacturer: Unknown (%02X)\n", card->chip_uid[0]);
         }
         furi_string_cat_printf(out, "Memory: %u bytes\n", card->chip_memory_len);
 

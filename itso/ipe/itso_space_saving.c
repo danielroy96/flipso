@@ -196,7 +196,7 @@ void itso_parse_space_saving(ItsoCard* card, ItsoProduct* product, const uint8_t
          * The issue-day pass is not counted: it is for the day the carnet was
          * bought, which has gone by the time anyone is counting what is left. */
         if(ss->carnet_expiry_day) unused++;
-        product->count_kind = ItsoCountPasses;
+        product->count_kind = ItsoCountTickets;
         product->count = unused;
         break;
     }

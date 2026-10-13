@@ -273,3 +273,46 @@ void spec_review_fields(void) {
     check("the new elements survive every truncation", 1);
     itso_product_free(&p);
 }
+
+/*
+ * What each bit of an IPEBitMap says is present, from the type's own table in
+ * TS 1000-5: the Technical page names them rather than printing the byte.
+ */
+void bitmap_names(void) {
+    check(
+        "bit 0 is the owner's network on a full IPE",
+        strcmp(itso_bitmap_element_name(ItsoTypStoredTravelRights, 1, 0), "Owner network") == 0);
+    check(
+        "and RFU on a Space Saving one (table 48a)",
+        itso_bitmap_element_name(ItsoTypPeriodCompact, 1, 0) == NULL);
+    check(
+        "a purse defines no other bit (table 3)",
+        itso_bitmap_element_name(ItsoTypStoredTravelRights, 1, 1) == NULL);
+    check(
+        "a revision 1 period ticket gives each end a bit (table 28)",
+        strcmp(itso_bitmap_element_name(ItsoTypPeriodTicket, 1, 1), "Origin") == 0 &&
+            strcmp(itso_bitmap_element_name(ItsoTypPeriodTicket, 1, 2), "Destination") == 0);
+    check(
+        "revision 2 puts both ends and the route under bit 1, and leaves bit 2 RFU (28a)",
+        strcmp(itso_bitmap_element_name(ItsoTypPeriodTicket, 2, 1), "Locations and route") == 0 &&
+            itso_bitmap_element_name(ItsoTypPeriodTicket, 2, 2) == NULL);
+    check(
+        "revision 3 gives bit 2 to an ID document (3.28)",
+        strcmp(itso_bitmap_element_name(ItsoTypPeriodTicket, 3, 2), "ID document") == 0);
+    check(
+        "a revision 1 journey ticket has its destination before its origin (table 32)",
+        strcmp(itso_bitmap_element_name(ItsoTypJourneyTicket, 1, 1), "Destination") == 0 &&
+            strcmp(itso_bitmap_element_name(ItsoTypJourneyTicket, 1, 2), "Origin") == 0);
+    check(
+        "an ID's name is bit 2 (table 23), an entitlement's bit 2 its days (table 21)",
+        strcmp(itso_bitmap_element_name(ItsoTypId, 2, 2), "Name") == 0 &&
+            strcmp(itso_bitmap_element_name(ItsoTypEntitlement, 2, 2), "Valid days and area") ==
+                0);
+    check(
+        "a multi-use ticket's backup is bit 3, its sequence number bit 4 (58a)",
+        strcmp(itso_bitmap_element_name(ItsoTypMultiUse, 1, 3), "Backup count") == 0 &&
+            strcmp(itso_bitmap_element_name(ItsoTypMultiUse, 1, 4), "Sequence number") == 0);
+    check(
+        "bit 5 is RFU everywhere",
+        itso_bitmap_element_name(ItsoTypReservationTicket, 2, 5) == NULL);
+}
