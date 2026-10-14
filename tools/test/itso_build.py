@@ -454,6 +454,68 @@ def split_sectors(data, sector_size):
             for i in range(0, len(data), sector_size)]
 
 
+# ---------------------------------------------------------------- CMD11
+# ITSO's registered application identifier, which every ITSO microprocessor
+# card answers SELECT for (TS 1000-10 clause 12.4.6).
+ITSO_AID = bytes.fromhex("A0000002164954534F2D31")
+
+# What a CMD11 card sends in place of an IPE's or value group's InstanceID and
+# seal before a reader has authenticated (TS 1000-10 clause 12.4.8).
+CMD11_REDACTED = b"\xFF" * 16
+
+
+def ber_tlv(tag, value):
+    """One BER-TLV object, its length in the long form past 127 (ISO 7816-4)."""
+    n = len(value)
+    if n < 0x80:
+        length = bytes([n])
+    elif n < 0x100:
+        length = bytes([0x81, n])
+    else:
+        length = bytes([0x82, n >> 8, n & 0xFF])
+    return bytes([tag]) + length + value
+
+
+def cmd11_fci(shell, directory=None, oids=None, pseudo_mid=None, ccs=bytes(8),
+              challenge=bytes(range(8))):
+    """A CMD11 SELECT response: figure 9 for static MIDs, figure 10's C6 for
+    random ones. Clause 12.4.3 lists the directory and OID list in a random-MID
+    FCI and figure 10 leaves them out, so either can be built.
+
+    @p oids is one OID16 per directory entry, in entry order (table 113).
+    """
+    inner = ber_tlv(0xC0, shell) + ber_tlv(0xC1, b"\x00")
+    if directory is not None:
+        inner += ber_tlv(0xC2, directory)
+    if oids is not None:
+        inner += ber_tlv(0xC3, b"".join(o.to_bytes(2, "big") for o in oids))
+    inner += ber_tlv(0xC4, ccs) + ber_tlv(0xC5, challenge)
+    if pseudo_mid is not None:
+        inner += ber_tlv(0xC6, pseudo_mid)
+    return ber_tlv(0x6F, ber_tlv(0x84, ITSO_AID) + ber_tlv(0xA5, inner))
+
+
+def cmd11_read_ipe(entry, ipe):
+    """A ReadIPE response before authentication: the five-byte directory entry,
+    the IPE, and its InstanceID and seal blanked (clause 12.4.8)."""
+    return entry + ipe + CMD11_REDACTED
+
+
+def cmd11_read_vrg(values, entry=None):
+    """A ReadVRG response, likewise redacted; with @p entry in front, the
+    reading of clause 12.4.9 under which it behaves as ReadIPE does."""
+    return (entry or b"") + values + CMD11_REDACTED
+
+
+def cmd11_product(ipe, values=None):
+    """A CMD11 product as a read saves it: the IPE group, then its value group
+    straight after, since the card has no sectors to pad to."""
+    out = ipe + CMD11_REDACTED
+    if values is not None:
+        out += values + CMD11_REDACTED
+    return out
+
+
 # ---------------------------------------------------------------- Value records
 def value_record(txn, seq, when, tail=b"", modifier=0xC0FFEE01, action_seq=3):
     """A value record: the TS 1000-2 table 15 common header plus a 5-byte tail

@@ -18,6 +18,7 @@ bool flipso_capture_decode(const FlipsoCapture* capture, ItsoCard* card) {
     const FlipsoCaptureBlock* shell = flipso_capture_find(capture, FlipsoBlockShell, 0);
     if(!shell) return false;
     if(!itso_parse_shell(card, capture->bytes + shell->offset, shell->len)) return false;
+    card->shell_pseudo = flipso_capture_find(capture, FlipsoBlockPseudoMid, 0) != NULL;
 
     /* A CMD9 or CMD10 card's chip pages, which say which chip it is and, on a
      * CMD9, how far its Abacus has counted. After the shell, which names the
@@ -31,6 +32,11 @@ bool flipso_capture_decode(const FlipsoCapture* capture, ItsoCard* card) {
      * whatever its directory entry said about it. */
     const FlipsoCaptureBlock* dir = flipso_capture_find(capture, FlipsoBlockDirectory, 0);
     if(dir) itso_parse_directory(card, capture->bytes + dir->offset, dir->len);
+
+    /* A CMD11 card's owners, which its directory can hold only part of. Before
+     * the groups, as a POST reads it: it comes with the directory in the FCI. */
+    const FlipsoCaptureBlock* oids = flipso_capture_find(capture, FlipsoBlockOidList, 0);
+    if(oids) itso_parse_oid_list(card, capture->bytes + oids->offset, oids->len);
 
     for(uint8_t i = 0; i < card->product_count; i++) {
         ItsoProduct* product = &card->products[i];

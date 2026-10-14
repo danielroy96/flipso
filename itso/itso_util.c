@@ -55,6 +55,13 @@ bool itso_is_blank(const uint8_t* data, size_t len) {
     return true;
 }
 
+bool itso_is_all_ff(const uint8_t* data, size_t len) {
+    for(size_t i = 0; i < len; i++) {
+        if(data[i] != 0xFF) return false;
+    }
+    return true;
+}
+
 uint16_t itso_crc_b(const uint8_t* data, size_t len) {
     /* The ISO 14443-3 type B CRC, which ITSO TS 1000-2 Annex A reproduces along
      * with the reference implementation this follows: the ITU-T X.25 polynomial

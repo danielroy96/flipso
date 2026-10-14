@@ -26,19 +26,18 @@ static bool itso_ts_newer(uint16_t a, uint16_t b) {
 }
 
 uint8_t itso_value_records(const uint8_t* group, size_t len, uint8_t sector_size, size_t* offset) {
-    /* The value group starts at a sector boundary, so its offset cannot be found
-     * without a sector size. A shell that reached the transports has one, but the
-     * decoder is also driven directly by the host tests. */
-    if(sector_size == 0 || len < 2) return 0;
+    if(len < 2) return 0;
 
     size_t dataset_len = (size_t)itso_bits(group, 0, 6) * ITSO_IPE_BLOCK_LEN;
     if(dataset_len < 4 || dataset_len > len) return 0;
 
     /* TS 1000-2 clause 5.1.5.3 rule 2: the group begins in the next chained
-     * sector after the one the IPE data group ends in. */
+     * sector after the one the IPE data group ends in. A CMD11 card has no
+     * sectors (B = 0, TS 1000-10 table 114): ReadIPE and ReadVRG each return a
+     * group whole, and the transport puts the second straight after the first. */
     size_t ipe_group_len = dataset_len + ITSO_INSTANCE_ID_LEN + ITSO_SEAL_LEN;
-    size_t sectors_used = (ipe_group_len + sector_size - 1) / sector_size;
-    size_t vg_offset = sectors_used * sector_size;
+    size_t vg_offset = ipe_group_len;
+    if(sector_size) vg_offset = (ipe_group_len + sector_size - 1) / sector_size * sector_size;
     if(vg_offset + 2 > len) return 0;
 
     /* Table 14: the upper five flags of VGBitMap count the records the group
@@ -64,6 +63,10 @@ uint8_t itso_previous_value_records(
     size_t len,
     uint8_t sector_size,
     size_t* offset) {
+    /* Hardware anti-tear keeps one copy, and a CMD11 card - the one kind with
+     * no sector size - is hardware anti-tear (TS 1000-10 clause 12.4.9). */
+    if(sector_size == 0) return 0;
+
     size_t current = 0;
     uint8_t records = itso_value_records(group, len, sector_size, &current);
     if(records == 0) return 0;

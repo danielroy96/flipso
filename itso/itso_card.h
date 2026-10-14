@@ -24,7 +24,8 @@ struct ItsoCard {
     ItsoDate expiry; /**< EXP, the shell's expiry. */
     uint8_t format_rev; /**< ShellFormatRevision. */
     /** Format Version Code, the media definition: 2 = ISO 7816 CMD2, 4 = Ultralight
-     *  CMD4, 7 = DESFire CMD7, 9 = NTAG CMD9, 10 = Ultralight EV1 CMD10, 12 = CMD12. */
+     *  CMD4, 7 = DESFire CMD7, 9 = NTAG CMD9, 10 = Ultralight EV1 CMD10, 11 = the
+     *  programmable media CMD11, 12 = CMD12. */
     uint8_t fvc;
     /**
      * A Compact ITSO Shell (TS 1000-2 clause 4.2): the tiny page-based media that
@@ -56,6 +57,15 @@ struct ItsoCard {
      */
     bool chip_abacus_valid;
     uint8_t chip_abacus;
+    /**
+     * A CMD11 card that uses random MIDs (TS 1000-10 clause 12.4.3): until a
+     * reader has authenticated, its SELECT answers with a pseudo-shell, which
+     * every card of that operator shares, and a pseudo-MID (tag C6). So
+     * @c isrn is the operator's number rather than this card's, and nothing
+     * may treat it as the card's identity - two such cards would be taken for
+     * one. Set when the read captured a pseudo-MID; see FlipsoBlockPseudoMid.
+     */
+    bool shell_pseudo;
     /** KSC, Key Strategy Code (TS 1000-2 clause 4.1.6): which security algorithm
      *  guards the data groups on a card of this FVC. */
     uint8_t ksc;
@@ -94,6 +104,7 @@ struct ItsoCard {
     /* Directory InstanceID (TS 1000-2 table 8): the last ISAM to rewrite the
      * directory is the last device that changed anything on the card. */
     bool dir_instance_valid;
+    bool dir_instance_hidden; /**< Sent as all 0xFF, as CMD11 hides an IPE's. */
     uint8_t dir_kid;
     uint8_t shell_iteration; /**< INS#: hotlists name a shell by ISRN and this. */
     uint32_t dir_isam;

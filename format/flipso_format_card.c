@@ -71,6 +71,9 @@ static void
     case 10:
         furi_string_cat(out, "Card type: Ultralight EV1 (CMD10)\n");
         break;
+    case ITSO_FVC_PIM:
+        furi_string_cat(out, "Card type: Programmable media (CMD11)\n");
+        break;
     case 12:
         furi_string_cat(out, "Card type: DESFire (CMD12)\n");
         break;
@@ -118,14 +121,30 @@ static void
         furi_string_cat_printf(out, "  Shell operator number: %u\n", card->oid);
     } else {
         furi_string_cat_printf(out, "Key set: %u, version %u\n", card->ksc, card->kvc);
-        furi_string_cat_printf(
-            out,
-            "Layout: %u sector%s of %u bytes\n",
-            card->sector_count,
-            card->sector_count == 1 ? "" : "s",
-            card->sector_size);
+        if(card->sector_size) {
+            furi_string_cat_printf(
+                out,
+                "Layout: %u sector%s of %u bytes\n",
+                card->sector_count,
+                card->sector_count == 1 ? "" : "s",
+                card->sector_size);
+        } else {
+            /* B is zero on CMD11 (TS 1000-10 table 114): its applet hands each
+             * data group over whole, by command, rather than from sectors. */
+            furi_string_cat(out, "Layout: Applet, no sectors\n");
+        }
         furi_string_cat_printf(
             out, "Directory: %u slot%s\n", card->dir_entries, card->dir_entries == 1 ? "" : "s");
+    }
+    /* A random-MID CMD11's pseudo-shell (TS 1000-10 clause 12.4.3): its number
+     * and expiry are the operator's, the same on every card of theirs, so they
+     * are kept here as what they are rather than shown as this card's. */
+    if(card->shell_pseudo) {
+        furi_string_cat(out, "Shell: Shared by the operator's cards\n");
+        furi_string_cat(out, "  Shared card number: ");
+        flipso_cat_isrn(out, card);
+        furi_string_push_back(out, '\n');
+        flipso_cat_expiry(out, "  ", "Shared expiry", "Shared expiry", card->expiry, f->now);
     }
     /* The directory sequence number counts every change made to the shell,
      * modulo 256; it is also how a CMD2 card's two directory copies are told
@@ -140,7 +159,9 @@ static void
     /* The directory is rewritten by every transaction, so the machine that
      * last sealed it is the last one to change anything on the card
      * (TS 1000-2 table 8, annex B). */
-    if(card->dir_instance_valid) {
+    if(card->dir_instance_hidden) {
+        furi_string_cat(out, "Last updated by machine: Hidden by the card\n");
+    } else if(card->dir_instance_valid) {
         flipso_cat_machine(out, f, "", "Last updated by machine", card->dir_isam);
         /* KID: the version of the key the directory's seal is made with. */
         furi_string_cat_printf(out, "Directory seal key version: %u\n", card->dir_kid);
@@ -165,11 +186,18 @@ static void flipso_cat_card_page(FuriString* out, const FlipsoFormat* f, const I
             "even where the products on it are still in date.\n");
     }
 
-    /* The number stands alone under the page's title: with a label in front,
-     * its eighteen digits break across two rows. */
-    flipso_cat_isrn(out, card);
-    furi_string_push_back(out, '\n');
-    if(!card->isrn_check_ok) furi_string_cat(out, "  Check digit: Does not match\n");
+    if(card->shell_pseudo) {
+        /* The number this card answers with is its operator's, shared by every
+         * card of theirs (TS 1000-10 clause 12.4.3); Technical has it, and the
+         * end of the page says why. */
+        furi_string_cat(out, "Card number: Hidden\n");
+    } else {
+        /* The number stands alone under the page's title: with a label in
+         * front, its eighteen digits break across two rows. */
+        flipso_cat_isrn(out, card);
+        furi_string_push_back(out, '\n');
+        if(!card->isrn_check_ok) furi_string_cat(out, "  Check digit: Does not match\n");
+    }
 
     /* The good case is stated rather than left to silence, because nothing else
      * on the screen separates a card the issuer is happy with from one whose
@@ -178,15 +206,20 @@ static void flipso_cat_card_page(FuriString* out, const FlipsoFormat* f, const I
         furi_string_cat(out, "Status: Blocked\n");
     } else if(itso_card_retired(card)) {
         furi_string_cat(out, "Status: Retired\n");
-    } else if(!itso_date_open(card->expiry) && itso_date_expired(card->expiry, f->now)) {
+    } else if(
+        !card->shell_pseudo && !itso_date_open(card->expiry) &&
+        itso_date_expired(card->expiry, f->now)) {
         furi_string_cat(out, "Status: Expired\n");
     } else if(card->dir_valid) {
         furi_string_cat(out, "Status: Active\n");
     }
-    flipso_cat_expiry(out, "", "Expires", "Expired", card->expiry, f->now);
-    /* A blocked or retired card has no time left to use, whatever its date. */
-    if(!card->shell_blocked && !itso_card_retired(card)) {
-        flipso_cat_time_left(out, "  ", card->expiry, f->now);
+    /* A pseudo-shell's expiry is the operator's, not the card's. */
+    if(!card->shell_pseudo) {
+        flipso_cat_expiry(out, "", "Expires", "Expired", card->expiry, f->now);
+        /* A blocked or retired card has no time left to use, whatever its date. */
+        if(!card->shell_blocked && !itso_card_retired(card)) {
+            flipso_cat_time_left(out, "  ", card->expiry, f->now);
+        }
     }
 
     /* The shell owner is the operator that issued the card and so the one that
@@ -196,6 +229,12 @@ static void flipso_cat_card_page(FuriString* out, const FlipsoFormat* f, const I
     flipso_cat_operator(out, f, "", "Operator", itso_card_issuer_oid(card));
     if(card->mcrn_present && card->mcrn[0]) {
         furi_string_cat_printf(out, "Card reference: %s\n", card->mcrn);
+    }
+    if(card->shell_pseudo) {
+        furi_string_cat(
+            out,
+            "The card shows its number only to readers that prove they may see it, "
+            "so it cannot be saved.\n");
     }
 }
 

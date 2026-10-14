@@ -178,7 +178,11 @@ void flipso_cat_product_technical(
     /* The instance identity. Nothing else in the shell distinguishes one copy of
      * a product from another, so this is what a scheme would quote back when
      * asked about this particular ticket. */
-    if(product->instance_valid) {
+    if(product->instance_hidden) {
+        /* Redacted by a CMD11 card before authentication (TS 1000-10 clause
+         * 12.4.8), so as not to be traced by it - not an ISAM FFFFFFFF. */
+        furi_string_cat(out, "Created by machine: Hidden by the card\n");
+    } else if(product->instance_valid) {
         flipso_cat_machine(out, f, "", "Created by machine", product->isam_id);
         furi_string_cat_printf(out, "  Sequence: %lu\n", (unsigned long)product->isam_seq);
         if(product->iteration)

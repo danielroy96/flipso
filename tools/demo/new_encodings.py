@@ -68,7 +68,15 @@ def structure(blocks):
     if len(shell) < 20:
         return found
     sector, sectors, entries, sct_len = shell[16], shell[17], shell[18], shell[19]
-    found.add(f"media: {sector}-byte sectors x {sectors}, {entries} directory entries")
+    if shell[11] == 11:
+        # CMD11 has no sectors (B = 0): an applet hands each group over whole.
+        found.add(f"media: programmable (CMD11), {entries} directory entries")
+    else:
+        found.add(f"media: {sector}-byte sectors x {sectors}, {entries} directory entries")
+    if "OID list" in blocks:
+        found.add("FCI: OID list (CMD11)")
+    if "Pseudo MID" in blocks:
+        found.add("shell: pseudo-shell shared by the operator's cards (CMD11 random MIDs)")
     if "Tag" in blocks:
         found.add(f"media: NFC Type 2 tag (CMD{shell[11]}), full shell")
     if bits(shell, 6, 6) & 0b10:
@@ -80,7 +88,9 @@ def structure(blocks):
     if dir_bitmap & 1:
         found.add("directory: shell blocked")
     instance = 2 + 5 * entries + sct_len + 1
-    if len(directory) >= instance + 5 and any(directory[instance + 1:instance + 5]):
+    if len(directory) >= instance + 5 and directory[instance:instance + 5] == b"\xFF" * 5:
+        found.add("directory: InstanceID hidden by the card")
+    elif len(directory) >= instance + 5 and any(directory[instance + 1:instance + 5]):
         found.add("directory: InstanceID (last writer's ISAM)")
 
     for i in range(1, entries + 1):
@@ -95,6 +105,9 @@ def structure(blocks):
             continue
         rev, bitmap = bits(ipe, 12, 4), bits(ipe, 6, 6)
         found.add(f"TYP {typ} rev {rev}: bitmap 0x{bitmap:02X}")
+        dataset = bits(ipe, 0, 6) * 4
+        if ipe[dataset:dataset + 8] == b"\xFF" * 8:
+            found.add(f"TYP {typ}: InstanceID hidden by the card")
         found.add(f"TYP {typ} rev {rev}: {'with' if vgp else 'no'} value record group")
 
     log = blocks.get("Log", b"")

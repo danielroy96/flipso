@@ -60,7 +60,9 @@ itso/                 the decoder: pure C, no firmware dependency, host-testable
                       maps the parts:
   media/                the card as storage: itso_shell.c, itso_directory.c (the
                         directory and sector chains), itso_type2.c (CMD9/CMD10),
-                        itso_cmd4.c (paper tickets)
+                        itso_cmd4.c (paper tickets), itso_fci.c (the SELECT
+                        answer's TLV), itso_cmd11.c (CMD11's whole-group reads
+                        and OID list)
   ipe/                  what a product holds: itso_ipe.c (shared elements and the
                         table of types), one itso_ipe_<kind>.c per TYP family,
                         itso_value.c (value records), itso_capping.c,
@@ -87,6 +89,9 @@ reader/               getting a card off the reader:
                                                verdict; pure C, host-tested by
                                                test_scan_session.c
                         flipso_cmd2.c          ISO 7816 transport for CMD2 media
+                        flipso_cmd11.c         CMD11 (programmable media): reached
+                                               from flipso_cmd2.c when the shell
+                                               says FVC 11, on CMD2's buffers
                         flipso_type2.c         NFC Type 2 tag transport: CMD4 (SPT paper
                                                tickets), and CMD9/CMD10 (a full shell on
                                                an NTAG or Ultralight EV1)
@@ -159,7 +164,9 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-96.4 KB of the 540 KB file as of 2026-10-13 - 1.2 KB of that came with the
+99.1 KB of the 547 KB file as of 2026-10-14 - 2.2 KB of that came with the
+CMD11 transport, its decoder and screens (96.9 KB before, measured the same
+day), 1.2 KB with the
 ticket restriction reader and its screen (95.2 KB on 2026-10-08), 2.9 KB with the UI
 review's fixes, the decoded Technical pages and the ticket type reader (92.2 KB
 before, measured the same day), 1.8 KB with

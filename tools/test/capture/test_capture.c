@@ -25,6 +25,8 @@ int main(void) {
     type2_card();
     full_type2_card();
     full_type2_refused();
+    cmd11_capture();
+    cmd11_pseudo();
     printf("\nIncomplete reads\n");
     partial();
     spare_entry();
@@ -39,6 +41,7 @@ int main(void) {
     merge_new_product();
     merge_type2();
     merge_full_type2();
+    cmd11_merge();
     printf("\nProducts the card has dropped\n");
     merge_gone_product();
     gone_product_cap();

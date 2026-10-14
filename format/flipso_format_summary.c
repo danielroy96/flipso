@@ -120,7 +120,9 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
     /* A card that cannot be used is the headline, whatever its products say:
      * a blocked, retired or expired card is the one line that answers for all
      * of them. A card that is fine says so last, under what it holds. */
-    const bool expired = !itso_date_open(card->expiry) && itso_date_expired(card->expiry, f->now);
+    /* A CMD11 pseudo-shell's expiry is its operator's, not this card's. */
+    const bool expired = !card->shell_pseudo && !itso_date_open(card->expiry) &&
+                         itso_date_expired(card->expiry, f->now);
     if(card->shell_compact) {
         /* A paper ticket, not a card: its state is its one product's, which
          * that product's own line below already says - "Until", "Expired",
@@ -183,7 +185,9 @@ void flipso_format_summary(FuriString* out, const FlipsoFormat* f, const ItsoCar
 
     if(!card->shell_compact && !card->shell_blocked && !itso_card_retired(card) && !expired) {
         if(card->dir_valid) furi_string_cat(out, "Card: Active\n");
-        flipso_cat_expiry(out, "", "Card expires", "Card expired", card->expiry, f->now);
+        if(!card->shell_pseudo) {
+            flipso_cat_expiry(out, "", "Card expires", "Card expired", card->expiry, f->now);
+        }
     }
 
     /* A paper ticket keeps no log, so what a card's last tap says is in its one

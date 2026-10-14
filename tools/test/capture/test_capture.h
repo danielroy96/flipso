@@ -69,6 +69,12 @@ void type2_card(void);
 void full_type2_card(void);
 void full_type2_refused(void);
 
+/* --- CMD11: test_cmd11_capture.c --- */
+
+void cmd11_capture(void);
+void cmd11_merge(void);
+void cmd11_pseudo(void);
+
 /* --- Incomplete reads and limits: test_incomplete.c --- */
 
 void partial(void);

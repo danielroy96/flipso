@@ -45,6 +45,8 @@ as it can:
   rides left, price, when and at which station they were last used
 - **NFC tag tickets** — ITSO cards on NTAG215/216 and MIFARE Ultralight EV1 tags (CMD9 and CMD10), read like a
   smartcard, with the chip's lock bits and, on an NTAG, how many uses it has left
+- **Programmable cards** — ITSO's applet-based media (CMD11), read without authenticating: products, value records and
+  journeys, with the details the card keeps back until a reader proves itself said to be hidden
 
 Station and operator names are resolved on the device from bundled reference
 data.
@@ -152,7 +154,7 @@ site. Flipso is written against:
 | [TS 1000-2](https://www.itso.org.uk/hubfs/TS_1000-2_V2_1_5_2025_03.pdf)   | Customer Media Format and Data Record Definitions   | The shell, directory, product (IPE) and value record layouts             |
 | [TS 1000-5](https://www.itso.org.uk/hubfs/TS_1000-5_V2_1_5_2025_03.pdf)   | Customer Media Data and Customer Media Architecture | The fields of each product type, and the journey log                     |
 | [TS 1000-7](https://www.itso.org.uk/hubfs/TS_1000-7_V2_1_5_2025_03.pdf)   | ITSO Security Subsystem                             | Cryptography Flipso can't do without an ISAM                             |
-| [TS 1000-10](https://www.itso.org.uk/hubfs/TS_1000-10_V2_1_5_2025_03.pdf) | Customer Media Definitions                          | Where the data sits on each kind of card (CMD2, CMD4, CMD7, CMD9, CMD10) |
+| [TS 1000-10](https://www.itso.org.uk/hubfs/TS_1000-10_V2_1_5_2025_03.pdf) | Customer Media Definitions                          | Where the data sits on each kind of card (CMD2, CMD4, CMD7, CMD9, CMD10, CMD11) |
 
 See [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for further information on Flipso's implementation.
 [`docs/GLOSSARY.md`](docs/GLOSSARY.md) explains the acronyms and terms it uses.

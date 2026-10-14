@@ -3,7 +3,8 @@
 Two cards are generated: a CMD7 (DESFire) one with the default geometry, and a
 CMD2 (generic micro-processor) one with the larger geometry that real CMD2 cards
 turn out to use - 80-byte sectors, 64 of them, 16 directory entries, and so a
-six-bit Sector Chain Table rather than the four-bit one CMD7 needs.
+six-bit Sector Chain Table rather than the four-bit one CMD7 needs. Beside them
+are the Type 2 tags (CMD4, CMD9, CMD10) and a CMD11 card as its applet answers.
 """
 import os
 import sys
@@ -13,6 +14,7 @@ from itso_build import (  # noqa: E402
     Bits, bcd, charge_tail, date_stamp, dir_entry, dts, instance_and_seal, journey_tail,
     capping_vgx, isam, log_entry, loc1, loyalty_tail, loc2, luhn, nlc, pad, period_tail, purse_tail,
     put_secrc, rail_retailer, reservation_tail, voucher_tail, reservation_vgx, tt_record, tt_record_rev4, type2_page_memory,
+    ber_tlv, cmd11_fci, cmd11_product, cmd11_read_ipe, cmd11_read_vrg,
     typ24_dataset, typ27_dataset, typ28_dataset, typ29_dataset, value_group,
     value_record, directory, isrn, shell_dataset, split_sectors, type2_full_page_memory)
 
@@ -744,6 +746,74 @@ cmd2_ipe16.putb(40, (0b1111111111100000).to_bytes(2, "big"))
 cmd2_ipe16.putb(42, loc1(203, nlc("5685")))
 cmd2_sector2 = pad(bytes(cmd2_ipe16.buf) + instance_and_seal(), CMD2_B)
 
+# ================================================================== CMD11 card
+# ITSO's Programmable Intelligent Media (TS 1000-10 clause 12), as its applet
+# answers before authentication: SELECT's FCI carrying the shell, directory and
+# OID list, ReadIPE and ReadVRG responses with the InstanceIDs and seals blanked
+# to 0xFF, and ReadLog's five records. The Normal geometry of table 114: no
+# sectors (B = 0), eight directory entries, a four-byte SCT over S = 11.
+CMD11_IIN, CMD11_OID, CMD11_ISSN = "633597", "1234", "0011011"
+CMD11_ISRN = CMD11_IIN + CMD11_OID + CMD11_ISSN + luhn(CMD11_IIN + CMD11_OID + CMD11_ISSN)
+CMD11_S, CMD11_E, CMD11_SCTL = 11, 8, 4
+CMD11_EXP = date_stamp(2035, 3, 31)
+cmd11_shell = bytes(shell_dataset(CMD11_IIN, CMD11_OID, CMD11_ISSN, fvc=11, ksc=1, kvc=1,
+                                  expiry=CMD11_EXP, b=0, s=CMD11_S, e=CMD11_E,
+                                  sctl=CMD11_SCTL).buf[:24])
+
+cmd11_entries = [
+    dir_entry(1234, 2, 0, True, CMD11_EXP),                  # E1 pay as you go
+    dir_entry(5678, 16, 1, False, CMD11_EXP, extended=True),  # E2 an ID, OID 13870
+    # E3 a voucher whose owner only the OID list names in full: 0x6000 | 0x0123
+    # is 24867, in the 16-bit range table B2 gives operators and retailers.
+    dir_entry(0x0123, 25, 0, False, CMD11_EXP, extended=True),
+] + [bytes(5)] * (CMD11_E - 4) + [
+    log_entry(ptr=1, eei=0, when=dts(2026, 10, 9, 8, 15), record_offset=0, passback=5),
+]
+# Each IPE "sector" is its directory entry, and every one is in use (S-1).
+cmd11_dir = directory(cmd11_entries, {1: CMD11_S - 1, 2: CMD11_S - 1, 3: CMD11_S - 1},
+                      CMD11_S, CMD11_E, CMD11_SCTL, 0x05,
+                      instance=bytes([0x10]) + isam(1234, 0x0B0B).to_bytes(4, "big"))
+cmd11_oids = [1234, 0x2000 | 5678, 0x6000 | 0x0123] + [0] * (CMD11_E - 3)
+cmd11_fci_static = cmd11_fci(cmd11_shell, cmd11_dir, cmd11_oids)
+assert cmd11_fci_static[1] == 0x81, "the FCI should need a long-form length"
+# One that disagrees with every entry: the wrong thirteen bits for E1, a prefix
+# table B4 does not have for E2 (0b010), and none at all for E3, whose entry
+# has the extension flag set.
+cmd11_oids_wrong = b"".join(o.to_bytes(2, "big") for o in
+                            [1235, 0x4000 | 5678, 0x0123] + [0] * (CMD11_E - 3))
+# Random MIDs (clause 12.4.3): the pseudo-shell and a pseudo-MID, as figure 10
+# has it, with no directory; and as the clause's text has it, with one.
+CMD11_PSEUDO_MID = bytes.fromhex("8011223344556677")
+cmd11_fci_pseudo = cmd11_fci(cmd11_shell, pseudo_mid=CMD11_PSEUDO_MID)
+cmd11_fci_pseudo_dir = cmd11_fci(cmd11_shell, cmd11_dir, cmd11_oids, pseudo_mid=CMD11_PSEUDO_MID)
+# A CMD2 FCI's Parameter EF, whose C3 is a short file id and not an OID list.
+cmd11_fci_e0 = ber_tlv(0x6F, ber_tlv(0xA5, ber_tlv(0xE0, ber_tlv(0xC3, b"\x01"))))
+
+# E1: the purse IPE of the CMD7 card, and a value group of two records - and
+# the same group a read the day before found, one transaction earlier.
+cmd11_ts7 = value_record(4, 7, dts(2026, 10, 9, 8, 15), purse_tail(1230, 0))
+cmd11_ts6 = value_record(4, 6, dts(2026, 10, 8, 17, 40), purse_tail(1500, 0))
+cmd11_ts5 = value_record(4, 5, dts(2026, 10, 8, 8, 3), purse_tail(1780, 0))
+cmd11_values1 = value_group([cmd11_ts7, cmd11_ts6], format_rev=1)
+cmd11_values1_before = value_group([cmd11_ts5, cmd11_ts6], format_rev=1)
+cmd11_ipe1 = cmd11_read_ipe(cmd11_entries[0], bytes(ipe2.buf))
+cmd11_vrg1 = cmd11_read_vrg(cmd11_values1)
+cmd11_vrg1_entry = cmd11_read_vrg(cmd11_values1, cmd11_entries[0])
+# E2: the CMD7 card's ITSO ID, with no value group.
+cmd11_ipe2 = cmd11_read_ipe(cmd11_entries[1], bytes(ipe16.buf))
+cmd11_log = b"".join([
+    tt_record(12, dts(2026, 10, 9, 8, 15), 270, NLC_1072, NLC_1444, 1),
+    tt_record(11, dts(2026, 10, 9, 7, 52), 0, NLC_1072, None, 1),
+    tt_record(12, dts(2026, 10, 8, 17, 40), 280, NLC_1444, NLC_1072, 1),
+    tt_record(12, dts(2026, 10, 8, 8, 3), 270, NLC_1072, NLC_1444, 1),
+    tt_record(12, dts(2026, 10, 7, 18, 1), 280, NLC_1444, NLC_1072, 1),
+])
+assert len(cmd11_log) == 240
+# The products as a read saves them.
+cmd11_product1 = cmd11_product(bytes(ipe2.buf), cmd11_values1)
+cmd11_product1_before = cmd11_product(bytes(ipe2.buf), cmd11_values1_before)
+cmd11_product2 = cmd11_product(bytes(ipe16.buf))
+
 # ================================================================== CMD4 card
 # A Compact ITSO Shell on a MIFARE Ultralight / Infineon my-d (TS 1000-10 section
 # 5), the family SPT's Glasgow Subway paper tickets use. Only three bytes are
@@ -1029,6 +1099,22 @@ with open("card_data.h", "w") as f:
     f.write(carr("cmd2_sector1", cmd2_sector1))
     f.write(carr("cmd2_sector2", cmd2_sector2))
     f.write(carr("cmd2_sector18", cmd2_sector18))
+    f.write("\n/* Synthetic ITSO CMD11 card, as its applet answers. */\n")
+    f.write(f'#define EXPECT_CMD11_ISRN "{CMD11_ISRN}"\n')
+    f.write(carr("cmd11_shell", cmd11_shell))
+    f.write(carr("cmd11_fci_static", cmd11_fci_static))
+    f.write(carr("cmd11_fci_pseudo", cmd11_fci_pseudo))
+    f.write(carr("cmd11_fci_pseudo_dir", cmd11_fci_pseudo_dir))
+    f.write(carr("cmd11_fci_e0", cmd11_fci_e0))
+    f.write(carr("cmd11_oids_wrong", cmd11_oids_wrong))
+    f.write(carr("cmd11_ipe1", cmd11_ipe1))
+    f.write(carr("cmd11_vrg1", cmd11_vrg1))
+    f.write(carr("cmd11_vrg1_entry", cmd11_vrg1_entry))
+    f.write(carr("cmd11_ipe2", cmd11_ipe2))
+    f.write(carr("cmd11_log", cmd11_log))
+    f.write(carr("cmd11_product1", cmd11_product1))
+    f.write(carr("cmd11_product1_before", cmd11_product1_before))
+    f.write(carr("cmd11_product2", cmd11_product2))
     f.write("\n/* Synthetic ITSO CMD4 compact-shell card (Type 2 tag). */\n")
     f.write(f'#define EXPECT_CMD4_ISRN "{CMD4_ISRN}"\n')
     f.write(carr("cmd4_shell", cmd4_shell))
@@ -1058,4 +1144,5 @@ print("CMD2 ISRN:", CMD2_ISRN)
 print("CMD4 ISRN:", CMD4_ISRN)
 print("CMD9 ISRN:", CMD9_ISRN)
 print("CMD10 ISRN:", CMD10_ISRN)
+print("CMD11 ISRN:", CMD11_ISRN)
 print("wrote card_data.h")

@@ -83,6 +83,11 @@ extern "C" {
  * Records whatever the record inside it claims to be (TS 1000-10 clause 8.7.5). */
 #define ITSO_TAP_RECORD_LEN 48
 
+/* The Format Version Code of CMD11, ITSO's Programmable Intelligent Media (TS
+ * 1000-10 clause 12.3): an applet that answers the same SELECT as CMD2, and
+ * whose shell is the only way to tell the two apart. */
+#define ITSO_FVC_PIM 11
+
 /* IPE types we decode beyond the directory entry (ITSO TS 1000-5 clause 2). */
 typedef enum {
     ItsoTypStoredTravelRights = 2, /**< Pay as you go purse. */

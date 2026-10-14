@@ -29,6 +29,8 @@ int main(void) {
 
     printf("\n== CMD2 card ==\n");
     cmd2_card();
+    printf("\n== CMD11 card ==\n");
+    cmd11_card();
     compact_shell();
     full_shell_type2();
     space_saving_types();

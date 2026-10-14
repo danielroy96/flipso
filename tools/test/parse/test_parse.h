@@ -61,6 +61,7 @@ void product_families(const ItsoCard* card); /* test_families.c */
 void shell_checksum(void); /* test_shell.c */
 void shell_reject_reasons(void);
 void cmd2_card(void); /* test_cmd2.c */
+void cmd11_card(void); /* test_cmd11.c */
 void compact_shell(void); /* test_cmd4.c */
 void space_saving_types(void);
 void full_shell_type2(void); /* test_type2_full.c */

@@ -218,9 +218,14 @@ bool itso_parse_shell(ItsoCard* card, const uint8_t* data, size_t len) {
         card->iin = card->iin * 10 + (uint32_t)(card->isrn[i] - '0');
     }
 
-    /* Sanity-check the geometry before anything downstream trusts it. */
-    if(card->sector_size == 0 || card->sector_count < 4 || card->dir_entries == 0 ||
-       card->dir_entries > ITSO_MAX_PRODUCTS || card->sct_len == 0 || card->sct_len > 64) {
+    /* Sanity-check the geometry before anything downstream trusts it. B is
+     * zero on a CMD11 card and only there (TS 1000-10 table 114): its applet
+     * hands each data group over whole rather than in sectors, so there is no
+     * sector size to have. */
+    bool whole_groups = card->sector_size == 0 && card->fvc == ITSO_FVC_PIM;
+    if((card->sector_size == 0 && !whole_groups) || card->sector_count < 4 ||
+       card->dir_entries == 0 || card->dir_entries > ITSO_MAX_PRODUCTS || card->sct_len == 0 ||
+       card->sct_len > 64) {
         card->shell_reject = ItsoShellRejectGeometry;
         return false;
     }

@@ -151,7 +151,11 @@ bool itso_parse_directory(ItsoCard* card, const uint8_t* data, size_t len) {
     /* The Directory InstanceID follows DIRS# (TS 1000-2 table 8): key and shell
      * iteration nibbles, then the ISAM that last sealed the directory. */
     size_t instance = itso_sct_offset(card) + card->sct_len + 1;
-    if(instance + 5 <= len) {
+    if(instance + 5 <= len && itso_is_all_ff(data + instance, 5)) {
+        /* Redacted, as a CMD11 card redacts an IPE's before authentication
+         * (TS 1000-10 clause 12.4.8): no ISAM is FFFFFFFF. */
+        card->dir_instance_hidden = true;
+    } else if(instance + 5 <= len) {
         card->dir_kid = data[instance] >> 4;
         card->shell_iteration = data[instance] & 0x0F;
         card->dir_isam = itso_bits(data + instance + 1, 0, 32);

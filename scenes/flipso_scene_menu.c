@@ -192,7 +192,10 @@ void flipso_scene_menu_on_enter(void* context) {
         /* Nothing to write without the bytes the read produced - a card whose
          * shell read but whose directory did not still has a shell to keep, but
          * a read that never got that far has nothing. */
-        if(flipso_capture_valid(app->capture)) {
+        /* Nor for a CMD11 card that hides its number: the number it shows is
+         * shared by its operator's cards, and a file named and matched by it
+         * would be every one of them at once. */
+        if(flipso_capture_valid(app->capture) && !app->card.shell_pseudo) {
             flipso_menu_view_add_item(menu, "Save card", &I_save_10px, FlipsoCardMenuRowSave);
         }
     } else if(!flipso_saved_is_demo(furi_string_get_cstr(app->loaded_path))) {

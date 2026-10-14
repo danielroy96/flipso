@@ -36,6 +36,9 @@ uint16_t itso_isam_oid(uint32_t isam);
 /** True if every byte in the range is zero. */
 bool itso_is_blank(const uint8_t* data, size_t len);
 
+/** True if every byte in the range is 0xFF: how a CMD11 card redacts. */
+bool itso_is_all_ff(const uint8_t* data, size_t len);
+
 /**
  * Convert a 14-bit EN1545 DateStamp to a Unix timestamp.
  * Days since 1997-01-01; a stored zero means the maximum date (2041-11-10).

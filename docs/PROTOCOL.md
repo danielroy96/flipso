@@ -218,6 +218,98 @@ necessarily use the defaults in the specification: the Subway card reports
 and 8, which among other things widens each Sector Chain Table entry from five
 bits to six.
 
+### Programmable media (CMD11)
+
+CMD11, ITSO's Programmable Intelligent Media (TS 1000-10 clause 12), is an
+applet on a JavaCard-style platform rather than a file system, with a command
+set of its own. It answers the same SELECT as CMD2 (clause 12.4.6), so it is
+read by the ISO 7816 transport up to the point where the shell in the File
+Control Information says FVC 11, and from there by `reader/flipso_cmd11.c`,
+sharing CMD2's buffers and APDU exchange. Almost all of it answers without
+keys. No CMD11 card has been seen: this is built from the specification alone.
+
+**The FCI.** Figures 9, 10 and 11 are images in the PDF; transcribed, the
+SELECT response is BER-TLV, and past 127 bytes - the Normal geometry and up -
+its lengths take the long form (`81 xx`):
+
+```
+6F  FCI template                                    M
+    84  DF name (the ITSO AID)                      O
+    A5  FCI proprietary template                    M
+        C0  Shell (static MID) / pseudo-shell (random MID)    M
+        C1  Capabilities: 00, the default command set          M
+        C2  Directory                                          M (static MID)
+        C3  OID16 list, one per directory entry                M (static MID)
+        C4  Previous CCS: the last session's commit receipt    M
+        C5  Challenge, for mutual authentication               M
+        C6  Pseudo-MID, eight bytes (random MID only)          M (random MID)
+```
+
+Figure 10, the random-MID FCI, holds C0, C1, C4, C5 and C6; the text of clause
+12.4.3 lists C2 and C3 in it as well. Flipso reads whichever is there. Figure
+11, the FCI that Reselect returns once a reader has authenticated, holds C0
+(the card's own shell), C2, C3, C5 and C7 (the real MID); Flipso never sends
+it, since it works only inside a secure session.
+
+**The commands** (table 112), each `90 INS P1 00 00` with no data:
+
+| Command | INS | P1 | Returns |
+| --- | --- | --- | --- |
+| ReadIPE | 12 | directory entry, 1 to E-1 | the IPE's five-byte directory entry, the IPE, and its InstanceID and seal |
+| ReadVRG | 14 | directory entry | the IPE's Value Record Data Group and its InstanceID and seal |
+| ReadLog | 16 | record count, 1 to 5 | that many 48-byte records, newest first |
+
+Before a secure session the applet replaces the sixteen bytes of InstanceID and
+seal with 0xFF, "to prevent digital fingerprinting and unauthorised tracing"
+(clauses 12.4.8 and 12.4.9). Flipso marks such an InstanceID hidden rather than
+reading it as ISAM FFFFFFFF of operator 8191, which ITSO reserves, and the
+screens say "Created by machine: Hidden by the card"; the same goes for a
+Directory InstanceID sent as 0xFF. The value records themselves are not
+redacted, so each still names the machine that wrote it. Flipso sends only
+these three: never Authenticate, an Update, EndSession or Reselect.
+
+**Geometry** (table 114): B is zero, because the applet hands each group over
+whole rather than in sectors, and S, E# and SCTL keep the directory's familiar
+shape - an SCT of one element per directory entry:
+
+| Size | S | E# | SCTL | FCI bytes | Memory |
+| --- | --- | --- | --- | --- | --- |
+| Small | 7 | 4 | 2 | 115 | 3.7k |
+| Normal | 11 | 8 | 4 | 147 | 5.8k |
+| Large | 15 | 12 | 6 | 177 | 7.9k |
+| Extra large | 19 | 16 | 10 | 209 | 10.0k |
+
+A shell with B of zero is refused on every other medium, where it would leave
+nowhere to put a product.
+
+**The read.** The directory comes from C2 and is parsed as any other is. For
+each product the directory lists, ReadIPE, then ReadVRG when VGP is set; the
+directory entry in front of the IPE is dropped (and checked against the
+directory's), and the value group is put straight after the IPE group, which is
+where the decoder looks for it when B is zero. Clause 12.4.9 says ReadVRG
+"behaves as" ReadIPE without saying whether that includes the entry in front,
+so a response is taken as a bare group when its own length element says it is
+exactly that, and as an entry and a group when the length after five bytes
+does. One value group per IPE holds up to four records and hardware anti-tear
+protects it, so none of annex A's two-copy logic applies. Then ReadLog with
+P1 = 5. A product the card refuses is shown from its directory entry; a card
+that leaves the field part way is tapped again, as on the other media.
+
+**The OID list.** C3 holds one OID16 per directory entry, because an entry's
+thirteen bits and extension flag cannot hold a 16-bit OID, and the InstanceID
+that would say it elsewhere is redacted (table 113). An entry already holds all
+an IPE owner needs (TS 1000-2 table B2: owners are 1-8000 or 8192-16383), so the
+list is taken only where it agrees with the entry - the same thirteen bits, and
+a prefix table B4 allows for the entry's flag (000 without it; 001, 011 or 111
+with it) - and otherwise changes nothing.
+
+**Random MIDs** (clause 12.4.3). A card that uses them answers with its
+operator's pseudo-shell, shared by every card of theirs, and the pseudo-MID in
+C6; its own shell is given only to a reader that has authenticated. Flipso
+reads what it can, says on the Card screen that the card hides its number, keeps
+the shared number and expiry under Technical, and offers no Save - a file named
+and matched by the shared number would be every such card at once.
+
 ### Type 2 tags (CMD4, compact page media)
 
 SPT's Glasgow Subway paper tickets are ITSO too, on an NFC Forum Type 2 tag - a
@@ -498,7 +590,10 @@ A CMD4 paper ticket is saved as a single block of its whole page memory
 instead, `Type 2: 05 79 76 82 ...`, and decodes from that alone. Its identity
 for matching a saved file is the chip serial rather than the card number, which
 a compact shell shares with every other ticket. A CMD9 or CMD10 card is saved
-as the blocks above, plus `Tag: 04 63 08 2E ...`, its chip pages 0-3.
+as the blocks above, plus `Tag: 04 63 08 2E ...`, its chip pages 0-3. A CMD11
+card is saved as the blocks above too, each `Product n` its IPE group with its
+value group straight after, plus `OID list`, the FCI's C3; a random-MID card's
+read would add `Pseudo MID`, but such a card is never saved.
 
 `Chip` is the one block that is not part of the ITSO shell: a DESFire's
 GetVersion reply (seven bytes of hardware version, seven of software, the UID,
@@ -640,10 +735,11 @@ by ITSO Ltd under the Open Government Licence:
 - **Part 2** — Shell Environment, Directory, IPE, Value Record, Log Directory Entry
 - **Part 5** — per-IPE-type datasets and the Transient Ticket Record
 - **Part 10** — the customer media definitions: clause 3 for CMD2, clause 5 for
-  CMD4, clause 8 for CMD7, clauses 10 and 11 for CMD9 and CMD10, and annex A
-  for the software anti-tear CMD2, CMD9 and CMD10 share. The CMD9 and CMD10
-  page maps (figures 4.1, 4.2, 5, 7 and 8) are images in the PDF, which text
-  extraction does not reach
+  CMD4, clause 8 for CMD7, clauses 10 and 11 for CMD9 and CMD10, clause 12 for
+  CMD11, and annex A for the software anti-tear CMD2, CMD9 and CMD10 share. The
+  CMD9 and CMD10 page maps (figures 4.1, 4.2, 5, 7 and 8) and CMD11's FCI and
+  command layouts (figures 9-11, pages 136-142) are images in the PDF, which
+  text extraction does not reach
 
 Date encoding comes in two forms:
 
@@ -1038,12 +1134,13 @@ LocDefType 212 carries several stops and names the first, counting the rest.
 ## Limitations
 
 - Reads DESFire ITSO cards (CMD7, and CMD12 where the layout matches), ISO 7816
-  ones (CMD2), compact-shell Type 2 tags (CMD4) and full-shell ones (CMD9 on an
-  NTAG215/216, CMD10 on an Ultralight EV1). The obsolete MIFARE Classic media
-  definition is not supported, nor is CMD11, which replaces the file system
-  with a proprietary command set.
-- CMD9 and CMD10 are decoded from the specification alone: no real card of
-  either has been read. A CMD10's one-way transaction counter is not read (see
+  ones (CMD2), programmable media (CMD11), compact-shell Type 2 tags (CMD4) and
+  full-shell ones (CMD9 on an NTAG215/216, CMD10 on an Ultralight EV1). The
+  obsolete MIFARE Classic media definition is not supported.
+- CMD9, CMD10 and CMD11 are decoded from the specification alone: no real card
+  of any of them has been read. A CMD11 card's InstanceIDs are redacted before
+  authentication, so its products' creating machines cannot be shown, and a
+  random-MID CMD11 hides its own number; Flipso never authenticates. A CMD10's one-way transaction counter is not read (see
   above), so a retired CMD10 is not flagged as one.
 - TYP 25 (vouchers) and TYP 26 (toll passes) are decoded from the
   specification alone: no real one of either has been read. A toll pass's
