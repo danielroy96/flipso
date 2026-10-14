@@ -3,7 +3,11 @@
 Each file here is a self-contained brief for one feature. The first three came
 out of the code review of 2026-09-27, the auto-renew brief out of the review of
 the TYP 26 toll pass on 2026-10-05, and the rest out of the review of Flipso
-against the whole of TS 1000 and RSPS3002 on 2026-10-13. Start a session with:
+against the whole of TS 1000 and RSPS3002 on 2026-10-13 and of RDG's other
+published specifications (rspaccreditation.org's public list: RSPS5044,
+RSPS5045, RSPS5052, RSPS5080) on 2026-10-14. Several rail data briefs need
+files from the Rail Data Marketplace or the National Rail Data Portal, which
+need the user's account; each says which. Start a session with:
 
 > Build the feature in `docs/handoff/<file>.md`.
 
@@ -40,6 +44,13 @@ them has been seen.
 | [loyalty-member-number.md](loyalty-member-number.md) | The membership number TS 1000-5 builds for TYP 3 and TYP 17 | Small |
 | [operators-file-docs.md](operators-file-docs.md) | Make `operators.txt` discoverable, and say when it was cut short | Small |
 | [auto-renew-off.md](auto-renew-off.md) | "Auto-renew: Off", and the renewal quantity whichever way the flag is set | Small |
+| **Rail data** | | |
+| [rail-profile-fields.md](rail-profile-fields.md) | RSPS3002's remaining rules: rail photocard IDs, ValidityCode's peak levels and test flag, railcards held as TYP 14 entitlements | Medium |
+| [rail-route-names.md](rail-route-names.md) | Name a rail ticket's route code from RDG's Fare Route Restrictions data | Medium |
+| [seat-properties.md](seat-properties.md) | Name TYP 24 seat features from RSPS5080's published codes, replacing the guessed list | Small-medium |
+| [railcard-names.md](railcard-names.md) | Build the railcard names from RDG's Railcards reference data, out of RAM | Small-medium |
+| [toc-and-supplement-names.md](toc-and-supplement-names.md) | Name a reserved journey's operator-only TOC code and its supplements | Small-medium |
+| [fare-location-names.md](fare-location-names.md) | Passenger-facing names for fare groups ("London Zone R1256") from RDG's Fare Locations data | Small-medium |
 | **Navigation** | | |
 | [journeys-list.md](journeys-list.md) | Journeys as a list of rows, each opening its own screen | Medium |
 | [trips.md](trips.md) | Show a tap in inside the tap out that names it, and pair older records by inference | Medium |
