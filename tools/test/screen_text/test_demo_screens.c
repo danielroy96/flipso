@@ -564,6 +564,49 @@ void demo_fourteen(const FlipsoFormat* f, const ItsoCard* card) {
     furi_string_free(text);
 }
 
+/* CMD11, read before authentication: the products and journeys are all there,
+ * and what the card blanked is said to be hidden rather than read as an ISAM. A
+ * random-MID card's shell is its operator's, so its number is not this card's. */
+void demo_cmd11(const FlipsoFormat* f, const ItsoCard* card, bool hidden) {
+    FuriString* text = furi_string_alloc();
+    flipso_format_card(text, f, card, NULL, true, 0);
+    check(
+        "CMD11 is named on the card's Technical page",
+        on_page(text, "Technical", "Card type: Programmable media (CMD11)\n"));
+    check("a card with no sectors says so", shows(text, "Layout: Applet, no sectors\n"));
+    if(hidden) {
+        check(
+            "a random-MID card hides its number",
+            page_starts(text, "Card", "Card number: Hidden\nStatus: Active\nOperator: "));
+        check("and gives no expiry as its own", !on_page(text, "Card", "Expires:"));
+        check(
+            "the shared number is kept under Technical",
+            on_page(text, "Technical", "  Shared card number: 633597 0116 0000 000"));
+        check(
+            "its blanked directory InstanceID is hidden",
+            shows(text, "Last updated by machine: Hidden by the card\n"));
+        furi_string_reset(text);
+        flipso_format_summary(text, f, card);
+        check("its summary gives no card expiry", !shows(text, "Card expires"));
+    } else {
+        check("a static-MID card shows its number", page_starts(text, "Card", "633597 0116 "));
+        check("five journeys from ReadLog", card->tap_count == 5);
+        const ItsoProduct* purse = &card->products[1];
+        check("four value records from one VRG", purse->value_history_count == 4);
+        furi_string_reset(text);
+        flipso_format_product(text, f, card, purse);
+        check(
+            "a redacted InstanceID is hidden, not an ISAM",
+            on_page(text, "Technical", "Created by machine: Hidden by the card\n") &&
+                !shows(text, "FFFFFFFF"));
+        check(
+            "the value record still names its machine",
+            on_page(
+                text, "Technical", "Last updated by machine: 03A02C40\n  Operator: ScotRail\n"));
+    }
+    furi_string_free(text);
+}
+
 /* A card whose saved file remembers journeys the card has dropped. */
 void demo_four(const FlipsoFormat* f, const ItsoCard* card) {
     FuriString* text = furi_string_alloc();

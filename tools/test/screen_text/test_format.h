@@ -97,3 +97,4 @@ void demo_four(const FlipsoFormat* f, const ItsoCard* card);
 void demo_seven(const FlipsoFormat* f, const ItsoCard* card);
 void demo_fourteen(const FlipsoFormat* f, const ItsoCard* card);
 void demo_type2_full(const FlipsoFormat* f, const ItsoCard* card, bool ntag);
+void demo_cmd11(const FlipsoFormat* f, const ItsoCard* card, bool hidden);

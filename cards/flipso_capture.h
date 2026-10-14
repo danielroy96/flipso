@@ -31,12 +31,12 @@ extern "C" {
 #endif
 
 /**
- * A shell, a directory, a cyclic log and its history, the chip's description
- * and a Type 2 tag's chip pages, one group per directory entry, one value
- * history per entry, and the same pair again for each product the card has
- * dropped since a file was written.
+ * A shell, a directory, a cyclic log and its history, the chip's description,
+ * a Type 2 tag's chip pages and a CMD11 card's OID list and pseudo-MID, one
+ * group per directory entry, one value history per entry, and the same pair
+ * again for each product the card has dropped since a file was written.
  */
-#define FLIPSO_CAPTURE_MAX_BLOCKS (ITSO_MAX_PRODUCTS * 2 + ITSO_MAX_HISTORIC_PRODUCTS * 2 + 6)
+#define FLIPSO_CAPTURE_MAX_BLOCKS (ITSO_MAX_PRODUCTS * 2 + ITSO_MAX_HISTORIC_PRODUCTS * 2 + 8)
 
 /**
  * Block index the products that have left the card are keyed from.
@@ -142,6 +142,14 @@ typedef enum {
      * blocks a smartcard is, and these pages are the part of it that lies
      * outside the ITSO sectors; itso_parse_type2_tag() reads them. */
     FlipsoBlockTag,
+
+    /* What a CMD11 card's SELECT answer holds besides its shell and directory
+     * (TS 1000-10 clause 12.4.2): the OID list (tag C3), one OID16 per
+     * directory entry, which itso_parse_oid_list() reads; and, on a card using
+     * random MIDs, the pseudo-MID (tag C6) that says the shell beside it is
+     * the operator's shared pseudo-shell rather than the card's own. */
+    FlipsoBlockOidList,
+    FlipsoBlockPseudoMid,
 } FlipsoBlockKind;
 
 /**
@@ -238,7 +246,9 @@ bool flipso_capture_add_type2_full(
  * balance, the log - is what changes between one read and the next.
  *
  * @param out at least ITSO_ISRN_DIGITS + 1 bytes.
- * @return false when there is no shell, or it does not parse.
+ * @return false when there is no shell, or it does not parse - or when it is
+ *         a CMD11 pseudo-shell, whose number every card of its operator
+ *         shares: matching on it would merge strangers' cards into one file.
  */
 bool flipso_capture_card_number(const FlipsoCapture* capture, char* out);
 

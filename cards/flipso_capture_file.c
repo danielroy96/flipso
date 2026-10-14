@@ -39,6 +39,12 @@ static void flipso_capture_key(const FlipsoCaptureBlock* block, char* out, size_
     case FlipsoBlockTag:
         snprintf(out, out_len, "Tag");
         break;
+    case FlipsoBlockOidList:
+        snprintf(out, out_len, "OID list");
+        break;
+    case FlipsoBlockPseudoMid:
+        snprintf(out, out_len, "Pseudo MID");
+        break;
     case FlipsoBlockValueHistory:
         snprintf(out, out_len, "Value history %u", block->index);
         break;
@@ -233,6 +239,10 @@ bool flipso_capture_parse_line(FlipsoCapture* capture, const char* line) {
         kind = FlipsoBlockType2;
     } else if(strcmp(key, "Tag") == 0) {
         kind = FlipsoBlockTag;
+    } else if(strcmp(key, "OID list") == 0) {
+        kind = FlipsoBlockOidList;
+    } else if(strcmp(key, "Pseudo MID") == 0) {
+        kind = FlipsoBlockPseudoMid;
     } else if(flipso_capture_indexed_key(key, "Product history ", &index)) {
         kind = FlipsoBlockProductHistory;
     } else if(flipso_capture_indexed_key(key, "Product ", &index)) {

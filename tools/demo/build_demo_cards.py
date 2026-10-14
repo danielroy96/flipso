@@ -9,8 +9,8 @@ has a wallet with a loyalty IPE, a charge-to-account product, a blocked shell
 and a revision 1 period ticket in it.
 
 So these cards are built to cover the app rather than to be plausible wallets.
-Between them they reach every screen, the CMD7, CMD2 and Type 2 (CMD4, CMD9,
-CMD10) geometries, every IPE type the decoder names, every value record tail it
+Between them they reach every screen, the CMD7, CMD2, CMD11 and Type 2 (CMD4,
+CMD9, CMD10) geometries, every IPE type the decoder names, every value record tail it
 decodes, nearly every location renderer, and the parts of the model only a
 saved card can hold - journeys and transactions that have rolled off the card,
 and products the card no longer lists.
@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from itso_build import (  # noqa: E402
     Bits, bcd, charge_tail, date_stamp, dir_entry, directory, dts, isam,
     instance_and_seal, isrn, journey_tail, loc1, loc2, log_entry, loyalty_tail,
+    cmd11_product,
     naptan, pad_sector, period_tail, purse_tail, rail_retailer, reservation_tail,
     reservation_vgx,
     shell_dataset, sncode, sncode2, tt_record, tt_record_rev4, type2_full_page_memory,
@@ -1645,10 +1646,133 @@ def card_subway_carnet():
     ]
 
 
+# ====================================================================
+# Cards 15 and 16 - CMD11, ITSO's Programmable Intelligent Media
+#
+# An applet rather than a file system (TS 1000-10 clause 12): the shell, the
+# directory and a list of 16-bit OIDs come in SELECT's answer, and each product
+# comes back whole from ReadIPE and ReadVRG - with no sectors to pad to (B = 0),
+# so a read saves the value group straight after the IPE group - and with the
+# InstanceIDs and seals blanked to 0xFF, as a card read before authentication
+# sends them. Hypothetical: no CMD11 card has been seen, from ScotRail or
+# anyone, so these are built from the specification alone, at its Normal
+# geometry (table 114).
+# ====================================================================
+def cmd11_shell(issn, expiry):
+    """A CMD11 shell at table 114's Normal geometry, as tag C0 holds it."""
+    shell = shell_dataset(IIN, "0116", issn, fvc=11, ksc=1, kvc=1, expiry=expiry,
+                          b=0, s=11, e=8, sctl=4)
+    return bytes(shell.buf[:24])
+
+
+def cmd11_season():
+    """A rail season, TYP 22 revision 3, anywhere ScotRail defines its area."""
+    period = Bits(32)
+    period.put(0, 6, 8)
+    period.put(6, 6, 0)
+    period.put(12, 4, 3)
+    period.buf[2] = 7                            # RemoveDate: a week after expiry
+    period.putb(3, (116).to_bytes(2, "big"))
+    period.put(40, 16, 0xFE00)                   # TYP22Flags: every part of every day
+    period.put(64, 14, date_stamp(2026, 9, 28))  # IssueDate
+    period.put(96, 3, 2)                         # Class: standard
+    period.put(106, 14, date_stamp(2026, 9, 28)) # ValidityStartDate
+    period.buf[18] = 0xFF                        # ValidOnDayCode: every day
+    period.buf[19] = 1                           # PartySizeAdult
+    period.putb(23, (39840).to_bytes(4, "big"))  # AmountPaid: GBP 398.40
+    period.put(27 * 8, 4, 3)                     # by card
+    return period
+
+
+CMD11_SEASON_ENTRY = dir_entry(116, 22, 4, True, date_stamp(2026, 10, 25))
+CMD11_PURSE_ENTRY = dir_entry(116, 2, 0, True, 0)
+
+
+def cmd11_directory(isam_id):
+    entries = [
+        CMD11_SEASON_ENTRY,
+        CMD11_PURSE_ENTRY,
+    ] + [bytes(5)] * 5 + [
+        log_entry(ptr=1, eei=0, when=dts(2026, 10, 12, 17, 48), record_offset=0, passback=5),
+    ]
+    # Each IPE's "sector" is its own entry, and both are in use (S-1).
+    return directory(entries, {1: 10, 2: 10}, 11, 8, 4, 0x0E,
+                     instance=bytes([0x10]) + isam_id.to_bytes(4, "big"))
+
+
+# One OID16 per directory entry (table 113), the log entry's and the unused
+# ones included: the owner of each, as its entry already says.
+CMD11_OIDS = b"".join(o.to_bytes(2, "big") for o in [116, 116, 0, 0, 0, 0, 0, 0])
+
+
+def card_cmd11():
+    season_values = value_group([
+        value_record(1, 2, dts(2026, 9, 28, 7, 40),
+                     period_tail(0, 0b01, date_stamp(2026, 10, 25), date_stamp(2026, 10, 25))),
+        bytes(15),
+    ], format_rev=3)
+
+    purse = Bits(24)
+    purse.put(0, 6, 6)
+    purse.put(6, 6, 0)
+    purse.put(12, 4, 1)
+    purse.buf[2] = 255
+    purse.putb(3, (116).to_bytes(2, "big"))
+    purse.putb(10, (5000).to_bytes(2, "big"))    # MaxValue2: GBP 50
+    # The four records one CMD11 value group holds (clause 12.4.9), and no
+    # second copy: the card's own transactions are atomic.
+    # Written in turn into the oldest slot, so the newest is not the first.
+    gate = isam(116, 0x2C40)
+    purse_values = value_group([
+        value_record(7, 21, dts(2026, 10, 12, 17, 48), purse_tail(1810), modifier=gate),
+        value_record(4, 18, dts(2026, 10, 3, 10, 12), purse_tail(2490),
+                     modifier=isam(116, 0x0B07)),
+        value_record(7, 19, dts(2026, 10, 3, 18, 30), purse_tail(1810), modifier=gate),
+        value_record(4, 20, dts(2026, 10, 10, 9, 0), purse_tail(2810),
+                     modifier=isam(116, 0x0B07)),
+    ], format_rev=1)
+
+    edinburgh, haymarket = loc2(203, b"9328"), loc2(203, b"9419")
+    linlithgow, queen_street = loc2(203, b"9438"), loc2(203, b"9950")
+    # Five records, as ReadLog returns them: newest first. The season between
+    # Edinburgh and Glasgow, and the purse for the hops either side of it.
+    log = b"".join([
+        tt_record(12, dts(2026, 10, 12, 17, 48), 1000, queen_street, haymarket, 2),
+        tt_record(12, dts(2026, 10, 12, 7, 41), 0, edinburgh, queen_street, 1),
+        tt_record(12, dts(2026, 10, 9, 18, 2), 0, queen_street, edinburgh, 1),
+        tt_record(12, dts(2026, 10, 9, 7, 44), 0, edinburgh, queen_street, 1),
+        tt_record(12, dts(2026, 10, 3, 18, 30), 680, linlithgow, edinburgh, 2),
+    ])
+
+    return "Demo 15 ScotRail CMD11", unix(2026, 10, 12, 21, 0), [
+        ("Shell", cmd11_shell("1100011", date_stamp(2034, 9, 30))),
+        ("OID list", CMD11_OIDS),
+        ("Directory", cmd11_directory(isam(116, 0x0E11))),
+        ("Product 1", cmd11_product(bytes(cmd11_season().buf), season_values)),
+        ("Product 2", cmd11_product(bytes(purse.buf), purse_values)),
+        ("Log", log),
+    ]
+
+
+def card_cmd11_hidden():
+    """A card using random MIDs (clause 12.4.3): before authentication it
+    answers with its operator's pseudo-shell, shared by every card of theirs,
+    and a pseudo-MID that says so. Clause 12.4.3's text has the directory and
+    OID list in that FCI, so they are here; its products are left to their
+    directory entries, which is what a reader that cannot authenticate has."""
+    return "Demo 16 Hidden CMD11", unix(2026, 10, 12, 21, 10), [
+        ("Shell", cmd11_shell("0000000", date_stamp(2040, 12, 31))),
+        ("Pseudo MID", bytes.fromhex("8A11600000000116")),
+        ("OID list", CMD11_OIDS),
+        # The directory InstanceID blanked too, as the card blanks an IPE's.
+        ("Directory", cmd11_directory(0xFFFFFFFF)[:-5] + b"\xFF" * 5),
+    ]
+
+
 CARDS = [card_the_key, card_blocked, card_cmd2, card_history, card_subway_paper,
          card_subway_return, card_gwr_touch, card_ntag, card_ultralight_ev1,
          card_zonal_coupons, card_key_sussex, card_bee,
-         card_mcard, card_subway_carnet]
+         card_mcard, card_subway_carnet, card_cmd11, card_cmd11_hidden]
 
 
 def main():

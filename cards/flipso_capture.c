@@ -281,6 +281,12 @@ void flipso_capture_set_time(FlipsoCapture* capture, ItsoUnixTime timestamp) {
 bool flipso_capture_card_number(const FlipsoCapture* capture, char* out) {
     if(!capture || !out) return false;
 
+    /* A pseudo-shell is the operator's, not the card's (TS 1000-10 clause
+     * 12.4.3), and the card's own number is only given to a reader that has
+     * authenticated. A card with no number to be known by cannot be told from
+     * another, so it is matched against nothing and saved as nothing. */
+    if(flipso_capture_find(capture, FlipsoBlockPseudoMid, 0)) return false;
+
     const FlipsoCaptureBlock* shell = flipso_capture_find(capture, FlipsoBlockShell, 0);
     if(shell) return itso_shell_card_number(capture->bytes + shell->offset, shell->len, out);
 

@@ -144,7 +144,7 @@ void flipso_saved_recover(void);
  */
 #define FLIPSO_DEMO_FOLDER APP_ASSETS_PATH("demo")
 
-/** More than the fourteen there are, and no more than a menu can list. */
+/** More than the sixteen there are, and no more than a menu can list. */
 #define FLIPSO_DEMO_MAX 20
 
 typedef struct {

@@ -1,6 +1,6 @@
 # Demo cards
 
-Fourteen synthetic ITSO cards, written as saved-card files and packaged with
+Sixteen synthetic ITSO cards, written as saved-card files and packaged with
 the app, so that Flipso can be seen without owning the cards that carry the
 features. Nobody has a wallet with a loyalty IPE, a charge-to-account product,
 a blocked shell and a revision 1 period ticket in it; between them these
@@ -46,6 +46,8 @@ which is still the way to test the saved-card screens against one:
 | **Demo 12 Bee Card** | A Manchester commuter's card from the Bee Network. A Metrolink season valid in zones 1 to 3 (a zone map, LocDefType 204), and a bus return from Piccadilly Gardens whose far end is a route and a stop together (216): route 36 at Swinton Civic Centre. Metrolink stops and bus stops by NaptanCode in the log, and an older tram journey recorded only by fare zone (207). |
 | **Demo 13 MCard** | An unpersonalised West Yorkshire card holding a book of ten bus journeys, Guiseley to Leeds, whose two ends are named by AtcoCode (LocDefType 211) - too long for a journey record, so only a product carries one. The log holds a day's journeys on First Leeds' route 34 by NaptanCode. |
 | **Demo 14 Subway carnet** | A paper book of six Subway day passes (TYP 28, a carnet of day passes), in the Subway day ticket's shape: each pass spent is a tick counting back from the expiry, so the ticket shows the days it was used. Hypothetical: SPT sells no such book. |
+| **Demo 15 ScotRail CMD11** | Programmable media (CMD11), read as its applet answers before authentication: no sectors, so each product is its IPE group with its value group straight after; an OID list from the FCI; InstanceIDs and seals blanked to 0xFF, shown as hidden; a purse whose one value group holds the four records CMD11 allows; and the five journeys ReadLog returns. Hypothetical: no CMD11 card has been seen. |
+| **Demo 16 Hidden CMD11** | The same media using random MIDs: the shell is ScotRail's shared pseudo-shell beside a pseudo-MID, so the Card screen hides the card's number and offers no Save. The directory and OID list clause 12.4.3 puts in that FCI, a blanked Directory InstanceID, and the products shown from their directory entries alone. Hypothetical. |
 
 ## Adding one
 
@@ -66,7 +68,7 @@ card, as Demo 07 is. Then:
 - check it with `tools/test/screens.py` and `tools/test/replay.py`, and against
   the real card's screens, which should differ only in the values;
 - pin the lines only it produces in `tools/test/screen_text/test_demo_screens.c`, as
-  `demo_seven()` and `demo_type2_full()` do, and bump the card count in
+  `demo_seven()`, `demo_type2_full()` and `demo_cmd11()` do, and bump the card count in
   `test_demo_cards.c`;
 - run `new_encodings.py` on the real card again: it should say nothing is new.
 

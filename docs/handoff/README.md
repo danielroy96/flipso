@@ -63,5 +63,4 @@ them has been seen.
 | **Media decoded from the spec alone** | | |
 | [cmd12-check.md](cmd12-check.md) | Check CMD12 against its own file table and geometries (transcribed in the brief) | Small-medium |
 | [cmd12-anonymous.md](cmd12-anonymous.md) | Read the issuer, directory and journeys an Anonymous (phone) CMD12 card leaves readable | Medium |
-| [cmd11-pim.md](cmd11-pim.md) | Read CMD11 cards, whose products and log answer before authentication | Medium-large |
 | [cmd10-counters.md](cmd10-counters.md) | Read a CMD10 card's one-way counters, and flag Retired only on evidence | Small |

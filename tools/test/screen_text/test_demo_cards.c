@@ -54,6 +54,8 @@ void demo_cards(const char* directory, FlipsoFormat f) {
         if(strncmp(entry->d_name, "Demo 01", 7) == 0) demo_one(&f, &demo_card);
         if(strncmp(entry->d_name, "Demo 04", 7) == 0) demo_four(&f, &demo_card);
         if(strncmp(entry->d_name, "Demo 14", 7) == 0) demo_fourteen(&f, &demo_card);
+        if(strncmp(entry->d_name, "Demo 15", 7) == 0) demo_cmd11(&f, &demo_card, false);
+        if(strncmp(entry->d_name, "Demo 16", 7) == 0) demo_cmd11(&f, &demo_card, true);
         if(strncmp(entry->d_name, "Demo 08", 7) == 0) demo_type2_full(&f, &demo_card, true);
         if(strncmp(entry->d_name, "Demo 09", 7) == 0) demo_type2_full(&f, &demo_card, false);
         if(strncmp(entry->d_name, "Demo 07", 7) == 0) {
@@ -71,6 +73,6 @@ void demo_cards(const char* directory, FlipsoFormat f) {
         cards++;
     }
     if(dir) closedir(dir);
-    check("all fourteen demo cards were rendered", cards == 14);
+    check("all sixteen demo cards were rendered", cards == 16);
     check("and a saved chip block was among them", chips > 0);
 }

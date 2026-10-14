@@ -21,11 +21,11 @@
  *     the sector its Directory entry number names, like a product, and its
  *     second in the sector the Sector Chain Table links from there.
  */
-#include "flipso_cmd2.h"
+#include "flipso_cmd2_i.h"
+#include "flipso_cmd11.h"
 #include "flipso_transport.h"
 
 #include <furi.h>
-#include <toolbox/bit_buffer.h>
 
 #define TAG "Flipso"
 
@@ -38,35 +38,6 @@ static const uint8_t flipso_cmd2_aid[] =
 #define FLIPSO_CMD2_DF_BASE     0x0100
 #define FLIPSO_CMD2_SFI_DEFAULT 0x01 /* Storage EF short id, parameter tag C3. */
 #define FLIPSO_CMD2_PARAM_SFI   0x0F /* Parameter EF, fixed by clause 3.7.2.1. */
-
-#define FLIPSO_CMD2_APDU_MAX 32
-#define FLIPSO_CMD2_RESP_MAX 264 /* Largest sector or directory, plus slack. */
-#define FLIPSO_CMD2_PATH_MAX 8
-#define FLIPSO_CMD2_DIR_MAX  256
-
-struct FlipsoCmd2 {
-    BitBuffer* tx;
-    BitBuffer* rx;
-
-    uint8_t resp[FLIPSO_CMD2_RESP_MAX];
-    size_t resp_len;
-    uint16_t sw;
-    /* Set when the card stopped answering rather than answering "no". The two
-     * need different advice on screen, and only the first is worth retrying. */
-    bool link_error;
-
-    /* Scratch for the read itself, kept off the NFC worker's stack. */
-    uint8_t dir[FLIPSO_CMD2_DIR_MAX];
-    size_t dir_len;
-    uint8_t group[ITSO_MAX_GROUP_LEN];
-
-    /* Learned from the Parameter EF. */
-    uint8_t sfi;
-    uint8_t path[FLIPSO_CMD2_PATH_MAX];
-    uint8_t path_len; /* 0 when the card does not support selection by path. */
-    uint16_t df_fid;
-    bool df_fid_known;
-};
 
 FlipsoCmd2* flipso_cmd2_alloc(void) {
     FlipsoCmd2* cmd2 = malloc(sizeof(FlipsoCmd2));
@@ -112,14 +83,7 @@ static bool
     return true;
 }
 
-/**
- * Send an APDU and follow up on the two status words that mean "ask again":
- * 61xx (response waiting) and 6Cxx (wrong Le). Everything else is left to the
- * caller to judge.
- *
- * @return true when the card answered 9000 with the data, if any, in resp.
- */
-static bool flipso_cmd2_transceive(
+bool flipso_cmd2_transceive(
     FlipsoCmd2* cmd2,
     Iso14443_4aPoller* poller,
     const uint8_t* apdu,
@@ -187,38 +151,6 @@ static void flipso_cmd2_parse_parameters(FlipsoCmd2* cmd2, const uint8_t* data, 
 
         offset += 2 + length;
     }
-}
-
-/**
- * Pull out one constructed or primitive object from the FCI returned by the
- * application select. Only the shallow nesting the spec defines is handled:
- * 6F wraps 84 (DF name) and A5, and A5 wraps C0 (shell) and E0 (parameters).
- *
- * @return pointer to the value, or NULL; @p out_len receives its length.
- */
-static const uint8_t*
-    flipso_cmd2_fci_find(const uint8_t* data, size_t len, uint8_t tag, size_t* out_len) {
-    size_t offset = 0;
-    while(offset + 2 <= len) {
-        uint8_t current = data[offset];
-        uint8_t length = data[offset + 1];
-        const uint8_t* value = data + offset + 2;
-        if(offset + 2 + length > len) return NULL;
-
-        if(current == tag) {
-            *out_len = length;
-            return value;
-        }
-
-        /* Descend into the two constructed templates the FCI may use. */
-        if(current == 0x6F || current == 0xA5) {
-            const uint8_t* found = flipso_cmd2_fci_find(value, length, tag, out_len);
-            if(found) return found;
-        }
-
-        offset += 2 + length;
-    }
-    return NULL;
 }
 
 /* ------------------------------------------------------------------ */
@@ -434,14 +366,22 @@ FlipsoReaderStatus flipso_cmd2_read(
      * the whole Shell Environment, inline (TS 1000-10 3.8.3.4.2). When it does,
      * the card is readable without a single extra command. */
     size_t fci_len = 0;
-    const uint8_t* parameters = flipso_cmd2_fci_find(cmd2->resp, cmd2->resp_len, 0xE0, &fci_len);
+    const uint8_t* parameters = itso_fci_find(cmd2->resp, cmd2->resp_len, 0xE0, &fci_len);
     if(parameters) flipso_cmd2_parse_parameters(cmd2, parameters, fci_len);
 
     size_t shell_len = 0;
-    const uint8_t* shell = flipso_cmd2_fci_find(cmd2->resp, cmd2->resp_len, 0xC0, &shell_len);
+    const uint8_t* shell = itso_fci_find(cmd2->resp, cmd2->resp_len, 0xC0, &shell_len);
     bool shell_ok = shell && itso_looks_like_shell(shell, shell_len) &&
                     itso_parse_shell(card, shell, shell_len);
     if(shell_ok) flipso_capture_add(capture, FlipsoBlockShell, 0, shell, shell_len);
+
+    /* CMD11 answers the same SELECT, and its shell is how it is told apart
+     * (TS 1000-10 clause 12.4.6). It has no Parameter EF and no files: the
+     * rest of it is in this FCI and behind commands of its own. */
+    if(shell_ok && card->fvc == ITSO_FVC_PIM) {
+        flipso_log_shell_owner(card);
+        return flipso_cmd11_read(cmd2, poller, card, capture);
+    }
 
     if(!parameters) {
         /* Ask for the Parameter EF directly: short id 0F, implicit selection. */

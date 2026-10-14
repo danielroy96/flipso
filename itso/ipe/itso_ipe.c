@@ -63,6 +63,10 @@ void itso_parse_instance_id(
     if(dataset_len + ITSO_INSTANCE_ID_LEN > len) return;
 
     const uint8_t* id = group + dataset_len;
+    if(itso_is_all_ff(id, ITSO_INSTANCE_ID_LEN)) {
+        product->instance_hidden = true;
+        return;
+    }
     product->key_id = (id[0] >> 4) & 0x0F;
     product->iteration = id[0] & 0x0F;
     product->isam_id = itso_bits(id, 8, 32);

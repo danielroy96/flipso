@@ -6,7 +6,7 @@
  *   Part 1  - data types (DATE, DTS, VALC/VALS) and location definitions
  *   Part 2  - Shell Environment, Directory, IPE, Value Record and Log Directory Entry
  *   Part 5  - per-IPE-type datasets and the Transient Ticket Record
- *   Part 10 - the customer media definitions (CMD2, CMD4, CMD7, CMD12)
+ *   Part 10 - the customer media definitions (CMD2, CMD4, CMD7, CMD9-CMD12)
  *
  * Everything here is pure computation over byte buffers: no NFC, no GUI. That keeps
  * the decoder testable off-device and keeps the transport layer free to stream
@@ -19,7 +19,8 @@
  *   itso_location.h  a decoded location
  *   itso_util.h      bit fields, dates, money and day masks
  *   media/           the card as storage: shell, directory and sector chains,
- *                    and the Type 2 tag layouts (CMD4, CMD9, CMD10)
+ *                    the Type 2 tag layouts (CMD4, CMD9, CMD10), the SELECT
+ *                    answer's FCI, and CMD11's whole-group reads
  *   ipe/             what a product holds: its IPE dataset, one file per TYP,
  *                    its value records, and the extensions decoded on demand
  *   itso_log.h       the taps in the cyclic log
@@ -34,6 +35,8 @@
 #include "media/itso_shell.h"
 #include "media/itso_directory.h"
 #include "media/itso_type2.h"
+#include "media/itso_fci.h"
+#include "media/itso_cmd11.h"
 #include "ipe/itso_product.h"
 #include "ipe/itso_space_saving.h"
 #include "ipe/itso_capping.h"

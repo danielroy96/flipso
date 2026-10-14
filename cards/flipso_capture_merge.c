@@ -140,7 +140,7 @@ static FlipsoRecordRun flipso_capture_value_run(
     FlipsoRecordRun* previous_copy) {
     FlipsoRecordRun run = {NULL, 0, NULL};
     *previous_copy = run;
-    if(!group || sector_size == 0) return run;
+    if(!group) return run;
 
     const uint8_t* bytes = capture->bytes + group->offset;
     size_t offset = 0;
@@ -183,16 +183,17 @@ static void flipso_merge_value_records(
     FlipsoCapture* capture,
     const FlipsoCapture* previous,
     FlipsoCaptureDiff* found) {
+    /* A sector size of zero is a CMD11 card's, which keeps its groups whole;
+     * a shell that is not one is what there is no geometry without. */
     const FlipsoCaptureBlock* shell = flipso_capture_find(capture, FlipsoBlockShell, 0);
-    if(!shell) return;
+    if(!shell || !itso_looks_like_shell(capture->bytes + shell->offset, shell->len)) return;
     uint8_t sector_size = itso_shell_sector_size(capture->bytes + shell->offset, shell->len);
-    if(sector_size == 0) return;
 
     const FlipsoCaptureBlock* was_shell = flipso_capture_find(previous, FlipsoBlockShell, 0);
-    if(!was_shell) return;
+    if(!was_shell || !itso_looks_like_shell(previous->bytes + was_shell->offset, was_shell->len))
+        return;
     uint8_t was_sector_size =
         itso_shell_sector_size(previous->bytes + was_shell->offset, was_shell->len);
-    if(was_sector_size == 0) return;
 
     uint8_t records[FLIPSO_CAPTURE_MAX_VALUE_HISTORY * ITSO_VALUE_RECORD_LEN];
 
@@ -415,8 +416,7 @@ static size_t flipso_capture_ipe_len(
     const FlipsoCaptureBlock* group,
     uint8_t sector_size) {
     size_t offset = 0;
-    if(sector_size &&
-       itso_value_records(capture->bytes + group->offset, group->len, sector_size, &offset)) {
+    if(itso_value_records(capture->bytes + group->offset, group->len, sector_size, &offset)) {
         return offset - 2; /* Back over the value group's two-byte header. */
     }
     return group->len;

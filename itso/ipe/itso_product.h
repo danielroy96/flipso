@@ -359,6 +359,11 @@ typedef struct {
      * with the owner and type this is the only unique identity a product has:
      * there is no product serial number anywhere else in the shell. */
     bool instance_valid;
+    /** The card sent the InstanceID as all 0xFF: a CMD11 card does that before
+     *  a reader has authenticated (TS 1000-10 clause 12.4.8), so as not to be
+     *  traced by it. @c instance_valid is false then, because the bytes are not
+     *  an ISAM - FFFFFFFF would name operator 8191, which ITSO reserves. */
+    bool instance_hidden;
     uint8_t key_id; /**< KID: seal key version. */
     uint8_t iteration; /**< INP#: bumped to re-validate a hotlisted IPE. */
     uint32_t isam_id; /**< ISAM that created the product. */
@@ -486,7 +491,8 @@ void itso_parse_ipe(ItsoProduct* product, const uint8_t* group, size_t len, uint
  * decode of them, would otherwise have to repeat that arithmetic.
  *
  * @param      group       every chained sector, concatenated in chain order.
- * @param      sector_size B from the shell; zero means the offset is unknowable.
+ * @param      sector_size B from the shell. Zero is a CMD11 card's, which has
+ *                         no sectors: its value group follows the IPE group.
  * @param[out] offset      offset of the first record within @p group.
  * @return number of ITSO_VALUE_RECORD_LEN records present, 0 when there is no
  *         group or it does not fit; @p offset is untouched in that case.
