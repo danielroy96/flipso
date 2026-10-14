@@ -34,7 +34,6 @@ them has been seen.
 | --- | --- | --- |
 | **Quick wins** | | |
 | [clock-check.md](clock-check.md) | Warn when the Flipper's clock is behind the card, since every expiry verdict depends on it | Small |
-| [rail-product-names.md](rail-product-names.md) | Name rail products from RSPS3002's PTYP allocation: Season ticket, PlusBus, Off-peak return | Small |
 | [first-page-wrapping.md](first-page-wrapping.md) | Keep each first page's key values above the fold, and measure line widths on the host | Small |
 | [bank-cards.md](bank-cards.md) | Recognise contactless bank cards and phone wallets, without reading card data | Small |
 | [journey-user-defined.md](journey-user-defined.md) | Show a revision 4 journey record's UserDefined bytes | Small |

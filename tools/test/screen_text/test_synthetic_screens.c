@@ -99,6 +99,68 @@ void product_lines(const FlipsoFormat* f, const ItsoCard* card, FuriString* text
     check("a heading's icon byte is never a newline", heading[2] != '\n');
     check("and the heading is one line", strchr(heading, '\n') == heading + strlen(heading) - 1);
 
+    /* A rail product is named by the PTYP RSPS3002 allocates it (3.6.2, 3.7.2),
+     * and only a product that shows it is rail: elsewhere the PTYP is its
+     * owner's own number. */
+    {
+        static const uint8_t nlc[] = {203, 4, '5', '6', '3', '1'};
+        static const uint8_t uic[] = {208, 6, 0x00, 0x70, '5', '6', '8', '5'};
+        static const uint8_t stop[] = {206, 4, 0x12, 0x34, 0x56, 0x78};
+        ItsoProduct season = card->products[2];
+        season.ptyp = 29;
+        itso_parse_location(nlc, sizeof(nlc), ItsoLocStructLoc1, &season.from);
+        itso_parse_location(nlc, sizeof(nlc), ItsoLocStructLoc1, &season.to);
+        check(
+            "a TYP 22 PTYP 29 between stations is PlusBus",
+            strcmp(flipso_product_title(&season), "PlusBus") == 0);
+        furi_string_reset(text);
+        flipso_format_product(text, f, card, &season);
+        check(
+            "titled so, with what its sub-type means under Technical",
+            titles_are(text, "PlusBus|Passes|Conditions|Purchase|History|Technical") &&
+                technical(text, "ITSO type: 22\n  Operator's sub-type: 29 (PlusBus)\n"));
+        season.from.valid = false;
+        itso_parse_location(uic, sizeof(uic), ItsoLocStructLoc1, &season.to);
+        check(
+            "one end a UIC station is enough",
+            strcmp(flipso_product_title(&season), "PlusBus") == 0);
+        season.ptyp = 2;
+        check(
+            "and every season ticket PTYP is a season ticket",
+            strcmp(flipso_product_title(&season), "Season ticket") == 0);
+
+        season.ptyp = 29;
+        itso_parse_location(stop, sizeof(stop), ItsoLocStructLoc1, &season.from);
+        itso_parse_location(stop, sizeof(stop), ItsoLocStructLoc1, &season.to);
+        check(
+            "the same PTYP between bus stops is a period ticket",
+            strcmp(flipso_product_title(&season), "Period ticket") == 0);
+        furi_string_reset(text);
+        flipso_format_product(text, f, card, &season);
+        check("whose sub-type is only a number", technical(text, "  Operator's sub-type: 29\n"));
+        season.from.valid = false;
+        season.to.valid = false;
+        check(
+            "as is one with no ends, sold by an operator",
+            strcmp(flipso_product_title(&season), "Period ticket") == 0);
+
+        ItsoProduct single = card->products[3];
+        single.from.valid = false;
+        single.to.valid = false;
+        check(
+            "a TYP 23 PTYP 4 sold at a station is an off-peak return",
+            strcmp(flipso_product_title(&single), "Off-peak return") == 0);
+        single.ptyp = 7;
+        check(
+            "a PTYP rail leaves unallocated keeps ITSO's name",
+            strcmp(flipso_product_title(&single), "Journey ticket") == 0);
+        single.ptyp = 4;
+        single.retailer = 289;
+        check(
+            "and sold by an operator, it is a journey ticket",
+            strcmp(flipso_product_title(&single), "Journey ticket") == 0);
+    }
+
     /* A ticket good within a set of zones has an area, not a journey. */
     {
         static const uint8_t zones[] = {204, 3, 0x07, 0x00, 0x00};

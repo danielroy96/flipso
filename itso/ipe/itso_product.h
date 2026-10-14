@@ -597,6 +597,18 @@ bool itso_value_record_newer(const uint8_t* a, const uint8_t* b);
  */
 bool itso_product_sold_at(const ItsoProduct* product, ItsoLocation* out);
 
+/**
+ * Whether @p product shows it is National Rail's, so that its PTYP is the one
+ * RSPS3002 allocates (itso_rail_product_name()) rather than its owner's own.
+ *
+ * Only what the product itself says counts: a rail location at either end
+ * (LocDefType 203 or 208, the forms RSPS3002 gives a rail ticket's ends and
+ * PlusBus's, appendix C.3), or a station as its retailer
+ * (itso_product_sold_at()). The owner's OID does not: a train operator's OID
+ * can own a bus product, and the operator table has no notion of rail.
+ */
+bool itso_product_rail(const ItsoProduct* product);
+
 /** TYP 26's UserDefined: seven bytes the toll operator uses as it likes. */
 #define ITSO_TOLL_USER_DATA_LEN 7
 

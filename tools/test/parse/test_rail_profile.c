@@ -88,6 +88,60 @@ void rail_profile(void) {
     sold.retailer = 0x8000 | (5 << 10) | 631;
     check("and a product with no retailer has no station", !itso_product_sold_at(&sold, &loc));
 
+    /* RSPS3002's PTYP allocation, 3.6.2 and 3.7.2. */
+    check(
+        "the four season ticket PTYPs",
+        strcmp(itso_rail_product_name(ItsoTypPeriodTicket, 0), "Season ticket") == 0 &&
+            strcmp(itso_rail_product_name(ItsoTypPeriodTicket, 3), "Season ticket") == 0);
+    check(
+        "TYP 22's named PTYPs",
+        strcmp(itso_rail_product_name(ItsoTypPeriodTicket, 5), "Flexi Season") == 0 &&
+            strcmp(itso_rail_product_name(ItsoTypPeriodTicket, 19), "Travelcard") == 0 &&
+            strcmp(itso_rail_product_name(ItsoTypPeriodTicket, 29), "PlusBus") == 0 &&
+            strcmp(itso_rail_product_name(ItsoTypPeriodTicket, 31), "Staff pass") == 0);
+    check(
+        "TYP 23's",
+        strcmp(itso_rail_product_name(ItsoTypJourneyTicket, 1), "Peak single") == 0 &&
+            strcmp(itso_rail_product_name(ItsoTypJourneyTicket, 4), "Off-peak return") == 0 &&
+            strcmp(itso_rail_product_name(ItsoTypJourneyTicket, 6), "Off-peak carnet") == 0);
+    check(
+        "a PTYP left unallocated names nothing",
+        !itso_rail_product_name(ItsoTypPeriodTicket, 6) &&
+            !itso_rail_product_name(ItsoTypJourneyTicket, 0) &&
+            !itso_rail_product_name(ItsoTypJourneyTicket, 7));
+    check(
+        "nor does another type's",
+        !itso_rail_product_name(ItsoTypReservationTicket, 1) &&
+            !itso_rail_product_name(ItsoTypEntitlement, 1) &&
+            !itso_rail_product_name(ItsoTypPeriodCompact, 2));
+
+    /* Which products are rail's, so that the allocation applies. */
+    static const uint8_t short_nlc[] = {203, 4, '5', '6', '3', '1'};
+    static const uint8_t uic_nlc[] = {208, 6, 0x00, 0x70, '5', '6', '8', '5'};
+    static const uint8_t uic_abroad[] = {208, 6, 0x00, 0x87, '1', '2', '3', '4'};
+    static const uint8_t stop[] = {206, 4, 0x12, 0x34, 0x56, 0x78};
+    ItsoProduct rail = {.typ = ItsoTypPeriodTicket, .ptyp = 29};
+    check("a product with no ends and no retailer is not rail", !itso_product_rail(&rail));
+    itso_parse_location(short_nlc, sizeof(short_nlc), ItsoLocStructLoc1, &rail.from);
+    check("one that starts at an NLC is", itso_product_rail(&rail));
+    rail.from.valid = false;
+    itso_parse_location(uic_nlc, sizeof(uic_nlc), ItsoLocStructLoc1, &rail.to);
+    check(
+        "as is one that ends at a UIC station",
+        itso_product_rail(&rail) && strcmp(loc_text(&rail.to), "Station 5685") == 0);
+    itso_parse_location(uic_abroad, sizeof(uic_abroad), ItsoLocStructLoc1, &rail.to);
+    check(
+        "abroad too",
+        itso_product_rail(&rail) && strcmp(loc_text(&rail.to), "Station 1234 (country 087)") == 0);
+    itso_parse_location(stop, sizeof(stop), ItsoLocStructLoc1, &rail.from);
+    itso_parse_location(stop, sizeof(stop), ItsoLocStructLoc1, &rail.to);
+    check("but not one between bus stops", !itso_product_rail(&rail));
+    rail.has_retailer = true;
+    rail.retailer = 0x8000 | (5 << 10) | 631;
+    check("unless a station sold it", itso_product_rail(&rail));
+    rail.retailer = 289;
+    check("an operator selling it says nothing", !itso_product_rail(&rail));
+
     check(
         "seat attributes in words",
         strcmp(itso_seat_attribute_name("TABL"), "Table") == 0 &&

@@ -9,9 +9,14 @@
 #include "../flipso_format_i.h"
 
 const char* flipso_product_title(const ItsoProduct* product) {
-    /* PTYP is a scheme-private subtype; showing the bare number next to the name
-     * reads as part of the name ("ITSO ID 29"), so it lives on the detail
-     * screen's technical section. */
+    /* PTYP is the owner's own subtype, and showing the bare number next to the
+     * name reads as part of the name ("ITSO ID 29"), so it lives on the
+     * Technical page. National Rail's is the exception: RSPS3002 allocates its
+     * PTYPs, so a product that shows it is rail can be named by its own. */
+    if(itso_product_rail(product)) {
+        const char* rail = itso_rail_product_name(product->typ, product->ptyp);
+        if(rail) return rail;
+    }
     return itso_typ_name(product->typ);
 }
 

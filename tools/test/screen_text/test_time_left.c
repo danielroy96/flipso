@@ -201,7 +201,7 @@ void time_left_screens(const FlipsoFormat* f, const ItsoCard* card, FuriString* 
     snprintf(
         want,
         sizeof(want),
-        "Period ticket: Until %s",
+        "Season ticket: Until %s",
         dated("", ticket.terms.ticket.current_expiry) + 2);
     check("the Summary gives the pass in use", shows(text, want));
     check("with the passes behind it", shows(text, "  Passes left: 5\n"));
@@ -210,7 +210,7 @@ void time_left_screens(const FlipsoFormat* f, const ItsoCard* card, FuriString* 
     ticket.terms.ticket.current_expiry = today - 1;
     furi_string_reset(text);
     flipso_format_summary(text, f, &one);
-    snprintf(want, sizeof(want), "Period ticket: Until %s", dated("", ticket.expiry) + 2);
+    snprintf(want, sizeof(want), "Season ticket: Until %s", dated("", ticket.expiry) + 2);
     check("once that pass has ended, the product's expiry", shows(text, want));
 
     ticket.terms.ticket.has_current_expiry = false;
@@ -223,6 +223,6 @@ void time_left_screens(const FlipsoFormat* f, const ItsoCard* card, FuriString* 
     ticket.expiry = today - 1;
     furi_string_reset(text);
     flipso_format_summary(text, f, &one);
-    snprintf(want, sizeof(want), "Period ticket: Expired %s", dated("", ticket.expiry) + 2);
+    snprintf(want, sizeof(want), "Season ticket: Expired %s", dated("", ticket.expiry) + 2);
     check("an expired product is expired, whatever its pass says", shows(text, want));
 }

@@ -208,6 +208,16 @@ bool itso_product_sold_at(const ItsoProduct* product, ItsoLocation* out) {
     return itso_retailer_location(product->retailer, out);
 }
 
+static bool itso_location_rail(const ItsoLocation* location) {
+    return location->valid && (location->def_type == 203 || location->def_type == 208);
+}
+
+bool itso_product_rail(const ItsoProduct* product) {
+    if(itso_location_rail(&product->from) || itso_location_rail(&product->to)) return true;
+    ItsoLocation sold_at;
+    return itso_product_sold_at(product, &sold_at);
+}
+
 void itso_product_off_card(ItsoProduct* product, ItsoUnixTime last_seen) {
     product->on_card = false;
     product->last_seen = last_seen;
