@@ -16,6 +16,7 @@ loop, the hardware, and the things that have wasted time before.
 | --- | --- |
 | Decoder tests on this machine | `tools/test/run.sh` (one line; `-v` for all of it) |
 | Compile only | `tools/flipper/flipctl deploy --build-only` |
+| Check the build makes no short call into the firmware | `tools/flipper/check_calls.py` |
 | Check / fix formatting | `ufbt lint` / `ufbt format` |
 | Build, install and launch on the Flipper | `tools/flipper/flipctl deploy` |
 | Check the environment and the device | `tools/flipper/flipctl doctor` |
@@ -55,6 +56,8 @@ behaviours is there because a past session lost time to it.
 
 ```
 flipso.c/.h           app entry and lifecycle, the icon table
+flipso_all.c          the device build: every source #included as one unit
+flipso_calls.h        the firmware's headers, then short calls for the app's own
 itso/                 the decoder: pure C, no firmware dependency, host-testable.
                       itso.h is the one header the app includes; its comment
                       maps the parts:
@@ -120,7 +123,8 @@ scenes/               one file per scene; every paged text screen is the one
                       text scene (flipso_open_text()); list in flipso_scene_config.h
 views/                custom views (the icon list, the text panel, the scan screen),
                       and the hand-drawn £ and € the fonts lack
-tools/flipper/        flipctl: the device driver described above
+tools/flipper/        flipctl: the device driver described above; check_calls.py,
+                      which fails a .fap that makes a short call into the firmware
 tools/ide/            compile_commands.json, so CLion and clangd index the tree
 tools/test/           host test suites (run.sh), synthetic card builder, card replay,
                       screens.py (every screen of a saved card). The larger suites
@@ -168,7 +172,11 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-100.3 KB of the 549 KB file as of 2026-10-15 - 1.3 KB of that came with
+94.6 KB of the 545 KB file as of 2026-10-15, 5.7 KB less than the 100.3 KB
+before the device build became one unit with short calls between the app's
+own functions (3.9 KB for the calls and 2.0 KB for the one unit, mostly
+merged strings, measured each alone; see `flipso_all.c` and `flipso_calls.h`). Of the 100.3
+KB, 1.3 KB came with
 recognising bank cards (99.1 KB before, measured the same day), 2.2 KB with the
 CMD11 transport, its decoder and screens (96.9 KB before, measured on
 2026-10-14), 1.2 KB with the
@@ -176,16 +184,19 @@ ticket restriction reader and its screen (95.2 KB on 2026-10-08), 2.9 KB with th
 review's fixes, the decoded Technical pages and the ticket type reader (92.2 KB
 before, measured the same day), 1.8 KB with
 splitting the sources a responsibility to a file (a call between files is not
-inlined, and a string used in several files is stored once in each), 2.2 KB
+inlined, and a string used in several files is stored once in each - which the
+one unit has since won back), 2.2 KB
 with the paged screens and the title icons, 10.4 KB with the TYP 24 decoder, its screen and the rail
 railcard and seat tables, 76 KB before - because the 141 KB station table, the
 58 KB ticket type table, the 117 KB ticket restriction table and the 26 KB of
 demo cards live in
 `.fapassets`, which the firmware unpacks to the SD card and never maps.
 Anything added as a `const` array *does* reach RAM. With the app at its idle
-scan screen 26.6 KB of the heap is free (measured 2026-10-08, fresh boot;
+scan screen 26.6 KB of the heap was free (measured 2026-10-08, fresh boot;
 30.9 KB in another boot on 2026-10-04, which says as much about the boot as
-the build - see below). A card on
+the build - see below). On 2026-10-15 the one unit with short calls left
+27.1 KB free at idle against 21.5 KB for the build before it, and 18.2 KB
+against 12.5 KB with the reserved journey open, both in the same boot. A card on
 screen costs what it holds: `ItsoCard` allocates its products (268 bytes each
 on the device since 2026-10-04; 672 before, when every product carried every
 type's fields, eight value records and its locations as display text), each
@@ -241,13 +252,19 @@ if it is interrupted. It ships in `data/` and is copied to the card - see
   Generated headers opt out with `/* clang-format off */`.
 - Comments explain *why*, and cite the spec clause when a constant comes from
   one (`TS 1000-2 table 11`). Do not narrate what the code already says.
-- New sources must be listed explicitly in `application.fam`. A bare `*.c` is
-  matched recursively and would pull in the host-side tests under `tools/`;
-  `dir/*.c` takes no subdirectory of `dir/`, so a new one needs its own line -
-  and it takes *any* directory called `dir`, `tools/` included, so no tools
-  directory may share a name with an app directory (a `tools/test/format/`
-  once put the screen tests into the `.fap`). The host builds take their sources from `tools/test/sources.py`, so a
-  new subdirectory goes there too.
+- A new source goes on the list in `flipso_all.c`, the one file
+  `application.fam` compiles: the device build is a single translation unit,
+  so a `static` name must be unique across the app. `tools/test/lint_sources.py`
+  fails when a source is missing from that list. A firmware or C library
+  header goes in `flipso_calls.h`, before its pragma, and is never first
+  included after it: a firmware call declared after the pragma becomes a short
+  call the loader cannot place, and the app does not load.
+  `tools/flipper/check_calls.py` (CI runs it on every build) catches it. The
+  host builds take their sources from `tools/test/sources.py`, so a new file's
+  directory goes there too. fbt matches a `sources` pattern from every
+  directory, not just the root, so no tools directory may share a name with an
+  app directory (a `tools/test/format/` once put the screen tests into the
+  `.fap`).
 - One responsibility to a file. The decoder has a file per medium and per IPE
   type family, the screen text a file per screen and per kind of product, the
   reader a file per transport, and the tests a file per topic. A file growing

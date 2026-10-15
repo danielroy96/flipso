@@ -72,6 +72,19 @@ jobs:
         uses: flipperdevices/flipperzero-ufbt-action@v0.1.4
         with:
           sdk-channel: release
+      # flipso_calls.h makes the app's own calls short; one that reaches the
+      # firmware cannot be relocated, and the .fap would not load.
+      - name: tools/flipper/check_calls.py
+        env:
+          FAPS: ${{ steps.build.outputs.fap-artifacts }}
+        run: |
+          checked=0
+          for fap in $FAPS; do
+            case "$fap" in
+              *.fap) tools/flipper/check_calls.py "$fap"; checked=$((checked + 1)) ;;
+            esac
+          done
+          [ "$checked" -gt 0 ] || { echo "no .fap in the build's outputs: $FAPS"; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: flipso-${{ steps.build.outputs.suffix }}
