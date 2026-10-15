@@ -6,7 +6,7 @@ run.sh, screens.py and replay.py all compile some of the app on this machine,
 and each used to list its own files - so splitting one source in two meant
 finding every list, and missing one only showed up as a link error in whichever
 tool ran next. They take their lists from here instead. The firmware build
-has its own list in application.fam, which ufbt reads.
+has its own list in flipso_all.c, the one file application.fam compiles.
 
     tools/test/sources.py itso format      # paths relative to the current directory
 

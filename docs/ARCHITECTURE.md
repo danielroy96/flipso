@@ -181,10 +181,16 @@ views/                      the icon list, the paged text panel, the scan screen
                             and the hand-drawn £ and € the fonts lack
 ```
 
-`application.fam` lists every source explicitly. A bare `*.c` would match the
-host tests under `tools/` too, and `dir/*.c` takes any directory of that name
-anywhere in the tree, so no directory under `tools/` may share a name with an
-app directory. The host builds take their source lists from
+The device build compiles the app as one translation unit: `application.fam`
+lists only `flipso_all.c`, which `#include`s every source. A `.fap` is linked
+relocatably, which never merges a string two object files share, and a call
+between files is never inlined, so as separate units the files cost RAM for
+being separate. The files stay one responsibility each; the unit is only how
+the firmware build compiles them, so a `static` name has to be unique app-wide.
+`flipso_all.c` starts with `flipso_calls.h`, which declares every firmware
+header and then makes all later declarations - the app's own functions - short
+calls (see [Memory](#memory)). `tools/test/lint_sources.py` fails when a source
+is missing from the list. The host builds take their source lists from
 `tools/test/sources.py` rather than keeping their own.
 
 ## A card's journey through the app
@@ -864,6 +870,17 @@ What the design does about it:
 | Paper-ticket and non-ITSO DESFire structures allocated only for those cards | Nothing on any other card |
 | CMD2 and Type 2 transport buffers allocated on first use | Nothing on a DESFire read |
 | Capture arena grown to fit | A DESFire card uses about a tenth of the ceiling |
+| The device build one unit, with short calls between the app's own functions (`flipso_all.c`, `flipso_calls.h`) | 5.7 KB of RAM, 100.3 to 94.6 KB |
+
+The SDK compiles apps with `-mlong-calls`, since the firmware is in flash and
+the app in RAM, out of a Thumb `BL`'s reach. With `-ffunction-sections` that
+made every call a long one - a literal pool word, a load and a `BLX` - even to
+a static function in the same file. `flipso_calls.h` declares the firmware
+first and then turns on GCC's `no_long_calls` pragma, so the app's own 1,400
+calls are `BL`s, which the loader relocates as `R_ARM_THM_CALL`. A firmware
+header first included after the pragma would make a firmware call short, which
+the loader cannot place; `tools/flipper/check_calls.py`, run by CI on every
+build, fails a `.fap` with one.
 
 `tools/flipper/flipctl size` reports which sections reach RAM, and
 `flipctl mem` measures the heap before and after a change. `CLAUDE.md` records

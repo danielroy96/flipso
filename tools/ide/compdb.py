@@ -23,6 +23,8 @@ absolute paths into ~/.ufbt, so it is per-machine and stays out of the repo.
 Where the entries come from
 ---------------------------
 * Firmware units: ufbt already emits them, into .vscode/compile_commands.json.
+  The device build compiles one unit, flipso_all.c, which #includes every
+  source, so each of those gets its own entry with that unit's flags.
 * Host units: captured by running tools/test/run.sh with this script standing in
   for the compiler, so the flags cannot drift from what the suite actually uses.
 * tools/debug: neither build compiles these - flipso_dump.c is wired in by hand
@@ -34,6 +36,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import shutil
 import stat
@@ -45,6 +48,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.dirname(os.path.dirname(HERE))
 UFBT_DB = os.path.join(PROJECT, ".vscode", "compile_commands.json")
 OUTPUT = os.path.join(PROJECT, "compile_commands.json")
+UNITY = os.path.join(PROJECT, "flipso_all.c")
 RUN_SH = os.path.join(PROJECT, "tools", "test", "run.sh")
 
 # Firmware code that no build compiles; see the module docstring.
@@ -91,6 +95,13 @@ def retarget(template: dict, source: str) -> dict:
         "file": source,
         "output": obj,
     }
+
+
+def unity_sources() -> list[str]:
+    """The sources flipso_all.c #includes, which the firmware build compiles as one."""
+    with open(UNITY) as f:
+        names = re.findall(r'^#include "([^"]+\.c)"', f.read(), re.M)
+    return [os.path.join(PROJECT, n) for n in names]
 
 
 def retarget_host(template: dict, source: str) -> dict:
@@ -178,7 +189,13 @@ def shim(args: list[str]) -> None:
 
 def main() -> None:
     firmware = firmware_units()
-    template = next(e for e in firmware if e["file"].endswith("/flipso.c"))
+    template = next((e for e in firmware if e["file"] == UNITY), None)
+    if template is None:
+        raise SystemExit(
+            "[compdb] ufbt's database has no flipso_all.c; build once "
+            "(tools/flipper/flipctl deploy --build-only) and re-run"
+        )
+    firmware += [retarget(template, source) for source in unity_sources()]
     unbuilt = [retarget(template, os.path.join(PROJECT, p)) for p in UNBUILT]
     host = host_units()
     test_parse = next(u for u in host if u["file"].endswith("/test_parse.c"))

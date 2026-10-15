@@ -7,11 +7,16 @@ project root alone, so "format/*.c" also takes tools/test/format/*.c when there
 is such a directory - which once put the screen tests into the .fap, where they
 broke the firmware build. This walks the tree the way fbt does and fails on any
 match that is not an app source, or on an app source no pattern takes.
+
+The device build compiles the app as one unit, flipso_all.c, which #includes
+every source; a .c it includes counts as taken, so a new file left off its
+list fails here rather than at link time, or not at all if nothing calls it.
 """
 
 import ast
 import fnmatch
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -44,16 +49,25 @@ def matches(pattern: str) -> set[Path]:
     return found
 
 
+def included(source: Path) -> set[Path]:
+    """The .c files a unity source #includes, resolved from its own directory."""
+    names = re.findall(r'^#include "([^"]+\.c)"', source.read_text(), re.M)
+    return {(source.parent / n).resolve() for n in names}
+
+
 def main() -> int:
     taken = set()
     for pattern in fam_sources():
         taken |= matches(pattern)
-    app = {p for p in ROOT.rglob("*.c")
+    for source in list(taken):
+        taken |= included(source)
+    taken = {p.resolve() for p in taken}
+    app = {p.resolve() for p in ROOT.rglob("*.c")
            if p.relative_to(ROOT).parts[0] not in NOT_APP
            and not any(part.startswith(".") for part in p.relative_to(ROOT).parts)}
     problems = [f"  {p.relative_to(ROOT)} is not an app source but application.fam takes it"
                 for p in sorted(taken - app)]
-    problems += [f"  {p.relative_to(ROOT)} is an app source no pattern takes"
+    problems += [f"  {p.relative_to(ROOT)} is an app source nothing in application.fam takes, nor flipso_all.c"
                  for p in sorted(app - taken)]
     if problems:
         print("\n".join(problems))
