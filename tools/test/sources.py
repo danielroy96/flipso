@@ -30,6 +30,7 @@ PARTS = {
     "saved": ["cards/flipso_saved*.c"],
     "media": ["reader/flipso_media.c"],
     "scan_session": ["reader/flipso_scan_session.c"],
+    "payment": ["reader/flipso_payment.c"],
     "operators": ["lookup/flipso_operators.c"],
     # The SD card tables, each with the reader they share.
     "stations": ["lookup/flipso_stations.c", "lookup/flipso_table.c"],

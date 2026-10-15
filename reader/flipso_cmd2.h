@@ -12,6 +12,7 @@
  */
 #pragma once
 
+#include "flipso_payment.h"
 #include "flipso_reader.h"
 #include "../itso/itso.h"
 
@@ -33,12 +34,18 @@ void flipso_cmd2_free(FlipsoCmd2* cmd2);
  * @param poller an activated ISO14443-4A poller; only valid inside its callback.
  * @param card   decoded into; reset before anything is written.
  * @param capture keeps the raw bytes behind that decode; likewise reset first.
+ * @return as for any transport, or FlipsoReaderStatusBankCard for a card with
+ *         no ITSO application that answered the payment directory instead -
+ *         see flipso_cmd2_payment().
  */
 FlipsoReaderStatus flipso_cmd2_read(
     FlipsoCmd2* cmd2,
     Iso14443_4aPoller* poller,
     ItsoCard* card,
     FlipsoCapture* capture);
+
+/** The scheme of the bank card the last read found; None after any other read. */
+FlipsoPaymentScheme flipso_cmd2_payment(const FlipsoCmd2* cmd2);
 
 #ifdef __cplusplus
 }

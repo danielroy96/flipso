@@ -231,6 +231,44 @@ static size_t flipso_cmd2_read_sector(
 }
 
 /* ------------------------------------------------------------------ */
+/* Payment cards                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ask a card with no ITSO application whether it is a bank card or a phone
+ * wallet, with the one command that answers that and gives up nothing
+ * personal: the SELECT of the payment directory. Never followed by GET
+ * PROCESSING OPTIONS or READ RECORD, which is where the card number is - see
+ * flipso_payment.h.
+ *
+ * @return BankCard, NotItso, or CardError when the card went quiet.
+ */
+static FlipsoReaderStatus flipso_cmd2_read_payment(FlipsoCmd2* cmd2, Iso14443_4aPoller* poller) {
+    cmd2->link_error = false;
+    if(!flipso_cmd2_transceive(
+           cmd2, poller, flipso_payment_ppse_select, sizeof(flipso_payment_ppse_select))) {
+        /* The ITSO select had a clean answer, so a card that stops answering
+         * here has left the field, and the retry may yet find what it is. */
+        return cmd2->link_error ? FlipsoReaderStatusCardError : FlipsoReaderStatusNotItso;
+    }
+
+    FlipsoPaymentScheme scheme = flipso_payment_scheme_from_ppse(cmd2->resp, cmd2->resp_len);
+    /* The response is done with: nothing of a payment card's outlives this. */
+    memset(cmd2->resp, 0, sizeof(cmd2->resp));
+    cmd2->resp_len = 0;
+    if(scheme == FlipsoPaymentNone) return FlipsoReaderStatusNotItso;
+
+    const char* name = flipso_payment_scheme_name(scheme);
+    FURI_LOG_I(TAG, "Payment card: %s", name ? name : "unknown scheme");
+    cmd2->payment = (uint8_t)scheme;
+    return FlipsoReaderStatusBankCard;
+}
+
+FlipsoPaymentScheme flipso_cmd2_payment(const FlipsoCmd2* cmd2) {
+    return (FlipsoPaymentScheme)cmd2->payment;
+}
+
+/* ------------------------------------------------------------------ */
 /* The read sequence                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -351,12 +389,15 @@ FlipsoReaderStatus flipso_cmd2_read(
     cmd2->df_fid_known = false;
     cmd2->dir_len = 0;
     cmd2->link_error = false;
+    cmd2->payment = FlipsoPaymentNone;
 
     if(!flipso_cmd2_select_application(cmd2, poller)) {
         if(cmd2->link_error) {
             return FlipsoReaderStatusCardError;
         }
-        return FlipsoReaderStatusNotItso;
+        /* The last transport a -4 card reaches, so the last chance to say what
+         * the card is if not ITSO. A bank card is the one people will try. */
+        return flipso_cmd2_read_payment(cmd2, poller);
     }
     /* From here on the application is known to be there, so a link error means
      * the card went away rather than that we asked it the wrong thing. */

@@ -9,6 +9,8 @@
  * A card Flipso will not decode but that described itself - an Oyster, or any
  * other DESFire - is the exception. Scanning it again would say the same
  * thing, so OK there opens what the card did tell us instead.
+ *
+ * A bank card keeps Scan again: there is nothing more to show of one.
  */
 #include "../flipso.h"
 #include "flipso_icons.h"
@@ -54,6 +56,27 @@ void flipso_scene_error_on_enter(void* context) {
         button = "Card details";
         action = FlipsoCustomEventErrorDetails;
         break;
+    case FlipsoReaderStatusBankCard: {
+        icon = &I_contactless_14px;
+        /* The scheme alone, when the card named it: "Amex contactless" is 89px
+         * on the device, so "Mastercard contactless" would run into the icon.
+         * The detail's first line says contactless. */
+        const char* scheme = flipso_payment_scheme_name(flipso_reader_payment(app->reader));
+        title = scheme ? scheme : "Contactless card";
+        /* A phone wallet answers just as a card does, and nothing in its answer
+         * tells the two apart reliably, so the words cover both. */
+        detail = "This is a contactless\n"
+                 "bank card or phone.\n\n"
+                 "No journeys are stored\n"
+                 "on it: the operator\n"
+                 "works out pay-as-you-go\n"
+                 "fares afterwards from\n"
+                 "where it was tapped.\n\n"
+                 "See them on the\n"
+                 "operator's website or\n"
+                 "app.\n";
+        break;
+    }
     case FlipsoReaderStatusNotItso:
         icon = &I_not_itso_14px;
         title = "Not an ITSO card";

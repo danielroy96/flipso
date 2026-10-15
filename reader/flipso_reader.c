@@ -255,6 +255,11 @@ bool flipso_reader_advance(FlipsoReader* reader, FlipsoReaderStatus* status) {
     return false;
 }
 
+FlipsoPaymentScheme flipso_reader_payment(const FlipsoReader* reader) {
+    furi_assert(reader);
+    return reader->cmd2 ? flipso_cmd2_payment(reader->cmd2) : FlipsoPaymentNone;
+}
+
 void flipso_reader_stop(FlipsoReader* reader) {
     furi_assert(reader);
     if(!reader->running) return;

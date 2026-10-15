@@ -212,6 +212,8 @@ bool flipso_scene_scan_on_event(void* context, SceneManagerEvent event) {
             flipso_capture_set_time(app->capture, flipso_now());
             scene_manager_next_scene(app->scene_manager, FlipsoSceneMenu);
         } else {
+            /* A bank card or an Oyster included: the card was recognised, but
+             * Flipso read nothing from it, and the chirp means a read. */
             notification_message(app->notifications, &flipso_sequence_scan_fail);
             scene_manager_next_scene(app->scene_manager, FlipsoSceneError);
         }

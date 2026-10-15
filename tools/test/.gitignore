@@ -21,4 +21,5 @@ naptan.dat
 test_naptan
 test_format
 test_scan_session
+test_payment
 screens

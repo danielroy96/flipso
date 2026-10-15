@@ -22,6 +22,7 @@ App(
         "reader/flipso_cmd11.c",
         "reader/flipso_type2.c",
         "reader/flipso_media.c",
+        "reader/flipso_payment.c",
         "cards/*.c",
         "lookup/flipso_operators.c",
         "lookup/flipso_table.c",
