@@ -39,7 +39,6 @@ them has been seen.
 | **Quick wins** | | |
 | [clock-check.md](clock-check.md) | Warn when the Flipper's clock is behind the card, since every expiry verdict depends on it | Small |
 | [first-page-wrapping.md](first-page-wrapping.md) | Keep each first page's key values above the fold, and measure line widths on the host | Small |
-| [bank-cards.md](bank-cards.md) | Recognise contactless bank cards and phone wallets, without reading card data | Small |
 | [journey-user-defined.md](journey-user-defined.md) | Show a revision 4 journey record's UserDefined bytes | Small |
 | [loyalty-member-number.md](loyalty-member-number.md) | The membership number TS 1000-5 builds for TYP 3 and TYP 17 | Small |
 | [operators-file-docs.md](operators-file-docs.md) | Make `operators.txt` discoverable, and say when it was cut short | Small |

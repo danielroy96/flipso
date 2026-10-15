@@ -97,6 +97,10 @@ reader/               getting a card off the reader:
                                                an NTAG or Ultralight EV1)
                         flipso_media.c         the model of what a DESFire says about
                                                itself; the text is format/'s
+                        flipso_payment.c       a bank card's or phone's scheme, from
+                                               its PPSE answer (the one command
+                                               Flipso sends one); pure C, host-
+                                               tested by test_payment.c
 cards/                flipso_capture*.c: the raw blocks a read produced (the store,
                       decode, merging an earlier read, the file format); saved cards
                       decode from these. flipso_saved.c: those blocks on the SD card -
@@ -164,9 +168,10 @@ before there is a card worth saving.
 
 The Flipper has a 190 KB heap and the whole `.fap` is loaded into it before
 `main()` runs. `tools/flipper/flipctl size` shows which sections reach RAM:
-99.1 KB of the 547 KB file as of 2026-10-14 - 2.2 KB of that came with the
-CMD11 transport, its decoder and screens (96.9 KB before, measured the same
-day), 1.2 KB with the
+100.3 KB of the 549 KB file as of 2026-10-15 - 1.3 KB of that came with
+recognising bank cards (99.1 KB before, measured the same day), 2.2 KB with the
+CMD11 transport, its decoder and screens (96.9 KB before, measured on
+2026-10-14), 1.2 KB with the
 ticket restriction reader and its screen (95.2 KB on 2026-10-08), 2.9 KB with the UI
 review's fixes, the decoded Technical pages and the ticket type reader (92.2 KB
 before, measured the same day), 1.8 KB with

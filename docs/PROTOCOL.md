@@ -6,6 +6,7 @@ from, and where the bundled reference data comes from.
 Contents:
 
 - [Oyster cards](#oyster-cards)
+- [Bank cards and phone wallets](#bank-cards-and-phone-wallets)
 - [Operator names and card branding](#operator-names-and-card-branding)
 - [Station names](#station-names)
 - [Ticket types](#ticket-types)
@@ -43,6 +44,40 @@ A card that answers the ISO 14443-3 wake-up but will not activate as ISO
 tag may be an ITSO paper ticket. A MIFARE Classic cannot be an ITSO card Flipso
 reads, so after about a second of that the scan stops and says **Unsupported
 card**, rather than waiting on it for ever.
+
+## Bank cards and phone wallets
+
+UK buses and trains take contactless bank cards, so a debit card or a phone is
+one of the things people hold against the reader. Neither has any travel data
+on it: a pay-as-you-go fare is worked out afterwards by the operator's back
+office from where the card was tapped, and the operator's website or app is
+where the journeys are.
+
+A card with no ITSO application in either the DESFire or the ISO 7816 command
+set is asked one more question: the SELECT of the contactless payment
+directory, PPSE (`00 A4 04 00 0E` + `"2PAY.SYS.DDF01"` + `00`, EMV Contactless
+Book B). An answer of `9000` with an FCI template is a payment card or phone
+wallet, and Flipso says so - **Visa**, **Mastercard** and so on, or
+**Contactless card** - instead of "Not an ITSO card".
+
+From that answer Flipso takes only the scheme, keeps it as one byte, and saves
+nothing: the scheme comes from the registered identifier (RID) that opens each
+application identifier (tag `4F`), or failing that from the application label
+(tag `50`).
+
+| RID | Scheme |
+| --- | --- |
+| `A000000003` | Visa |
+| `A000000004` | Mastercard, Maestro |
+| `A000000025` | American Express |
+| `A000000065` | JCB |
+| `A000000152` | Discover, Diners Club |
+| `A000000333` | UnionPay |
+
+Flipso never sends GET PROCESSING OPTIONS or READ RECORD, the commands that
+return the card number, so it reads no payment data at all. A phone answers the
+PPSE just as a card does and nothing in its answer reliably tells the two apart,
+so the screen says "bank card or phone".
 
 ## Operator names and card branding
 
@@ -200,6 +235,10 @@ cards often cost up to 5x as much as a generic card.
 3. Read each logical sector as `EF 0001` of `DF 0100+n`, using the path to the
    ITSO DF that the Parameter EF advertises so a sector costs one SELECT and one
    READ BINARY rather than three commands.
+
+A card that answers the select in step 1 with "no such application" is asked
+whether it is a bank card instead - see
+[Bank cards and phone wallets](#bank-cards-and-phone-wallets).
 
 Two structural differences from DESFire follow from CMD2 using *software*
 anti-tear rather than the hardware anti-tear DESFire backup files provide:
@@ -1157,6 +1196,8 @@ LocDefType 212 carries several stops and names the first, counting the rest.
   from prices, not stated anywhere. An area given as a location has been
   decoded from the spec alone: every real ticket seen carries a fare code.
 - Oyster cards are recognised and described, but the data is encrypted
+- Contactless bank cards and phone wallets are recognised and their scheme
+  named; nothing else is read from them
 - MIFARE Classic and non-Type A cards are reported as unsupported
 - Seals are not verified, so Flipso cannot tell you whether a card has been
   tampered with - only the shell's own checksum is checked. See

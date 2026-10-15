@@ -40,6 +40,13 @@ typedef enum {
     FlipsoReaderStatusCardLost,
     FlipsoReaderStatusOyster, /**< A TfL Oyster: known, and deliberately not decoded. */
     /**
+     * A contactless bank card or phone wallet: it answered the payment
+     * directory select (flipso_payment.h). Known, and nothing to decode - its
+     * journeys are in the operator's back office, not on the card - so it ends
+     * the scan as an Oyster does.
+     */
+    FlipsoReaderStatusBankCard,
+    /**
      * A card is on the reader and it does not speak ISO 14443-4, which every
      * ITSO medium Flipso reads does: a MIFARE Classic or Ultralight, a hotel
      * key, an older ITSO card type. Without this the scan would wait for ever

@@ -8,6 +8,7 @@
 #pragma once
 
 #include "flipso_cmd2.h"
+#include "flipso_payment.h"
 
 #include <toolbox/bit_buffer.h>
 
@@ -41,6 +42,9 @@ struct FlipsoCmd2 {
     uint8_t path_len; /* 0 when the card does not support selection by path. */
     uint16_t df_fid;
     bool df_fid_known;
+
+    /** FlipsoPaymentScheme, set when the card turned out to be a bank card. */
+    uint8_t payment;
 };
 
 /**

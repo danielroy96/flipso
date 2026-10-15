@@ -64,6 +64,12 @@ build test_scan_session -I"$ROOT" test_scan_session.c $(src scan_session)
 ./test_scan_session
 
 echo
+echo "Payment cards"
+# The PPSE answer a bank card or phone gives, read for its scheme alone.
+build test_payment -I"$ROOT" test_payment.c $(src payment)
+./test_payment
+
+echo
 echo "Saved cards"
 # The save/load round trip, which is the decoder's other entry point: a saved
 # card is raw blocks, so loading one runs the same parsers a tap does.

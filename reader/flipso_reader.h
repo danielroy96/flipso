@@ -21,6 +21,7 @@
 
 #include "../cards/flipso_capture.h"
 #include "flipso_media.h"
+#include "flipso_payment.h"
 #include "flipso_scan_session.h"
 #include "../itso/itso.h"
 
@@ -67,6 +68,13 @@ void flipso_reader_start(
  *         nothing for the user to do; false when it is over.
  */
 bool flipso_reader_advance(FlipsoReader* reader, FlipsoReaderStatus* status);
+
+/**
+ * The scheme of the bank card a scan that ended in FlipsoReaderStatusBankCard
+ * found. The scheme is all a scan keeps of a bank card: nothing of one reaches
+ * the card, the media or the capture.
+ */
+FlipsoPaymentScheme flipso_reader_payment(const FlipsoReader* reader);
 
 /** Stop polling. Safe to call when not started. Must not be called from the callback. */
 void flipso_reader_stop(FlipsoReader* reader);

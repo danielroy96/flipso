@@ -71,6 +71,28 @@ int main(void) {
     RUN(true, FlipsoReaderStatusFound, FlipsoReaderStatusOyster);
     check("an Oyster ends the scan", verdict == FlipsoReaderStatusOyster);
 
+    /* A bank card answers the payment directory on the ISO 7816 transport,
+     * the last on its path - and is a verdict, not a reason to try again. */
+    RUN(true, FlipsoReaderStatusFound, FlipsoReaderStatusNotItso, FlipsoReaderStatusBankCard);
+    check("a bank card ends the scan", verdict == FlipsoReaderStatusBankCard);
+    check("on the ISO 7816 transport", steps == 3 && path[2] == FlipsoTransportIso7816);
+
+    RUN(true,
+        FlipsoReaderStatusFound,
+        FlipsoReaderStatusCardError,
+        FlipsoReaderStatusNotItso,
+        FlipsoReaderStatusBankCard);
+    check("a bank card that dropped out once is still one", verdict == FlipsoReaderStatusBankCard);
+
+    FlipsoScanSession bank;
+    flipso_scan_session_begin(&bank);
+    bank.transport = FlipsoTransportDesfire;
+    FlipsoReaderStatus bank_status = FlipsoReaderStatusBankCard;
+    check(
+        "whichever transport reports it",
+        !flipso_scan_session_step(&bank, &bank_status) &&
+            bank_status == FlipsoReaderStatusBankCard && bank.retries == 0);
+
     /* Dropping out: the same transport is tried again, twice. */
     RUN(true,
         FlipsoReaderStatusFound,
