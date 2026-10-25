@@ -98,9 +98,9 @@ int main(void) {
      * a new entry needs a line, and the search finds it only while the table
      * stays sorted.
      */
-    static const uint16_t known[] = {78,  96,  109, 116, 125,  130,  143,  152,  162,
-                                     163, 165, 196, 226, 246,  247,  262,  285,  287,
-                                     288, 289, 303, 313, 1136, 8000, 8288, 8323, 24585};
+    static const uint16_t known[] = {78,  96,  109, 116,  125,  130,  143,  152,  162, 163,
+                                     165, 196, 226, 246,  247,  262,  264,  285,  287, 288,
+                                     289, 303, 313, 1136, 8000, 8288, 8323, 24585};
     unsigned unreachable = 0;
     for(size_t i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
         if(!itso_operator_name(known[i])) unreachable++;
@@ -118,6 +118,12 @@ int main(void) {
     /* The pass carries the national scheme's artwork, but the menu is titled
      * with the council that issued it rather than a generic "ITSO Card". */
     same("and titles the pass it issues", itso_operator_brand(165), "Reading Borough Council");
+    /* Watson 2019 named the council that issued the card; the OID belongs to
+     * the national scheme the council issued it for. */
+    same(
+        "a national scheme is not named for its agent",
+        itso_operator_name(130),
+        "Transport Scotland");
     same("an unknown operator is not", itso_operator_name(4242), NULL);
     /* Shared central-product OIDs are named but brand nothing: they own
      * products on other issuers' cards and issue none of their own. */
@@ -145,6 +151,17 @@ int main(void) {
         itso_operator_name(287),
         "Great Western Railway");
     same("titles its card as printed", itso_operator_brand(287), "GWR Touch");
+    /* One OID for a franchise of several brands: named for the franchise. */
+    same(
+        "a franchise is not named for one of its brands",
+        itso_operator_name(143),
+        "Thameslink Southern Great Northern");
+    /* Registered to East Coast; the OID came with the route. */
+    same(
+        "an OID that outlived its operator",
+        itso_operator_name(264),
+        "London North Eastern Railway");
+    same("titles the successor's card", itso_operator_brand(264), "LNER Smartcard");
 
     FlipsoOperators* operators = flipso_operators_alloc();
     same(
@@ -213,6 +230,58 @@ int main(void) {
     same("a line with no comma is rejected", flipso_operators_name(operators, 1003), NULL);
     same(
         "an operator the file does not mention falls through",
+        flipso_operators_name(operators, 78),
+        "Transport for London");
+    check(
+        "only lines naming an operator are counted", flipso_operators_user_count(operators) == 5);
+
+    flipso_operators_free(operators);
+
+    /* --- A long file: searched on the card, not loaded, so no cap. --- */
+    FILE* out = fopen(OPERATORS_PATH, "wb");
+    if(!out) {
+        perror(OPERATORS_PATH);
+        exit(1);
+    }
+    fprintf(out, "5000,First line wins\n");
+    for(unsigned oid = 5000; oid < 5300; oid++) {
+        fprintf(out, "%u,Operator %u\n", oid, oid);
+    }
+    fprintf(out, "5299,Not this one\n");
+    fprintf(out, "6000,A name longer than the old twenty-seven characters\n");
+    fclose(out);
+
+    operators = flipso_operators_alloc();
+    check("every line is counted", flipso_operators_user_count(operators) == 303);
+    same(
+        "the first line for an OID wins",
+        flipso_operators_name(operators, 5000),
+        "First line wins");
+    same(
+        "an entry past the old limit of 48 is found",
+        flipso_operators_name(operators, 5299),
+        "Operator 5299");
+    same(
+        "a long name is kept to its buffer",
+        flipso_operators_name(operators, 6000),
+        "A name longer than the old twenty-seven charact");
+
+    /* More distinct OIDs than the cache holds, then the first again: an
+     * evicted answer must be read back, not left as another OID's. */
+    unsigned wrong = 0;
+    for(unsigned round = 0; round < 2; round++) {
+        for(unsigned oid = 5100; oid < 5120; oid++) {
+            char want[24];
+            snprintf(want, sizeof(want), "Operator %u", oid);
+            const char* got = flipso_operators_name(operators, (uint16_t)oid);
+            if(!got || strcmp(got, want) != 0) wrong++;
+        }
+    }
+    check("answers stay right as the cache turns over", wrong == 0);
+    same("a miss is remembered as a miss", flipso_operators_name(operators, 7000), NULL);
+    same("and asked again, still is", flipso_operators_name(operators, 7000), NULL);
+    same(
+        "a built-in operator still falls through",
         flipso_operators_name(operators, 78),
         "Transport for London");
 

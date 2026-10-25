@@ -814,7 +814,7 @@ in memory whole.
 
 | Table | Source | Where it lives | How it is searched |
 | --- | --- | --- | --- |
-| Operators | Built-in `itso_operators.c`, plus the user's `operators.txt` | Built-in in the `.fap`; the user's file read at launch, capped at 48 entries | The user's entries first, then a binary search of the built-in table, so a local correction wins |
+| Operators | Built-in `itso_operators.c`, plus the user's `operators.txt` | Built-in in the `.fap`; the user's file counted at launch and searched on the SD card at each lookup, its last eight answers cached | The user's entries first, then a binary search of the built-in table, so a local correction wins |
 | Stations (NLC) | `assets/stations.dat`, built by `tools/stations/` | Packaged as a `.fapassets` file; a newer table at `/ext/apps_data/flipso/stations.dat` takes over | Binary search over fixed-width entries on the SD card: about a dozen short reads |
 | Bus stops (NaPTAN) | `data/naptan.dat`, built by `tools/naptan/` | Copied to the SD card by the user; about 20 MB | Binary search, the same design |
 

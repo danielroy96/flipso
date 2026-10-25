@@ -12,14 +12,15 @@
 #  - the name is the organisation, shown against the products it owns
 #  - the brand is optional: the name the card itself is sold under, which titles
 #    the menu when this operator is the one that issued the card
-#  - names longer than 27 characters are truncated; a brand is cut to the screen
+#  - names longer than 47 characters are truncated; a brand is cut to the screen
 #  - entries here override the built-in table, and a line with no brand column
-#    overrides the name only
+#    overrides the name only; if an OID is listed twice, the first line wins
 #  - lines starting with # are ignored
 #
-# Up to 48 entries are read.
+# The file is searched on the SD card rather than loaded, so its length costs
+# no memory; only the first 1024 lines are read.
 #
-# Your card's OID is on the Card screen, under Issuer.
+# Your card's OID is on the Card screen's Technical page, as Operator number.
 
 # 211,East Sussex County Council
 # 1234,My Local Transit,Metro Smartcard
