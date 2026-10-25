@@ -98,9 +98,9 @@ int main(void) {
      * a new entry needs a line, and the search finds it only while the table
      * stays sorted.
      */
-    static const uint16_t known[] = {78,  96,  109, 116, 125,  130,  143,  152,  162,
-                                     163, 165, 196, 226, 246,  247,  262,  285,  287,
-                                     288, 289, 303, 313, 1136, 8000, 8288, 8323, 24585};
+    static const uint16_t known[] = {78,  96,  109, 116,  125,  130,  143,  152,  162, 163,
+                                     165, 196, 226, 246,  247,  262,  264,  285,  287, 288,
+                                     289, 303, 313, 1136, 8000, 8288, 8323, 24585};
     unsigned unreachable = 0;
     for(size_t i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
         if(!itso_operator_name(known[i])) unreachable++;
@@ -118,6 +118,12 @@ int main(void) {
     /* The pass carries the national scheme's artwork, but the menu is titled
      * with the council that issued it rather than a generic "ITSO Card". */
     same("and titles the pass it issues", itso_operator_brand(165), "Reading Borough Council");
+    /* Watson 2019 named the council that issued the card; the OID belongs to
+     * the national scheme the council issued it for. */
+    same(
+        "a national scheme is not named for its agent",
+        itso_operator_name(130),
+        "Transport Scotland");
     same("an unknown operator is not", itso_operator_name(4242), NULL);
     /* Shared central-product OIDs are named but brand nothing: they own
      * products on other issuers' cards and issue none of their own. */
@@ -145,6 +151,17 @@ int main(void) {
         itso_operator_name(287),
         "Great Western Railway");
     same("titles its card as printed", itso_operator_brand(287), "GWR Touch");
+    /* One OID for a franchise of several brands: named for the franchise. */
+    same(
+        "a franchise is not named for one of its brands",
+        itso_operator_name(143),
+        "Thameslink Southern Great Northern");
+    /* Registered to East Coast; the OID came with the route. */
+    same(
+        "an OID that outlived its operator",
+        itso_operator_name(264),
+        "London North Eastern Railway");
+    same("titles the successor's card", itso_operator_brand(264), "LNER Smartcard");
 
     FlipsoOperators* operators = flipso_operators_alloc();
     same(

@@ -60,6 +60,17 @@ typedef struct {
  * left a gap, the brand is the one the operator sells the card under on its own
  * website, checked 2026-09-27.
  *
+ * "Smart Ticket Checker's table" is the OID list Ecebs ships inside that app:
+ * the CSV it loads into its lookup database on first run (res/8j in version
+ * 1.21, which R8 renamed from raw/oid). It is one vendor's list and undated,
+ * and its train operators date from about 2015 - East Coast, which ended that
+ * year, is still "Live" in it - so it says who an OID was registered to rather
+ * than what the operator is called now. No entry has been added on its word
+ * alone: it is cited beside a card or a document, or for an entry that was
+ * here before it. Its rows for 255 to 308 have a
+ * space where the app expects a comma, so the app itself shows those OIDs as
+ * unknown; the rows are still legible, and are cited as written.
+ *
  * Entries must stay sorted by OID: lookup is a binary search.
  */
 static const ItsoOperatorEntry itso_operator_table[] = {
@@ -73,44 +84,72 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * nothing about which of the two brands is printed on the card in hand.
      * Deliberately branded as the current scheme: it is right for cards being
      * issued now and wrong only for legacy stock. The alternative was no brand
-     * at all for either. */
+     * at all for either. Smart Ticket Checker's table registers it to
+     * "Stagecoach South Western Trains Ltd", the franchise's holder until 2017,
+     * which bears out the carry-over. */
     {109, "South Western Railway", "SWR Touch"},
     /* Watson 2019, a ScotRail card read on both DESFire and CMD2 media. The
      * scheme is recorded only as "Smartcard", so the brand names the issuer
-     * too, as c2c's does. */
+     * too, as c2c's does. Smart Ticket Checker's table agrees; it gives 117 as
+     * ScotRail's test OID. */
     {116, "ScotRail", "ScotRail Smartcard"},
     /* Watson 2019, the only card in its table carrying both tickets and an
      * ePurse, then TfGM's "get me there" card. TfGM has since rebranded its
      * network as the Bee Network and the card as the Bee Card. As with OID 109,
      * the OID is assumed to have carried across the rebrand and the brand is the
-     * current one, so a legacy get me there card is titled as a Bee Card. */
+     * current one, so a legacy get me there card is titled as a Bee Card.
+     * Smart Ticket Checker's table registers it to Transport for Greater
+     * Manchester, the body that runs both. */
     {125, "Bee Network", "Bee Card"},
-    /* Watson 2019 read this OID from two Dundee cards: a OneScotland National
-     * Entitlement Card on MIFARE Classic, which Flipso cannot read, and a
-     * saltirecard on CMD2. Two schemes on one OID, so like OID 165 the brand is
-     * the issuer, which is true of either card. */
-    {130, "Dundee City Council", "Dundee City Council"},
+    /* Watson 2019 read this OID from two cards issued in Dundee: a OneScotland
+     * National Entitlement Card on MIFARE Classic, which Flipso cannot read, and
+     * a saltirecard on CMD2. Both are national schemes - Transport Scotland's
+     * own pages call Saltirecard "the ITSO brand of Transport Scotland" - and the
+     * council was only the agent that handed them out. Smart Ticket Checker's
+     * table registers the OID to Transport Scotland, and a Ticketer ETM's
+     * product list (github.com/TheEnbyperor/ticketer-machine) has it owning
+     * every Scottish concessionary product, on passes read in Perthshire.
+     *
+     * Until 2026-10-25 this read "Dundee City Council", taking Watson's
+     * issuing authority for the OID's owner. Two schemes on one OID, so like
+     * OID 165 the brand is the organisation rather than either scheme. */
+    {130, "Transport Scotland", "Transport Scotland"},
     /* RSPS3002 appendix D.3, example POST SET address. Watson 2019 read it as the
      * shell owner of a "The Key" card issued by Govia, whose Govia Thameslink
-     * Railway runs Southern - the same Go-Ahead scheme as OID 289 below. */
-    {143, "Southern", "The Key"},
+     * Railway runs Southern - the same Go-Ahead scheme as OID 289 below.
+     * Smart Ticket Checker's table: "Southern Railway", with 142 its staging
+     * OID. Shell owner of a Thameslink Southern Great Northern The Key card
+     * read 2026-10-25, which also owns the ITSO ID and an operator-defined
+     * TYP 22 on it; the purse belongs to 8000.
+     *
+     * Named for the franchise rather than one of its brands, as 109 is: the
+     * OID came with Southern into Govia Thameslink Railway in 2015 and now
+     * covers Thameslink, Southern, Great Northern and Gatwick Express, which
+     * passed to DfT Operator on 31 May 2026. "Govia" would be out of date and
+     * "Southern" wrong for a card sold by Thameslink. Until 2026-10-25 this
+     * read "Southern". */
+    {143, "Thameslink Southern Great Northern", "The Key"},
     /* Watson 2019, written there as "m-card"; this is how the scheme styles it.
      * The dissertation names the issuer "West Yorkshire TA"; the combined
-     * authority is the body that runs MCard today. */
+     * authority is the body that runs MCard today. Smart Ticket Checker's table
+     * has it as "MetroCard", the scheme's earlier name. */
     {152, "West Yorkshire Combined Authority", "MCard"},
     /* Watson 2019, which calls the scheme "My Xplore" but also quotes an older
      * source calling the card "Discovr". Both are right: Xplore Dundee's own
      * news page says MyXplore replaced Discovr from 2 January 2017, and the
-     * brand is the current one, as with OID 109. */
+     * brand is the current one, as with OID 109. Smart Ticket Checker's table
+     * registers it to "National Express Group Plc", Xplore Dundee's owner. */
     {162, "Xplore Dundee", "MyXplore"},
     /* Shell owner of a Reading Buses card, read 2026-09-26, which also owns the
      * period ticket on it. Reading Buses is the trading name of Reading Transport
-     * Ltd, the municipal operator; the council's own OID is 165 below. */
+     * Ltd, the municipal operator; the council's own OID is 165 below. Smart
+     * Ticket Checker's table gives both 163 and 164 to Reading Transport. */
     {163, "Reading Buses", "Reading Buses"},
     /* Shell owner of an ENCTS concessionary pass, read 2026-09-19, whose issuer
-     * the cardholder confirmed. The pass carries the national scheme's artwork
-     * rather than the council's, so the brand is the issuer's name: it tells
-     * the holder whose pass it is, where "ITSO Card" would tell them nothing. */
+     * the cardholder confirmed; Smart Ticket Checker's table agrees. The pass
+     * carries the national scheme's artwork rather than the council's, so the
+     * brand is the issuer's name: it tells the holder whose pass it is, where
+     * "ITSO Card" would tell them nothing. */
     {165, "Reading Borough Council", "Reading Borough Council"},
     /* Shell owner of an SPT Subway card, read 2026-09-17. The Subway's reusable
      * smartcard is the one ITSO scheme still on ISO 7816 media (CMD2).
@@ -119,11 +158,17 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * "Bramble". The brand stays as the card in hand has it. Watson also gives
      * 196 for a Subway paper ticket, where the one read here (OID 8323 below)
      * had the generic compact-shell 8189 - an older ticket, or Smart Ticket
-     * Checker showing a different field; not settled. */
+     * Checker showing a different field; not settled.
+     *
+     * Smart Ticket Checker's table registers it to "Nevis Technologies
+     * Limited": the joint venture SPT and Ecebs set up in 2011 to run the
+     * Subway's smartcard (SPT committee paper P131224, agenda item 10). That is
+     * who holds the number, not a name a cardholder would know, so the entry
+     * keeps the operator. */
     {196, "SPT (Strathclyde)", "SPT Subway"},
     /* Shell owner of a Freedom Pass, read 2026-09-17. The scheme is run by
      * London Councils for the London boroughs; the name is from that, the OID
-     * and the brand are from the card. */
+     * and the brand are from the card. Smart Ticket Checker's table agrees. */
     {226, "London Councils", "Freedom Pass"},
     /* A shared OID for central products rather than one operator's, identified
      * via Smart Ticket Checker, 2026-09-18. Read as the owner of the ITSO ID
@@ -137,30 +182,50 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      *
      * Watson 2019 read it as the shell owner of a Greater Anglia smartcard.
      * That fits a shared SEFT OID - Greater Anglia is inside the SEFT area - and
-     * is exactly why there is no brand: the shell is not one operator's. */
+     * is exactly why there is no brand: the shell is not one operator's.
+     *
+     * Smart Ticket Checker's table carries the name exactly, with 248 as its
+     * staging twin. */
     {246, "SEFT Central Products", NULL},
     /* RSPS3002 appendix D.2, "a C2C live Shell ISRN"; Watson 2019 read it from
-     * a c2c Smart card. */
+     * a c2c Smart card; Smart Ticket Checker's table has "c2c Live". */
     {247, "c2c", "c2c Smart"},
     /* Watson 2019 records these three National Rail operators' cards only as
      * STNR. Each operator's site sells it as its own "Smartcard"; Chiltern's
-     * says "Chiltern Railways Smartcard", shortened so the header fits. */
+     * says "Chiltern Railways Smartcard", shortened so the header fits. Smart
+     * Ticket Checker's table agrees for 262 and 285, both "- Live"; for 288,
+     * see below. */
     {262, "Chiltern Railways", "Chiltern Smartcard"},
+    /* Shell owner of an LNER Smartcard, read 2026-10-25, new and holding no
+     * products yet. Smart Ticket Checker's table has 264 as "East Coast -
+     * Live", the publicly owned operator of the East Coast main line until
+     * 2015. LNER runs the same route, and the OID came across through Virgin
+     * Trains East Coast as 109's did. The brand is the one printed on the
+     * card. */
+    {264, "London North Eastern Railway", "LNER Smartcard"},
     {285, "CrossCountry", "CrossCountry Smartcard"},
     /* Shell owner of a GWR Touch card, read 2026-09-28, which also owns the ITSO
      * ID product on it. The season tickets on the same card belong to OID 246,
      * the shared SEFT one, so this OID names the card and not its tickets. The
-     * brand is the one printed on it. */
+     * brand is the one printed on it. Smart Ticket Checker's table has "First
+     * Great Western - Live", GWR's name until 2015. */
     {287, "Great Western Railway", "GWR Touch"},
+    /* Smart Ticket Checker's table gives this as "LOROL - Live", London
+     * Overground's operator until 2016. Watson read 288 from a TransPennine
+     * Express card in 2019, after TPE's smartcards arrived in November 2018, so
+     * the card in hand wins; whether the number moved or the list is wrong is
+     * not known. */
     {288, "TransPennine Express", "TPE Smartcard"},
     /* Shell owner of a Southeastern "The Key" card, read 2026-09-18. The Key is
      * Go-Ahead's scheme rather than one operator's, so other Go-Ahead operators
      * issue Key cards of their own under their own OIDs - unlike OID 109 above,
      * where one OID spans two brands, here one brand spans several OIDs. Naming
      * the operator rather than the group is what makes the product lines read
-     * correctly; the brand is what is printed on the card. */
+     * correctly; the brand is what is printed on the card. Smart Ticket
+     * Checker's table: "Southeastern - Live", with 299 its staging OID. */
     {289, "Southeastern", "The Key"},
-    {303, "McGill's", "Go! Smart"}, /* Watson 2019, a CMD2 card */
+    /* Watson 2019, a CMD2 card; Smart Ticket Checker's table agrees. */
+    {303, "McGill's", "Go! Smart"},
     /* Watson 2019, a CMD2 "Tripper" card, which it lists under SPT. SPT's own
      * site says Tripper is not delivered by SPT: it is the Glasgow Bus
      * Alliance's multi-operator bus ticket, issued by Glasgow Smartzone
@@ -169,18 +234,19 @@ static const ItsoOperatorEntry itso_operator_table[] = {
     {313, "Glasgow Smartzone Ticketing", "Glasgow Tripper"},
     {1136, "SEFT", NULL}, /* RSPS3002 appendix D.1, South East Flexible Ticketing */
     /* ITSO's own National Rail stored travel rights scheme - STR is the TS 1000
-     * name for a purse - named for what a holder would call it. */
+     * name for a purse - named for what a holder would call it. Smart Ticket
+     * Checker's table: "ITSO (National STR)". */
     {8000, "National Rail purse", NULL},
-    /* No provenance was ever recorded for this entry, and the Freedom Pass it
-     * claimed is OID 226 above, read from the card. Unverified rather than
-     * deleted, because an OID this far into the range is unlikely to have been
-     * invented outright - but no brand, because the brand is the title bar.
+    /* Smart Ticket Checker's table, which names 8192 to 8290 for English local
+     * authority areas, county by county, and gives this one as "Greater
+     * London". No brand, because the brand is the title bar. The entry
+     * predates that source and no provenance was recorded for it then; the
+     * Freedom Pass it once claimed is OID 226 above, read from the card.
      *
      * Not yet distinguishable from OID 96: the ID product on a Freedom Pass
      * reports "Greater London", which is the name both entries carry, and the
-     * product screen shows a named operator without its number. Whichever of
-     * the two that product is, 96 already has provenance ("read from an ENCTS
-     * concessionary pass") and this one still has none. */
+     * product screen shows a named operator without its number. Settling it
+     * needs that product's owner number read off a pass. */
     {8288, "Greater London", NULL},
     /* Owner of the Period ticket on an SPT Subway paper day-ticket, read
      * 2026-09-27. The ticket is a compact-shell Type 2 tag (CMD4), whose shell
@@ -188,14 +254,15 @@ static const ItsoOperatorEntry itso_operator_table[] = {
      * owner, in the extended range - is the only OID on it that names the
      * operator, and it brands the ticket in the shell owner's place (see
      * itso_card_issuer_oid()). The brand is the one the Subway's own smartcard
-     * carries. */
+     * carries. Smart Ticket Checker's table: "SPT Subway". */
     {8323, "SPT (Strathclyde)", "SPT Subway"},
     /* TfL's gates, as the machine behind a tap and the last writer of a
      * directory, seen on GWR Touch cards tapped in at London Paddington and
      * read 2026-10-05. RSPS3002 appendix D gives TfL's ISAM IDs as 004E...,
      * and TS 1000-2 Annex B unpacks that to 0x6009, a number of the
      * 24576-32767 range table B2 keeps for service operators and retailers - so
-     * it names a machine, never a card or a product. */
+     * it names a machine, never a card or a product. Smart Ticket Checker's
+     * table gives 24585 as "Transport for London" too. */
     {24585, "Transport for London", NULL},
 };
 
