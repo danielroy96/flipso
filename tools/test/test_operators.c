@@ -232,6 +232,58 @@ int main(void) {
         "an operator the file does not mention falls through",
         flipso_operators_name(operators, 78),
         "Transport for London");
+    check(
+        "only lines naming an operator are counted", flipso_operators_user_count(operators) == 5);
+
+    flipso_operators_free(operators);
+
+    /* --- A long file: searched on the card, not loaded, so no cap. --- */
+    FILE* out = fopen(OPERATORS_PATH, "wb");
+    if(!out) {
+        perror(OPERATORS_PATH);
+        exit(1);
+    }
+    fprintf(out, "5000,First line wins\n");
+    for(unsigned oid = 5000; oid < 5300; oid++) {
+        fprintf(out, "%u,Operator %u\n", oid, oid);
+    }
+    fprintf(out, "5299,Not this one\n");
+    fprintf(out, "6000,A name longer than the old twenty-seven characters\n");
+    fclose(out);
+
+    operators = flipso_operators_alloc();
+    check("every line is counted", flipso_operators_user_count(operators) == 303);
+    same(
+        "the first line for an OID wins",
+        flipso_operators_name(operators, 5000),
+        "First line wins");
+    same(
+        "an entry past the old limit of 48 is found",
+        flipso_operators_name(operators, 5299),
+        "Operator 5299");
+    same(
+        "a long name is kept to its buffer",
+        flipso_operators_name(operators, 6000),
+        "A name longer than the old twenty-seven charact");
+
+    /* More distinct OIDs than the cache holds, then the first again: an
+     * evicted answer must be read back, not left as another OID's. */
+    unsigned wrong = 0;
+    for(unsigned round = 0; round < 2; round++) {
+        for(unsigned oid = 5100; oid < 5120; oid++) {
+            char want[24];
+            snprintf(want, sizeof(want), "Operator %u", oid);
+            const char* got = flipso_operators_name(operators, (uint16_t)oid);
+            if(!got || strcmp(got, want) != 0) wrong++;
+        }
+    }
+    check("answers stay right as the cache turns over", wrong == 0);
+    same("a miss is remembered as a miss", flipso_operators_name(operators, 7000), NULL);
+    same("and asked again, still is", flipso_operators_name(operators, 7000), NULL);
+    same(
+        "a built-in operator still falls through",
+        flipso_operators_name(operators, 78),
+        "Transport for London");
 
     flipso_operators_free(operators);
     remove(OPERATORS_PATH);
